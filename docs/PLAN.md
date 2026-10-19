@@ -297,16 +297,16 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 ## 11. Yol Haritası
 
 ### Aşama 0: Hazırlık (1 gün)
-- [ ] Godot projesi + klasör yapısı + Git
-- [ ] Placeholder sprite'lar (renkli kareler yeterli)
+- [x] Godot projesi + klasör yapısı + Git
+- [x] Placeholder sprite'lar (renkli kareler yeterli)
 
 ### Aşama 1: Oyuncu hissi (hafta 1)  ← EN ÖNEMLİ
-- [ ] Hareket + zıplama
-- [ ] Dash (i-frame, şarj)
-- [ ] Hitbox/Hurtbox sistemi
-- [ ] Temel saldırı kombosu
-- [ ] **Parry** (pencere, altın saldırı, hitstop, ses)
-- [ ] 1 test düşmanı + altın mermi
+- [x] Hareket + zıplama
+- [x] Dash (i-frame, şarj)
+- [x] Hitbox/Hurtbox sistemi
+- [x] Temel saldırı kombosu
+- [x] **Parry** (pencere, altın saldırı, hitstop, ses)
+- [x] 1 test düşmanı + altın mermi
 
 **Çıkış kriteri:** Sadece bu arenada parry yapmak bile eğlenceli mi? Değilse Aşama 2'ye geçme.
 

@@ -1,0 +1,65 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://actors/player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://combat/hurtbox.gd" id="2_hurt"]
+[ext_resource type="Script" path="res://combat/hitbox.gd" id="3_hit"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(26, 52)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
+size = Vector2(24, 48)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_melee"]
+size = Vector2(62, 46)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_parry"]
+radius = 48.0
+
+[node name="Player" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_player")
+faction = "player"
+
+[node name="Body" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="Visual" type="Node2D" parent="."]
+
+[node name="Rect" type="ColorRect" parent="Visual"]
+offset_left = -14.0
+offset_top = -26.0
+offset_right = 14.0
+offset_bottom = 26.0
+mouse_filter = 2
+color = Color(0.93, 0.91, 0.86, 1)
+
+[node name="Eye" type="ColorRect" parent="Visual"]
+offset_left = 3.0
+offset_top = -18.0
+offset_right = 13.0
+offset_bottom = -10.0
+mouse_filter = 2
+color = Color(0.09, 0.08, 0.11, 1)
+
+[node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("2_hurt")
+faction = "player"
+
+[node name="Shape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("RectangleShape2D_hurt")
+
+[node name="MeleeHitbox" type="Area2D" parent="."]
+script = ExtResource("3_hit")
+faction = "player"
+active = false
+
+[node name="Shape" type="CollisionShape2D" parent="MeleeHitbox"]
+shape = SubResource("RectangleShape2D_melee")
+
+[node name="ParryZone" type="Area2D" parent="."]
+monitorable = false
+
+[node name="Shape" type="CollisionShape2D" parent="ParryZone"]
+shape = SubResource("CircleShape2D_parry")

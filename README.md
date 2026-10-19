@@ -21,7 +21,29 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | Shift | Dash |
 | K | Parry |
 | J | Saldırı |
+| F3 | Debug paneli (parry penceresi, dash hızı vb. canlı ayar) |
+| R | Arenayı yeniden başlat |
+
+Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile kaç.
 
 ## Durum
 
-Aşama 1 (oyuncu hissi) üzerinde çalışılıyor.
+Aşama 0 ve 1 tamam: hareket, zıplama, dash (i-frame + şarj), 3'lü saldırı kombosu, parry (altın/kırmızı saldırı ayrımı, hitstop, ses), iki düşman tipi (Teklifçi, Ateşçi) ve test arenası.
+Sıradaki: Aşama 2 (agresiflik metresi, oda sistemi, daha fazla düşman).
+
+## Geliştirici notları
+
+Otomatik testler (Godot kurulu olmadan editör açmaya gerek yok):
+
+```
+godot --headless --path . res://tests/test_runner.tscn
+```
+
+Ekran görüntüsü alma (sanal ekranla):
+
+```
+xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
+  godot --path . --rendering-driver opengl3 --fixed-fps 60 res://tools/screenshots.tscn -- /cikti/klasoru
+```
+
+Geçici ses efektleri `tools/make_sfx.py` ile üretilir.

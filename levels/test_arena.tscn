@@ -1,0 +1,123 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://levels/test_arena.gd" id="1_arena"]
+[ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
+[ext_resource type="Script" path="res://ui/hud.gd" id="3_hud"]
+[ext_resource type="Script" path="res://fx/shake_camera.gd" id="4_cam"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_floor"]
+size = Vector2(1480, 120)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(80, 1400)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ceiling"]
+size = Vector2(1480, 80)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]
+size = Vector2(220, 20)
+
+[node name="TestArena" type="Node2D"]
+script = ExtResource("1_arena")
+
+[node name="Camera" type="Camera2D" parent="."]
+position = Vector2(640, 360)
+script = ExtResource("4_cam")
+
+[node name="Background" type="Node2D" parent="."]
+z_index = -10
+
+[node name="Wall" type="ColorRect" parent="Background"]
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.075, 0.063, 0.094, 1)
+
+[node name="PillarA" type="ColorRect" parent="Background"]
+offset_left = 150.0
+offset_right = 190.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.095, 0.082, 0.118, 1)
+
+[node name="PillarB" type="ColorRect" parent="Background"]
+offset_left = 620.0
+offset_right = 660.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.095, 0.082, 0.118, 1)
+
+[node name="PillarC" type="ColorRect" parent="Background"]
+offset_left = 1090.0
+offset_right = 1130.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.095, 0.082, 0.118, 1)
+
+[node name="World" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Floor" type="CollisionShape2D" parent="World"]
+position = Vector2(640, 700)
+shape = SubResource("RectangleShape2D_floor")
+
+[node name="FloorVisual" type="ColorRect" parent="World"]
+offset_top = 640.0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.16, 0.135, 0.19, 1)
+
+[node name="FloorEdge" type="ColorRect" parent="World"]
+offset_top = 640.0
+offset_right = 1280.0
+offset_bottom = 644.0
+mouse_filter = 2
+color = Color(0.95, 0.78, 0.3, 0.8)
+
+[node name="WallLeft" type="CollisionShape2D" parent="World"]
+position = Vector2(-40, 360)
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="WallRight" type="CollisionShape2D" parent="World"]
+position = Vector2(1320, 360)
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="Ceiling" type="CollisionShape2D" parent="World"]
+position = Vector2(640, -40)
+shape = SubResource("RectangleShape2D_ceiling")
+
+[node name="PlatformLeft" type="CollisionShape2D" parent="World"]
+position = Vector2(300, 500)
+shape = SubResource("RectangleShape2D_platform")
+one_way_collision = true
+
+[node name="PlatformLeftVisual" type="ColorRect" parent="World"]
+offset_left = 190.0
+offset_top = 490.0
+offset_right = 410.0
+offset_bottom = 510.0
+mouse_filter = 2
+color = Color(0.22, 0.19, 0.27, 1)
+
+[node name="PlatformRight" type="CollisionShape2D" parent="World"]
+position = Vector2(980, 500)
+shape = SubResource("RectangleShape2D_platform")
+one_way_collision = true
+
+[node name="PlatformRightVisual" type="ColorRect" parent="World"]
+offset_left = 870.0
+offset_top = 490.0
+offset_right = 1090.0
+offset_bottom = 510.0
+mouse_filter = 2
+color = Color(0.22, 0.19, 0.27, 1)
+
+[node name="Enemies" type="Node2D" parent="."]
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector2(640, 600)
+
+[node name="Hud" type="CanvasLayer" parent="."]
+script = ExtResource("3_hud")
