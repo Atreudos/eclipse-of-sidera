@@ -1,0 +1,19 @@
+# Godot 4
+.godot/
+.import/
+*.translation
+export_presets.cfg
+export_credentials.cfg
+
+# Build çıktıları
+build/
+*.exe
+*.pck
+*.zip
+
+# Editör / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
