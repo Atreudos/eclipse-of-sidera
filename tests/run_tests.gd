@@ -17,8 +17,20 @@ var _parry_fail := 0
 var _kills := 0
 
 
+var _start_msec := 0
+
+
 func _ready() -> void:
+	_start_msec = Time.get_ticks_msec()
 	_run_all()
+
+
+## Koruma: bir test koroutini hata ile durursa süreç sonsuza kadar açık kalmasın.
+## (Zamanlayıcı yerine duvar saatine bakılır; ignore_time_scale zamanlayıcıları hitstop ile çakışıyor.)
+func _process(_delta: float) -> void:
+	if Time.get_ticks_msec() - _start_msec > 240000:
+		print("ZAMAN AŞIMI: testler 240 sn içinde bitmedi")
+		get_tree().quit(2)
 
 
 func _run_all() -> void:
@@ -27,18 +39,44 @@ func _run_all() -> void:
 	EventBus.parry_failed.connect(func(_a: Node) -> void: _parry_fail += 1)
 	EventBus.enemy_died.connect(func(_e: Node) -> void: _kills += 1)
 
-	_test_stats()
-	await _test_movement()
-	await _test_jump()
-	await _test_dash()
-	await _test_parry_success()
-	await _test_parry_early_and_iframes()
-	await _test_red_projectile()
-	await _test_dash_through_projectile()
-	await _test_melee_combo_and_kill()
-	await _test_bidder_lunge_parry()
-	await _test_bidder_red_lunge_and_death()
-	await _test_shooter_cadence()
+	# Belirli testleri çalıştırmak için: ... res://tests/test_runner.tscn -- kalıp
+	var only: Array[String] = []
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0:
+		for k in args[0].split(","):
+			only.append(k)
+	var tests := {
+		"stats": _test_stats,
+		"hitstop": _test_hitstop_resets,
+		"hareket": _test_movement,
+		"zipla": _test_jump,
+		"dash": _test_dash,
+		"parry_basari": _test_parry_success,
+		"parry_erken": _test_parry_early_and_iframes,
+		"kirmizi_mermi": _test_red_projectile,
+		"dash_mermi": _test_dash_through_projectile,
+		"kombo": _test_melee_combo_and_kill,
+		"teklifci_parry": _test_bidder_lunge_parry,
+		"teklifci_kirmizi": _test_bidder_red_lunge_and_death,
+		"atesci": _test_shooter_cadence,
+		"vurus_geri_bildirim": _test_hit_feedback,
+		"kamera": _test_camera_fx,
+		"ekran_flas": _test_screen_flash,
+		"platform_cik": _test_bidder_climbs_platform,
+		"platform_in": _test_bidder_descends_platform,
+		"mermi_platform": _test_shot_passes_platform,
+		"sprite_yukleyici": _test_sprite_loader,
+		"animasyon": _test_animation_selection,
+	}
+	for test_name: String in tests:
+		if not only.is_empty():
+			var wanted := false
+			for k in only:
+				if test_name.contains(k):
+					wanted = true
+			if not wanted:
+				continue
+		await (tests[test_name] as Callable).call()
 
 	print("\n%d kontrol, %d hata" % [_checks, _fails])
 	get_tree().quit(1 if _fails > 0 else 0)
@@ -83,6 +121,22 @@ func _new_world(title: String) -> void:
 	_kills = 0
 
 
+## Tek yönlü platform ekler (yüzey y = rect.position.y). Oyun sahnesindeki gibi: katman PLATFORM, grup "platforms".
+func _add_platform(rect: Rect2) -> void:
+	var body := StaticBody2D.new()
+	body.collision_layer = Layers.PLATFORM
+	body.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = rect.size
+	cs.shape = rs
+	cs.one_way_collision = true
+	cs.position = rect.position + rect.size * 0.5
+	cs.add_to_group("platforms")
+	body.add_child(cs)
+	_world.add_child(body)
+
+
 func _spawn_player(x: float = 640.0) -> Player:
 	var p := PLAYER.instantiate() as Player
 	p.scripted = true
@@ -119,6 +173,35 @@ func _test_stats() -> void:
 	s.remove_modifiers("item1")
 	check(is_equal_approx(s.value("a"), 20.0), "kaynak kaldırınca etkisi gider")
 	check(is_equal_approx(s.value("yok"), 0.0), "olmayan değer 0")
+
+
+## Gerçek (duvar saati) zamanı bekler. Hitstop süresi gerçek zamandır.
+func _wait_real(seconds: float) -> void:
+	var end := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while Time.get_ticks_msec() < end:
+		await get_tree().process_frame
+
+
+func _test_hitstop_resets() -> void:
+	print("\nHitstop: yavaşlama geri alınıyor (slow-mo takılma hatası)")
+	Hitstop.enabled = true
+	Hitstop.reset()
+	Hitstop.freeze(0.07)
+	check(Engine.time_scale < 0.5, "hitstop zamanı yavaşlattı")
+	await _wait_real(0.5)
+	check(is_equal_approx(Engine.time_scale, 1.0), "tek vuruştan sonra zaman normale döndü (%.2f)" % Engine.time_scale)
+	# Üst üste binen vuruşlar (kombo, parry + vuruş)
+	for i in 6:
+		Hitstop.freeze(0.05)
+		await _wait_real(0.02)
+	await _wait_real(0.5)
+	check(is_equal_approx(Engine.time_scale, 1.0), "üst üste vuruşlardan sonra da normale döndü (%.2f)" % Engine.time_scale)
+	# Aşırı uzun süre istense bile sınırlı kalmalı
+	Hitstop.freeze(5.0)
+	await _wait_real(0.4)
+	check(is_equal_approx(Engine.time_scale, 1.0), "aşırı uzun hitstop sınırlandı (%.2f)" % Engine.time_scale)
+	Hitstop.enabled = false
+	Hitstop.reset()
 
 
 func _test_movement() -> void:
@@ -295,8 +378,8 @@ func _test_melee_combo_and_kill() -> void:
 	await _new_world("Yakın dövüş kombosu ve öldürme")
 	var p := _spawn_player()
 	var b := BIDDER.instantiate() as Bidder
-	b.set_physics_process(false)  # sabit hedef
 	_world.add_child(b)
+	b.set_physics_process(false)  # sabit hedef (ağaca eklendikten sonra kapatılmalı)
 	b.global_position = Vector2(700, 612)
 	await _frames(20)
 	p.dash_charges = 0
@@ -411,3 +494,271 @@ func _test_shooter_cadence() -> void:
 	check(seen.size() >= 3, "ateşçi mermi attı (%d adet)" % seen.size())
 	if seen.size() >= 3:
 		check(colors[0] and colors[1] and not colors[2], "ilk iki altın, üçüncü kırmızı %s" % str(colors))
+
+
+func _count_sparks() -> int:
+	var n := 0
+	for c in _world.get_children():
+		if c is HitSpark:
+			n += 1
+	return n
+
+
+func _test_hit_feedback() -> void:
+	await _new_world("Vuruş geri bildirimi: flash + kıvılcım")
+	var p := _spawn_player()
+	var b := BIDDER.instantiate() as Bidder
+	_world.add_child(b)
+	b.set_physics_process(false)  # _ready bunu geri açtığı için ağaca eklendikten SONRA kapatılır
+	b.global_position = Vector2(900, 613)
+	await _frames(5)
+	check(b.flash_amount() == 0.0, "vuruştan önce flash yok")
+	b.take_damage(1, p)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(b.flash_amount() > 0.9, "düşman vurulunca beyaz flash (%.2f)" % b.flash_amount())
+	check(b.flash_color.is_equal_approx(Color.WHITE), "düşman flaşı beyaz")
+	check(_count_sparks() >= 1, "vuruş kıvılcımı çıktı")
+	await _frames(30)
+	check(b.flash_amount() == 0.0, "flash söndü")
+	# oyuncu hasar flaşı kırmızımsı
+	p.take_damage(1, b)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(p.flash_amount() > 0.9, "oyuncu hasar alınca flash (%.2f)" % p.flash_amount())
+	check(p.flash_color.r > p.flash_color.g + 0.2, "oyuncu flaşı kırmızımsı")
+	# oyuncu hasar alınca zaman YAVAŞLAMAZ
+	Hitstop.enabled = true
+	Hitstop.reset()
+	p.invulnerable_t = 0.0
+	var hb := Hitbox.new()
+	hb.damage = 1
+	hb.source = b
+	_world.add_child(hb)
+	hb.global_position = p.global_position
+	p.on_hit_by(hb)
+	check(is_equal_approx(Engine.time_scale, 1.0), "oyuncu hasar alınca slow-mo yok (%.2f)" % Engine.time_scale)
+	Hitstop.enabled = false
+	Hitstop.reset()
+	hb.queue_free()
+
+
+func _test_camera_fx() -> void:
+	print("\nKamera: pürüzsüz sarsıntı, vuruş itmesi, zoom")
+	var cam := ShakeCamera.new()
+	add_child(cam)
+	cam._noise.seed = 7
+	EventBus.screen_shake.emit(10.0, 0.4)
+	check(cam.trauma > 0.5, "sarsıntı başladı (trauma %.2f)" % cam.trauma)
+	# Pürüzsüzlük: ardışık kareler arasındaki fark, rastgele (beyaz gürültü) sarsıntıdan çok daha küçük.
+	var prev := Vector2.ZERO
+	var diffs := 0.0
+	var peak := 0.0
+	for i in 14:
+		cam.step(1.0 / 60.0)
+		if i > 0:
+			diffs += cam.offset.distance_to(prev)
+		prev = cam.offset
+		peak = maxf(peak, cam.offset.length())
+	var mean_step := diffs / 13.0
+	check(peak > 2.0 and peak < 22.0, "sarsıntı genliği makul (%.1f px)" % peak)
+	check(mean_step < peak * 0.45, "kare başına değişim küçük, yani pürüzsüz (%.2f px / tepe %.1f)" % [mean_step, peak])
+	for i in 60:
+		cam.step(1.0 / 60.0)
+	check(cam.trauma == 0.0 and cam.offset.length() < 0.05, "sarsıntı tamamen söndü")
+	# Yönlü itme
+	EventBus.camera_kick.emit(Vector2.RIGHT, 8.0)
+	var max_x := 0.0
+	for i in 12:
+		cam.step(1.0 / 60.0)
+		max_x = maxf(max_x, cam.offset.x)
+	check(max_x > 3.0, "kamera vuruş yönüne itildi (%.1f px)" % max_x)
+	for i in 120:
+		cam.step(1.0 / 60.0)
+	check(cam.offset.length() < 0.2, "itme sonrası yerine döndü")
+	# Zoom vuruşu
+	EventBus.camera_punch.emit(0.03)
+	var max_zoom := 1.0
+	for i in 12:
+		cam.step(1.0 / 60.0)
+		max_zoom = maxf(max_zoom, cam.zoom.x)
+	check(max_zoom > 1.01, "zoom vuruşu yakınlaştırdı (%.3f)" % max_zoom)
+	for i in 120:
+		cam.step(1.0 / 60.0)
+	check(absf(cam.zoom.x - 1.0) < 0.002, "zoom normale döndü")
+	cam.queue_free()
+
+
+func _test_screen_flash() -> void:
+	print("\nEkran flaşı (hasar/parry)")
+	EventBus.screen_flash.emit(Color(1, 0.2, 0.2), 0.5, 0.2)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(ScreenFx._vignette.modulate.a > 0.2, "flaş görünür (%.2f)" % ScreenFx._vignette.modulate.a)
+	await _wait_real(0.5)
+	check(ScreenFx._vignette.modulate.a < 0.01, "flaş söndü (%.3f)" % ScreenFx._vignette.modulate.a)
+
+
+# Platform yüzeyi y=490 (oyun sahnesindeki gibi), zemin yüzeyi y=640, x: 390..610
+const PLATFORM_RECT := Rect2(390, 490, 220, 20)
+
+
+func _test_bidder_climbs_platform() -> void:
+	await _new_world("Teklifçi: üst platformdaki oyuncuya zıplayıp çıkar")
+	_add_platform(PLATFORM_RECT)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	p.global_position = Vector2(500, 490.0 - 26.0)
+	var b := BIDDER.instantiate() as Bidder
+	b.red_chance = 0.0
+	_world.add_child(b)
+	b.global_position = Vector2(900, 613)
+	await _frames(20)
+	check(p.is_on_floor() and p.feet_y() < 495.0, "oyuncu platformun üstünde duruyor")
+	var lunged_below := false
+	var reached := false
+	var jumped := false
+	for i in 900:
+		await get_tree().physics_frame
+		if b.is_on_floor() and b.feet_y() > 600.0 and b._phase != Bidder.Phase.CHASE:
+			lunged_below = true  # altından boşuna saldırmaya çalıştı
+		if not b.is_on_floor() and b.velocity.y < -200.0:
+			jumped = true
+		if b.is_on_floor() and b.feet_y() < 500.0:
+			reached = true
+			break
+	check(not lunged_below, "altındayken boşuna saldırı başlatmadı")
+	check(jumped, "zıpladı")
+	check(reached, "platformun üstüne çıktı (ayak y=%.0f)" % b.feet_y())
+
+
+func _test_bidder_descends_platform() -> void:
+	await _new_world("Teklifçi: platformdan, altındaki oyuncuya iner")
+	_add_platform(PLATFORM_RECT)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	var b := BIDDER.instantiate() as Bidder
+	b.red_chance = 0.0
+	_world.add_child(b)
+	b.global_position = Vector2(500, 490.0 - 27.0)
+	await _frames(20)
+	check(b.is_on_floor() and b.feet_y() < 495.0, "teklifçi platformda başladı")
+	var landed := false
+	for i in 600:
+		await get_tree().physics_frame
+		if b.is_on_floor() and b.feet_y() > 630.0:
+			landed = true
+			break
+	check(landed, "kenardan yürüyüp zemine indi (ayak y=%.0f)" % b.feet_y())
+
+
+func _test_shot_passes_platform() -> void:
+	await _new_world("Ateşçi: mermi platformdan geçip üstteki oyuncuya ulaşır")
+	_add_platform(PLATFORM_RECT)
+	var p := _spawn_player(500.0)
+	p.health = 50
+	p.global_position = Vector2(500, 490.0 - 26.0)
+	var s := SHOOTER.instantiate() as Shooter
+	_world.add_child(s)
+	s.global_position = Vector2(560, 615)
+	await _frames(20)
+	var hit := false
+	for i in 1500:
+		await get_tree().physics_frame
+		if p.health < 50:
+			hit = true
+			break
+	check(hit, "alttaki ateşçinin mermisi platformdan geçip oyuncuya çarptı")
+
+
+func _test_sprite_loader() -> void:
+	print("\nSprite yükleyici (PNG'ler gelince otomatik çalışacak altyapı)")
+	var img := Image.create(96, 32, false, Image.FORMAT_RGBA8)
+	img.fill(Color.WHITE)
+	var tex := ImageTexture.create_from_image(img)
+	var frames_sq := SpriteSetLoader.slice_strip(tex)
+	check(frames_sq.size() == 3, "96x32 şerit, kare genişliği = yükseklik -> 3 kare (%d)" % frames_sq.size())
+	check((frames_sq[1] as AtlasTexture).region == Rect2(32, 0, 32, 32), "ikinci karenin bölgesi doğru")
+	check(SpriteSetLoader.slice_strip(tex, 48).size() == 2, "kare genişliği 48 verilince 2 kare")
+	check(SpriteSetLoader.build("res://assets/sprites/yok_boyle_klasor", Player.ANIM_SPEC) == null, "PNG yoksa null döner (yer tutucu kalır)")
+	var sf := SpriteSetLoader.build("res://assets/sprites/player", Player.ANIM_SPEC)
+	check(sf == null, "boş sprite klasörü: yer tutucu görsel kullanılıyor")
+
+
+func _fake_frames(names: Array[String]) -> SpriteFrames:
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.fill(Color.MAGENTA)
+	var tex := ImageTexture.create_from_image(img)
+	var frames := SpriteFrames.new()
+	frames.remove_animation(&"default")
+	for n in names:
+		SpriteSetLoader.add_animation(frames, n, [tex] as Array[Texture2D], 10.0, n == "idle" or n == "run")
+	return frames
+
+
+func _test_animation_selection() -> void:
+	await _new_world("Animasyon: durum -> animasyon seçimi ve eksik animasyon yedeği")
+	var p := _spawn_player()
+	await _frames(30)
+	check(not p.anim.has_art, "PNG yokken yer tutucu görünür (sprite yok)")
+	var ph := p.visual.get_node("Placeholder") as CanvasItem
+	check(ph.visible, "yer tutucu şekiller açık")
+	# Sadece idle/run/attack1 olan sahte sprite seti
+	p.anim.use_frames(_fake_frames(["idle", "run", "attack1"] as Array[String]))
+	check(p.anim.has_art, "sprite seti takıldı")
+	check(not ph.visible, "sprite varken yer tutucu gizlendi")
+	check(is_equal_approx(p.anim.sprite.position.y, 26.0 - 4.0), "sprite hizası: kare altı = çarpışma kutusu altı (%.1f)" % p.anim.sprite.position.y)
+	check(p.anim.resolve("attack3") == "attack1", "attack3 yoksa attack2 -> attack1'e düşer")
+	check(p.anim.resolve("fall") == "idle", "fall -> jump -> idle yedek zinciri")
+	check(p.anim.resolve("death") == "idle", "death -> hurt -> idle yedek zinciri")
+	# durum -> animasyon
+	check(p.pick_animation() == "idle", "yerde duruyor -> idle (%s)" % p.pick_animation())
+	p.intent.move_x = 1.0
+	await _frames(20)
+	check(p.pick_animation() == "run", "koşuyor -> run (%s)" % p.pick_animation())
+	p.intent.move_x = 0.0
+	await _frames(30)
+	p.intent.jump_pressed = true
+	p.intent.jump_held = true
+	await _frames(3)
+	check(p.pick_animation() == "jump", "yükseliyor -> jump (%s)" % p.pick_animation())
+	p.intent.jump_held = false
+	var saw_fall := false
+	for i in 80:
+		await get_tree().physics_frame
+		if p.pick_animation() == "fall":
+			saw_fall = true
+			break
+	check(saw_fall, "düşüyor -> fall")
+	await _frames(60)
+	p.state = Player.State.DASH
+	check(p.pick_animation() == "dash", "dash durumu -> dash")
+	p.state = Player.State.ATTACK
+	p._attack_cur = 1
+	check(p.pick_animation() == "attack2", "ikinci kombo vuruşu -> attack2")
+	p.state = Player.State.PARRY
+	p._parry_recovering = false
+	check(p.pick_animation() == "parry", "parry penceresi -> parry")
+	p._parry_recovering = true
+	check(p.pick_animation() == "parry_fail", "parry toparlanması -> parry_fail")
+	p.state = Player.State.HURT
+	check(p.pick_animation() == "hurt", "hasar -> hurt")
+	p.state = Player.State.DEAD
+	check(p.pick_animation() == "death", "ölüm -> death")
+	p.state = Player.State.MOVE
+	# kayıtlı animasyon gerçekten oynuyor
+	p.anim.trigger("attack1", 0.3)
+	check(p.anim.current == "attack1" and p.anim.sprite.is_playing(), "attack1 oynuyor")
+	# düşman için
+	var b := BIDDER.instantiate() as Bidder
+	_world.add_child(b)
+	b.global_position = Vector2(900, 613)
+	await _frames(20)
+	b.anim.use_frames(_fake_frames(["idle", "run", "telegraph", "attack", "recover"] as Array[String]))
+	check(b.pick_animation() == "idle" or b.pick_animation() == "run", "teklifçi yürürken idle/run (%s)" % b.pick_animation())
+	b._phase = Bidder.Phase.TELEGRAPH
+	check(b.pick_animation() == "telegraph", "teklifçi hazırlanırken telegraph")
+	b._phase = Bidder.Phase.LUNGE
+	check(b.pick_animation() == "attack", "teklifçi atılırken attack")
+	b._phase = Bidder.Phase.RECOVER
+	check(b.pick_animation() == "recover", "teklifçi toparlanırken recover")

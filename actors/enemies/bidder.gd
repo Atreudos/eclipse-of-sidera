@@ -18,7 +18,14 @@ var _timer := 0.0
 var _cooldown := 0.0
 var _red := false
 
+## Saldırıya geçmek için hedefle ayak seviyesi farkı en fazla bu kadar olabilir (px).
+const ATTACK_LEVEL_TOLERANCE := 72.0
+
 @onready var attack_hitbox: Hitbox = $AttackHitbox
+
+
+func anim_folder() -> String:
+	return "res://assets/sprites/bidder"
 
 
 func _ready() -> void:
@@ -38,12 +45,18 @@ func _ai(delta: float) -> void:
 	var dx := target.global_position.x - global_position.x
 	match _phase:
 		Phase.CHASE:
+			# Hedef başka bir yüksekliktedeyse: platforma zıpla / aşağı in (yatay saldırı boşa gider).
+			if nav.update(delta, walk_speed * 1.2):
+				return
+			if not is_on_floor():
+				return
 			facing = 1 if dx > 0.0 else -1
 			if absf(dx) > lunge_range * 0.5:
 				velocity.x = facing * walk_speed
 			else:
 				velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-			if absf(dx) <= lunge_range and _cooldown <= 0.0:
+			var same_level := absf(target.feet_y() - feet_y()) <= ATTACK_LEVEL_TOLERANCE
+			if same_level and absf(dx) <= lunge_range and _cooldown <= 0.0:
 				_begin_telegraph()
 		Phase.TELEGRAPH:
 			velocity.x = move_toward(velocity.x, 0.0, 1500.0 * delta)
@@ -70,6 +83,7 @@ func _begin_telegraph() -> void:
 	armored = true
 	facing = 1 if target.global_position.x > global_position.x else -1
 	set_tell(Tell.RED if _red else Tell.GOLD)
+	anim.trigger("telegraph", telegraph_time)
 
 
 func _begin_lunge() -> void:
@@ -79,6 +93,7 @@ func _begin_lunge() -> void:
 	attack_hitbox.parryable = not _red
 	attack_hitbox.damage = 2 if _red else 1
 	attack_hitbox.active = true
+	anim.trigger("attack", lunge_time)
 
 
 func _end_lunge() -> void:
@@ -87,6 +102,19 @@ func _end_lunge() -> void:
 	set_tell(Tell.NONE)
 	_phase = Phase.RECOVER
 	_timer = recover_time
+	anim.trigger("recover", recover_time)
+
+
+func pick_animation() -> String:
+	if not dead and stun_t <= 0.0 and knock_t <= 0.0:
+		match _phase:
+			Phase.TELEGRAPH:
+				return "telegraph"
+			Phase.LUNGE:
+				return "attack"
+			Phase.RECOVER:
+				return "recover"
+	return super.pick_animation()
 
 
 func _on_attack_parried(_by: Node) -> void:

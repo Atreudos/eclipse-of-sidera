@@ -133,6 +133,16 @@ Her ailenin **kendine özgü parry biçimi** var; böylece oyun tekrar etmiyor.
 | **Müzayedeciler (destek)** | Diğerlerini güçlendirir | Alan etkisi | Parry yerine öncelikli hedef (önce öldür) |
 | **Elitler** | Mini-boss | Ailenin gelişmiş hali + 1 özel mekanik | Parry zinciri gerektirir |
 
+**Yüksekliğe (üst platformlara) cevap, aileye göre FARKLI:**
+
+| Aile | Oyuncu yukarıdaki platformdayken |
+|---|---|
+| Teklifçi | Platformun altına yürür, zıplayıp çıkar; oyuncu aşağıdaysa kenardan iner. Başka yükseklikteyken saldırı başlatmaz. |
+| Ateşçi | Çıkmaz. Olduğu yerden yukarıya ateş eder (mermiler platformlardan geçer). |
+| Kasacı (Aşama 2) | Çıkamaz (ağır). Yüksekteki oyuncuya yaylı kasa fırlatır. |
+| Gölge Çırağı | Hızlı atılmayla (dash) platformlara çıkar / sahte hamle yapar. |
+| Müzayedeci | Havada süzülür, platform sorunu yok. |
+
 **Toplam hedef (MVP):** 4 aile x 1-2 çeşit = 6-8 düşman. Genişletme sonra.
 
 ---

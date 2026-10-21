@@ -88,12 +88,16 @@ shape = SubResource("RectangleShape2D_wall")
 position = Vector2(640, -40)
 shape = SubResource("RectangleShape2D_ceiling")
 
-[node name="PlatformLeft" type="CollisionShape2D" parent="World"]
+[node name="Platforms" type="StaticBody2D" parent="."]
+collision_layer = 128
+collision_mask = 0
+
+[node name="PlatformLeft" type="CollisionShape2D" parent="Platforms" groups=["platforms"]]
 position = Vector2(300, 500)
 shape = SubResource("RectangleShape2D_platform")
 one_way_collision = true
 
-[node name="PlatformLeftVisual" type="ColorRect" parent="World"]
+[node name="PlatformLeftVisual" type="ColorRect" parent="Platforms"]
 offset_left = 190.0
 offset_top = 490.0
 offset_right = 410.0
@@ -101,12 +105,12 @@ offset_bottom = 510.0
 mouse_filter = 2
 color = Color(0.22, 0.19, 0.27, 1)
 
-[node name="PlatformRight" type="CollisionShape2D" parent="World"]
+[node name="PlatformRight" type="CollisionShape2D" parent="Platforms" groups=["platforms"]]
 position = Vector2(980, 500)
 shape = SubResource("RectangleShape2D_platform")
 one_way_collision = true
 
-[node name="PlatformRightVisual" type="ColorRect" parent="World"]
+[node name="PlatformRightVisual" type="ColorRect" parent="Platforms"]
 offset_left = 870.0
 offset_top = 490.0
 offset_right = 1090.0

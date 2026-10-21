@@ -102,4 +102,42 @@ func _run() -> void:
 	arena.hud._debug_label.visible = true
 	await _frames(3)
 	await _shot("6_debug_paneli")
+	arena.hud._debug_label.visible = false
+
+	# Vuruş flaşı: düşman vurulduğu karede beyaza boyanır, kıvılcım çıkar
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.queue_free()
+	await _frames(3)
+	var dummy := BIDDER.instantiate() as Bidder
+	arena.enemies_root.add_child(dummy)
+	dummy.set_physics_process(false)
+	dummy.global_position = Vector2(700, 613)
+	player.global_position = Vector2(640, 614)
+	player.state = Player.State.MOVE
+	await _frames(40)
+	dummy.take_damage(1, player)
+	await _frames(2)
+	await _shot("7_vurus_flasi")
+
+	# Hasar: kırmızı kenar flaşı
+	EventBus.screen_flash.emit(Color(0.95, 0.15, 0.2), 0.45, 0.6)
+	await _frames(3)
+	await _shot("8_hasar_kenar_flasi")
+	dummy.queue_free()
+
+	# Platformdaki oyuncuya düşman zıplayıp çıkar
+	await _frames(40)
+	player.global_position = Vector2(300, 464)
+	var climber := BIDDER.instantiate() as Bidder
+	arena.enemies_root.add_child(climber)
+	climber.global_position = Vector2(700, 613)
+	var frames_used := 0
+	for i in 600:
+		await get_tree().physics_frame
+		frames_used += 1
+		if climber.is_on_floor() and climber.feet_y() < 500.0:
+			break
+	await _frames(6)
+	print("teklifçi platforma çıktı: ", climber.feet_y() < 500.0, " (", frames_used, " kare)")
+	await _shot("9_platformda_dusman")
 	get_tree().quit()

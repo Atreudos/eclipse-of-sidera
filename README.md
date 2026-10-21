@@ -29,14 +29,21 @@ Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile ka�
 ## Durum
 
 Aşama 0 ve 1 tamam: hareket, zıplama, dash (i-frame + şarj), 3'lü saldırı kombosu, parry (altın/kırmızı saldırı ayrımı, hitstop, ses), iki düşman tipi (Teklifçi, Ateşçi) ve test arenası.
+Ek olarak: vuruş flaşı + kıvılcım, yumuşak ekran sarsıntısı/kamera tepmesi, hasar/parry ekran flaşı, üst platformlara çıkabilen düşmanlar ve sprite/animasyon altyapısı.
 Sıradaki: Aşama 2 (agresiflik metresi, oda sistemi, daha fazla düşman).
+
+## Sprite eklemek
+
+Çizimleri `assets/sprites/<karakter>/` klasörüne koymak yeterli, kod değişmez. İsimler, boyutlar ve hizalama kuralları: [`docs/SPRITES.md`](docs/SPRITES.md)
 
 ## Geliştirici notları
 
 Otomatik testler (Godot kurulu olmadan editör açmaya gerek yok):
 
 ```
-godot --headless --path . res://tests/test_runner.tscn
+godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn
+# sadece belirli testler (isim kalıplarını virgülle ayır):
+godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- hitstop,animasyon
 ```
 
 Ekran görüntüsü alma (sanal ekranla):

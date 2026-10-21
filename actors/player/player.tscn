@@ -18,7 +18,7 @@ radius = 48.0
 
 [node name="Player" type="CharacterBody2D"]
 collision_layer = 2
-collision_mask = 1
+collision_mask = 129
 script = ExtResource("1_player")
 faction = "player"
 
@@ -27,7 +27,9 @@ shape = SubResource("RectangleShape2D_body")
 
 [node name="Visual" type="Node2D" parent="."]
 
-[node name="Rect" type="ColorRect" parent="Visual"]
+[node name="Placeholder" type="Node2D" parent="Visual"]
+
+[node name="Rect" type="ColorRect" parent="Visual/Placeholder"]
 offset_left = -14.0
 offset_top = -26.0
 offset_right = 14.0
@@ -35,7 +37,7 @@ offset_bottom = 26.0
 mouse_filter = 2
 color = Color(0.93, 0.91, 0.86, 1)
 
-[node name="Eye" type="ColorRect" parent="Visual"]
+[node name="Eye" type="ColorRect" parent="Visual/Placeholder"]
 offset_left = 3.0
 offset_top = -18.0
 offset_right = 13.0

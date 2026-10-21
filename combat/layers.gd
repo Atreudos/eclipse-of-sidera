@@ -9,3 +9,5 @@ const PLAYER_HURT := 8
 const ENEMY_HURT := 16
 const PLAYER_HIT := 32
 const ENEMY_HIT := 64
+## Tek yönlü platformlar. Mermiler bunları görmez (içinden geçer); oyuncu ve düşmanlar basar.
+const PLATFORM := 128

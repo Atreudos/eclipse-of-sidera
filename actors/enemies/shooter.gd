@@ -18,9 +18,23 @@ var _shots := 0
 var _next_is_red := false
 
 
+func anim_folder() -> String:
+	return "res://assets/sprites/shooter"
+
+
 func _ready() -> void:
 	super._ready()
 	_timer = randf_range(0.7, 1.4)
+
+
+func pick_animation() -> String:
+	if not dead and stun_t <= 0.0 and knock_t <= 0.0:
+		match _phase:
+			Phase.TELEGRAPH:
+				return "telegraph"
+			Phase.COOLDOWN:
+				return "attack"
+	return super.pick_animation()
 
 
 func _ai(delta: float) -> void:
@@ -65,6 +79,7 @@ func _begin_telegraph() -> void:
 	_timer = telegraph_time
 	armored = true
 	set_tell(Tell.RED if _next_is_red else Tell.GOLD)
+	anim.trigger("telegraph", telegraph_time)
 
 
 func _fire() -> void:
@@ -76,6 +91,7 @@ func _fire() -> void:
 	p.global_position = origin
 	var dir := (target.global_position - origin).normalized()
 	p.launch(dir * projectile_speed, not _next_is_red, self, 1)
+	anim.trigger("attack", 0.35)
 	Sfx.play("shoot", -3.0, 1.0, 0.05)
 
 

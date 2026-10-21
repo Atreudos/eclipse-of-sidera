@@ -49,6 +49,23 @@ const ATTACKS := [
 	{"startup": 0.09, "active": 0.12, "recovery": 0.24, "dmg": 2.0, "size": Vector2(90, 56), "reach": 52.0, "lunge": 340.0},
 ]
 
+# Animasyonlar (PNG'ler assets/sprites/player/ içine konunca otomatik kullanılır; bkz. docs/SPRITES.md).
+# fps: saniyedeki kare, loop: döngü, fallback: dosya yoksa yedek animasyon.
+const ANIM_SPEC := {
+	"idle": {"fps": 8.0, "loop": true},
+	"run": {"fps": 12.0, "loop": true, "fallback": "idle"},
+	"jump": {"fps": 10.0, "loop": false, "fallback": "idle"},
+	"fall": {"fps": 10.0, "loop": true, "fallback": "jump"},
+	"dash": {"fps": 14.0, "loop": false, "fallback": "run"},
+	"attack1": {"fps": 16.0, "loop": false, "fallback": "idle"},
+	"attack2": {"fps": 16.0, "loop": false, "fallback": "attack1"},
+	"attack3": {"fps": 16.0, "loop": false, "fallback": "attack2"},
+	"parry": {"fps": 14.0, "loop": false, "fallback": "idle"},
+	"parry_fail": {"fps": 10.0, "loop": false, "fallback": "idle"},
+	"hurt": {"fps": 12.0, "loop": false, "fallback": "idle"},
+	"death": {"fps": 10.0, "loop": false, "fallback": "hurt"},
+}
+
 var intent := Intent.new()
 ## true ise tuş okunmaz; intent'i dışarıdan (test/yapay zeka) doldurursun.
 var scripted := false
@@ -87,7 +104,16 @@ var _blink_t := 0.0
 @onready var parry_shape: CollisionShape2D = $ParryZone/Shape
 
 
+func anim_folder() -> String:
+	return "res://assets/sprites/player"
+
+
+func anim_spec() -> Dictionary:
+	return ANIM_SPEC
+
+
 func _ready() -> void:
+	super._ready()
 	faction = "player"
 	stats = Stats.new(BASE_STATS)
 	health = stats.int_value("max_health")
@@ -154,7 +180,28 @@ func _process(delta: float) -> void:
 		tint = Color(1, 1, 1, alpha)
 	if visual != null:
 		(visual as Node2D).scale.x = facing
+	anim.play(pick_animation())
 	super._process(delta)
+
+
+## Duruma göre hangi animasyonun oynayacağı. (PNG yoksa kullanılmaz ama mantık hazır.)
+func pick_animation() -> String:
+	match state:
+		State.DASH:
+			return "dash"
+		State.ATTACK:
+			return "attack%d" % (_attack_cur + 1)
+		State.PARRY:
+			return "parry_fail" if _parry_recovering else "parry"
+		State.HURT:
+			return "hurt"
+		State.DEAD:
+			return "death"
+	if not is_on_floor():
+		return "jump" if velocity.y < 0.0 else "fall"
+	if absf(velocity.x) > 30.0 and absf(intent.move_x) > 0.05:
+		return "run"
+	return "idle"
 
 
 func _tick_timers(delta: float) -> void:
@@ -252,6 +299,7 @@ func _start_dash() -> void:
 	_dash_t = 0.0
 	state = State.DASH
 	melee.active = false
+	anim.trigger("dash", stats.value("dash_time"))
 	EventBus.dash_used.emit(self)
 	RingFx.spawn(get_parent(), global_position, Color(1, 1, 1, 0.55), 8.0, 38.0, 0.2)
 
@@ -277,6 +325,7 @@ func _start_parry() -> void:
 	_parry_succeeded = false
 	_parry_recovering = false
 	melee.active = false
+	anim.trigger("parry", stats.value("parry_window"))
 	_try_parry_zone()  # tuşa bastığın karede zaten içerideki mermiler
 
 
@@ -293,6 +342,7 @@ func _state_parry(delta: float) -> void:
 			_try_parry_zone()
 		else:
 			_parry_recovering = true
+			anim.trigger("parry_fail", stats.value("parry_recovery"))
 			EventBus.parry_failed.emit(self)
 	else:
 		_apply_horizontal(delta, 0.4)
@@ -321,8 +371,11 @@ func _do_parry(hb: Hitbox) -> void:
 	state = State.MOVE
 	EventBus.parry_success.emit(self, hb)
 	Hitstop.freeze(0.07)
-	EventBus.screen_shake.emit(6.0, 0.16)
+	EventBus.screen_shake.emit(6.0, 0.2)
+	EventBus.camera_punch.emit(0.03)
+	EventBus.screen_flash.emit(Color(1.0, 0.82, 0.25), 0.2, 0.22)
 	RingFx.spawn(get_parent(), hb.global_position, Color(1.0, 0.85, 0.3, 1.0), 12.0, 80.0, 0.28)
+	HitSpark.spawn(get_parent(), hb.global_position, Vector2(-facing, -0.2), Color(1.0, 0.85, 0.3), 1.4)
 	flash(Color(1.0, 0.92, 0.5), 0.16)
 
 
@@ -355,6 +408,7 @@ func _start_attack() -> void:
 	var mult := stats.value("empower_mult") if _melee_empowered else 1.0
 	melee.damage = maxi(roundi(stats.value("attack_damage") * float(a["dmg"]) * mult), 1)
 	melee.active = false
+	anim.trigger("attack%d" % (_attack_cur + 1), float(a["startup"]) + float(a["active"]) + float(a["recovery"]))
 	Sfx.play("slash", -4.0, 1.0 + 0.08 * _attack_cur, 0.04)
 
 
@@ -396,7 +450,8 @@ func _on_melee_landed(_target: Hurtbox) -> void:
 		_empower_t = 0.0
 		_melee_empowered = false
 	Hitstop.freeze(0.04 + 0.02 * _attack_cur)
-	EventBus.screen_shake.emit(3.0 + 2.0 * _attack_cur, 0.1)
+	EventBus.screen_shake.emit(3.0 + 2.0 * _attack_cur, 0.14)
+	EventBus.camera_kick.emit(Vector2(facing, 0.0), 3.5 + 2.5 * _attack_cur)
 
 
 # ---------------------------------------------------------------- hasar / ölüm
@@ -411,8 +466,11 @@ func _enter_hurt(hitbox: Hitbox) -> void:
 	melee.active = false
 	invulnerable_t = stats.value("hurt_iframes")
 	_blink_t = stats.value("hurt_iframes")
-	Hitstop.freeze(0.09)
-	EventBus.screen_shake.emit(10.0, 0.25)
+	# Hasar alınca zaman YAVAŞLAMAZ (slow-mo sadece vurma/parry hissi içindir): sarsıntı + flash yeter.
+	anim.trigger("hurt", 0.22)
+	EventBus.screen_shake.emit(10.0, 0.3)
+	EventBus.camera_kick.emit(Vector2(dir, -0.25), 9.0)
+	EventBus.screen_flash.emit(Color(0.95, 0.15, 0.2), 0.3, 0.35)
 
 
 func _state_hurt(delta: float) -> void:
@@ -423,11 +481,18 @@ func _state_hurt(delta: float) -> void:
 		state = State.MOVE
 
 
+## Hasar flaşı: oyuncuda beyaz yerine kırmızımsı, biraz daha uzun.
+func _hit_flash() -> void:
+	flash(Color(1.0, 0.5, 0.5), 0.24)
+
+
 func die() -> void:
 	super.die()
 	state = State.DEAD
 	melee.active = false
-	EventBus.screen_shake.emit(14.0, 0.4)
+	anim.trigger("death")
+	EventBus.screen_shake.emit(14.0, 0.5)
+	EventBus.screen_flash.emit(Color(0.95, 0.15, 0.2), 0.4, 0.6)
 
 
 func _state_dead(delta: float) -> void:
