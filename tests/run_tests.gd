@@ -61,6 +61,10 @@ func _run_all() -> void:
 		"atesci": _test_shooter_cadence,
 		"vurus_geri_bildirim": _test_hit_feedback,
 		"kamera": _test_camera_fx,
+		"kamera_takip": _test_camera_follow,
+		"kamera_sinir": _test_camera_bounds,
+		"kamera_tepki": _test_camera_reactions,
+		"kamera_oda_gecis": _test_camera_room_transition,
 		"ekran_flas": _test_screen_flash,
 		"platform_cik": _test_bidder_climbs_platform,
 		"platform_in": _test_bidder_descends_platform,
@@ -551,9 +555,10 @@ func _test_hit_feedback() -> void:
 
 
 func _test_camera_fx() -> void:
-	print("\nKamera: pürüzsüz sarsıntı, vuruş itmesi, zoom")
+	await _new_world("Kamera efektleri: pürüzsüz sarsıntı, vuruş itmesi, zoom vuruşu")
 	var cam := ShakeCamera.new()
-	add_child(cam)
+	cam.set_process(false)
+	_world.add_child(cam)
 	cam._noise.seed = 7
 	EventBus.screen_shake.emit(10.0, 0.4)
 	check(cam.trauma > 0.5, "sarsıntı başladı (trauma %.2f)" % cam.trauma)
@@ -585,15 +590,209 @@ func _test_camera_fx() -> void:
 	check(cam.offset.length() < 0.2, "itme sonrası yerine döndü")
 	# Zoom vuruşu
 	EventBus.camera_punch.emit(0.03)
-	var max_zoom := 1.0
+	var max_zoom := 0.0
 	for i in 12:
 		cam.step(1.0 / 60.0)
 		max_zoom = maxf(max_zoom, cam.zoom.x)
-	check(max_zoom > 1.01, "zoom vuruşu yakınlaştırdı (%.3f)" % max_zoom)
+	check(max_zoom > cam.base_zoom * 1.01, "zoom vuruşu yakınlaştırdı (%.3f, taban %.3f)" % [max_zoom, cam.base_zoom])
 	for i in 120:
 		cam.step(1.0 / 60.0)
-	check(absf(cam.zoom.x - 1.0) < 0.002, "zoom normale döndü")
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.002, "zoom taban değere döndü (%.3f)" % cam.zoom.x)
 	cam.queue_free()
+
+
+## Kamerayı test için kurar: kendi kendine akmaz (süreyi biz veriyoruz), oyuncuyu hedef alır.
+func _make_camera(p: Player, cam_bounds: Rect2) -> ShakeCamera:
+	var cam := ShakeCamera.new()
+	cam.set_process(false)
+	_world.add_child(cam)
+	cam.target = p
+	cam.set_bounds(cam_bounds, true)
+	return cam
+
+
+## n fizik karesi bekler; her karede kamerayı 1/60 sn ilerletir.
+func _cam_run(cam: ShakeCamera, n: int) -> void:
+	for i in n:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+
+
+func _test_camera_follow() -> void:
+	await _new_world("Kamera: oyuncuyu takip, öne bakış, hafif zoom")
+	var p := _spawn_player(1500.0)
+	await _frames(20)
+	var cam := _make_camera(p, Rect2(0.0, -1000.0, 4000.0, 2000.0))
+	await _cam_run(cam, 90)
+	check(cam.zoom.x > 1.08 and cam.zoom.x < 1.3, "hafif zoom-in (%.3f)" % cam.zoom.x)
+	check(cam.view_rect().has_point(p.global_position), "oyuncu ekranda")
+	# Öne bakış: baktığı yöne doğru kayar, yön değişince sıçramadan diğer tarafa geçer
+	p.facing = 1
+	await _cam_run(cam, 90)
+	var ahead := cam.center().x - p.global_position.x
+	check(ahead > 60.0 and ahead < 130.0, "sağa bakınca kamera sağa kaydı (%.0f px)" % ahead)
+	p.facing = -1
+	var prev := cam.center().x
+	var max_step := 0.0
+	for i in 90:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		max_step = maxf(max_step, absf(cam.center().x - prev))
+		prev = cam.center().x
+	var behind := cam.center().x - p.global_position.x
+	check(behind < -60.0 and behind > -130.0, "sola dönünce kamera sola kaydı (%.0f px)" % behind)
+	check(max_step < 10.0, "yön değişiminde kamera sıçramadı, kayıyor (en büyük adım %.1f px)" % max_step)
+	# Koşarken takip eder, durunca önüne yerleşir
+	p.facing = 1
+	p.intent.move_x = 1.0
+	var start_x := p.global_position.x
+	var lost := false
+	for i in 60:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		if not cam.view_rect().has_point(p.global_position):
+			lost = true
+	p.intent.move_x = 0.0
+	check(p.global_position.x - start_x > 150.0, "oyuncu koştu (%.0f px)" % (p.global_position.x - start_x))
+	check(not lost, "koşarken oyuncu hep ekranda kaldı")
+	await _cam_run(cam, 150)
+	ahead = cam.center().x - p.global_position.x
+	check(absf(ahead - cam.look_ahead) < 10.0, "durunca kamera oyuncunun önüne yerleşti (%.0f px)" % ahead)
+	# Uzağa ışınlanma: kamera yetişir, oyuncu yine de ekranda kalır
+	p.global_position.x += 900.0
+	await _cam_run(cam, 1)
+	check(cam.view_rect().has_point(p.global_position), "uzağa ışınlanınca bile oyuncu ekranda")
+
+
+func _test_camera_bounds() -> void:
+	await _new_world("Kamera: oda sınırları")
+	var room := Rect2(0.0, 0.0, 1280.0, 720.0)
+	var p := _spawn_player(60.0)
+	await _frames(20)
+	var cam := _make_camera(p, room)
+	await _cam_run(cam, 90)
+	var v := cam.view_rect()
+	check(v.position.x >= room.position.x - 0.5, "sol sınır: oda dışı görünmüyor (%.1f)" % v.position.x)
+	check(v.position.y >= room.position.y - 0.5 and v.end.y <= room.end.y + 0.5, "dikey sınırlar içinde (%.0f..%.0f)" % [v.position.y, v.end.y])
+	check(v.has_point(p.global_position), "sol kenarda oyuncu ekranda")
+	p.global_position.x = 1220.0
+	await _cam_run(cam, 120)
+	v = cam.view_rect()
+	check(v.end.x <= room.end.x + 0.5, "sağ sınır: oda dışı görünmüyor (%.1f)" % v.end.x)
+	check(v.has_point(p.global_position), "sağ kenarda oyuncu ekranda")
+	check(absf(v.size.x - 1280.0 / cam.zoom.x) < 1.0, "görüş alanı zoom ile uyumlu (%.0f px)" % v.size.x)
+	# Oda ekrandan küçükse ortalanır
+	var tiny := Rect2(100.0, 100.0, 800.0, 400.0)
+	cam.set_bounds(tiny, true)
+	await _cam_run(cam, 10)
+	check(cam.center().is_equal_approx(tiny.get_center()), "oda ekrandan küçükse kamera ortalar (%s)" % str(cam.center()))
+	# Sınırsız (boyut 0)
+	cam.set_bounds(Rect2(), true)
+	p.global_position.x = -2000.0
+	await _cam_run(cam, 150)
+	check(cam.view_rect().has_point(p.global_position), "sınırsız modda kamera oyuncuyu izliyor")
+
+
+func _test_camera_reactions() -> void:
+	await _new_world("Kamera: dikey tembellik, dash/kombo zoom'u, düşman odağı")
+	var p := _spawn_player(1500.0)
+	await _frames(20)
+	var cam := _make_camera(p, Rect2(0.0, -1000.0, 4000.0, 2000.0))
+	await _cam_run(cam, 120)
+	# Dikey tembellik: zıplayınca kamera oyuncuyu bire bir izlemez
+	var base_y := cam.center().y
+	var start_p := p.global_position.y
+	p.intent.jump_held = true
+	p.intent.jump_pressed = true
+	var top_p := start_p
+	var top_c := base_y
+	for i in 50:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		top_p = minf(top_p, p.global_position.y)
+		top_c = minf(top_c, cam.center().y)
+	p.intent.jump_held = false
+	check(start_p - top_p > 80.0, "oyuncu zıpladı (%.0f px)" % (start_p - top_p))
+	check(base_y - top_c < (start_p - top_p) * 0.6, "kamera zıplamayı bire bir izlemedi (kamera %.0f px, oyuncu %.0f px)" % [base_y - top_c, start_p - top_p])
+	await _cam_run(cam, 150)
+	check(absf(cam.center().y - base_y) < 3.0, "iniş sonrası kamera eski yüksekliğine döndü (%.1f px fark)" % (cam.center().y - base_y))
+	# Dash'te hafifçe açılır
+	var base_zoom := cam.base_zoom
+	p.state = Player.State.DASH
+	for i in 40:
+		cam.step(1.0 / 60.0)
+	check(cam.zoom.x < base_zoom - 0.02, "dash'te kamera hafifçe açıldı (%.3f)" % cam.zoom.x)
+	p.state = Player.State.MOVE
+	for i in 90:
+		cam.step(1.0 / 60.0)
+	check(absf(cam.zoom.x - base_zoom) < 0.005, "dash bitince zoom eski haline döndü (%.3f)" % cam.zoom.x)
+	# Kombo uzadıkça biraz yaklaşır
+	p.combo.spawn_numbers = false
+	var dummy := _dummy_source(1800.0)
+	for i in 4:
+		p.combo.register_hit(dummy, 1)
+	for i in 90:
+		cam.step(1.0 / 60.0)
+	check(cam.zoom.x > base_zoom + 0.03, "kombo uzadıkça kamera biraz yaklaştı (%.3f)" % cam.zoom.x)
+	p.combo.reset()
+	for i in 120:
+		cam.step(1.0 / 60.0)
+	check(absf(cam.zoom.x - base_zoom) < 0.005, "kombo bitince zoom döndü (%.3f)" % cam.zoom.x)
+	# Yakındaki düşmana doğru azıcık kayar
+	var e := BIDDER.instantiate() as Bidder
+	_world.add_child(e)
+	e.global_position = Vector2(p.global_position.x + 350.0, 612.0)
+	e.set_physics_process(false)
+	await _cam_run(cam, 150)
+	var pull := cam.center().x - (p.global_position.x + cam.look_ahead)
+	check(pull > 30.0 and pull <= cam.focus_max + 5.0, "yakındaki düşmana doğru azıcık kaydı (%.0f px)" % pull)
+	check(cam.view_rect().has_point(p.global_position), "odak kayarken oyuncu ekranda")
+	e.queue_free()
+	await _cam_run(cam, 150)
+	pull = cam.center().x - (p.global_position.x + cam.look_ahead)
+	check(absf(pull) < 6.0, "düşman gidince kamera tekrar oyuncuya döndü (%.1f px)" % pull)
+
+
+func _test_camera_room_transition() -> void:
+	await _new_world("Kamera: odadan odaya SAĞA geçişte kayıyor, sıçramıyor")
+	var a := Rect2(0.0, 0.0, 1280.0, 720.0)
+	var b := Rect2(1280.0, 0.0, 1280.0, 720.0)
+	var p := _spawn_player(1000.0)
+	await _frames(20)
+	var cam := _make_camera(p, a)
+	await _cam_run(cam, 60)
+	check(cam.view_rect().end.x <= a.end.x + 0.5, "geçişten önce kamera A odasında (%.0f)" % cam.view_rect().end.x)
+	var cap := cam.max_speed / 60.0 + 0.5
+	cam.extend_bounds(b)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	var prev := cam.center().x
+	var max_step := 0.0
+	var went_back := false
+	for i in 150:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		var c := cam.center().x
+		max_step = maxf(max_step, absf(c - prev))
+		if c < prev - 0.5:
+			went_back = true
+		prev = c
+	p.intent.move_x = 0.0
+	check(p.global_position.x > 1500.0, "oyuncu kapıdan geçip B odasına girdi (%.0f)" % p.global_position.x)
+	check(max_step <= cap, "geçişte kamera fırlamadı (en büyük adım %.1f px, sınır %.1f)" % [max_step, cap])
+	check(not went_back, "kamera geriye kaymadı")
+	# Yeni odanın sınırları geçerli olur; eski oda artık görünmez
+	cam.set_bounds(b)
+	max_step = 0.0
+	prev = cam.center().x
+	for i in 120:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		max_step = maxf(max_step, absf(cam.center().x - prev))
+		prev = cam.center().x
+	check(max_step <= cap, "yeni oda sınırı uygulanırken kamera sıçramadı (%.1f px)" % max_step)
+	check(cam.view_rect().position.x >= b.position.x - 0.5, "eski oda artık görünmüyor (%.0f)" % cam.view_rect().position.x)
+	check(cam.view_rect().has_point(p.global_position), "oyuncu ekranda")
 
 
 func _test_screen_flash() -> void:
