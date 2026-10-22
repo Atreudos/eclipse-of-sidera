@@ -40,6 +40,8 @@ const BASE_STATS := {
 	# --- saldırı / hasar ---
 	"attack_damage": 1.0,
 	"hurt_iframes": 1.0,
+	# --- kombo ---
+	"combo_window": 1.0,     # her vuruş/parry bu kadar saniye daha kombo süresi verir
 }
 
 # Kombo: startup = hazırlık, active = vuruş açık, recovery = toparlanma (saniye)
@@ -73,6 +75,8 @@ var state: State = State.MOVE
 var facing := 1
 
 var dash_charges := 0
+## Kombo sayacı (vuruş/parry sayısı, hasar sayıları, kombo barı).
+var combo: ComboTracker
 
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -128,6 +132,9 @@ func _ready() -> void:
 	parry_zone.collision_mask = Layers.ENEMY_HIT
 	EventBus.enemy_died.connect(_on_enemy_died)
 	_refresh_parry_zone()
+	combo = ComboTracker.new()
+	combo.name = "Combo"
+	add_child(combo)
 
 
 # ---------------------------------------------------------------- giriş
@@ -374,8 +381,11 @@ func _do_parry(hb: Hitbox) -> void:
 	EventBus.screen_shake.emit(6.0, 0.2)
 	EventBus.camera_punch.emit(0.03)
 	EventBus.screen_flash.emit(Color(1.0, 0.82, 0.25), 0.2, 0.22)
-	RingFx.spawn(get_parent(), hb.global_position, Color(1.0, 0.85, 0.3, 1.0), 12.0, 80.0, 0.28)
+	# Beyaz-sarı dalga oyuncudan çıkıp ekranı doldurur (menzil içinde parlak, dışında soluk).
+	ParryWave.spawn(get_parent(), global_position, stats.value("parry_zone_radius"))
+	RingFx.spawn(get_parent(), hb.global_position, Color(1.0, 0.95, 0.7, 1.0), 10.0, 46.0, 0.2)
 	HitSpark.spawn(get_parent(), hb.global_position, Vector2(-facing, -0.2), Color(1.0, 0.85, 0.3), 1.4)
+	Sfx.play_parry(combo.parries)
 	flash(Color(1.0, 0.92, 0.5), 0.16)
 
 

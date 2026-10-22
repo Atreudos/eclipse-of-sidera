@@ -25,3 +25,8 @@ signal camera_punch(amount: float)
 ## Tüm ekranı kısa süre boyar (hasar = kırmızı, parry = altın). alpha: en parlak anındaki opaklık.
 @warning_ignore("unused_signal")
 signal screen_flash(color: Color, alpha: float, duration: float)
+## Kombo her vuruş/parry'de güncellenir; süre dolunca biter (sayaçlar sıfırlanır).
+@warning_ignore("unused_signal")
+signal combo_updated(hits: int, parries: int, damage: int)
+@warning_ignore("unused_signal")
+signal combo_ended(hits: int, parries: int, damage: int)

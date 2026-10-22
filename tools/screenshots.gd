@@ -90,6 +90,12 @@ func _run() -> void:
 	player.intent.parry_pressed = true
 	await _frames(4)
 	await _shot("4_parry_basarisi")
+	await _frames(5)
+	await _shot("4b_parry_dalga_orta")
+	await _frames(8)
+	await _shot("4c_parry_dalga_genis")
+	await _frames(9)
+	await _shot("4d_parry_dalga_son")
 
 	# Saldırı (parry toparlanmasının bitmesini bekle)
 	await _frames(45)
@@ -140,4 +146,49 @@ func _run() -> void:
 	await _frames(6)
 	print("teklifçi platforma çıktı: ", climber.feet_y() < 500.0, " (", frames_used, " kare)")
 	await _shot("9_platformda_dusman")
+
+	# Parry dalgası: belirli yaşlarda dondurulmuş kareler (menzil içinde parlak, dışında soluk)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.queue_free()
+	await _frames(3)
+	player.global_position = Vector2(640, 614)
+	player.state = Player.State.MOVE
+	await _frames(20)
+	for age in [0.02, 0.06, 0.09, 0.13, 0.2, 0.3, 0.42, 0.55]:
+		var wave := ParryWave.spawn(arena, player.global_position, player.stats.value("parry_zone_radius"))
+		wave.set_process(false)
+		wave.set("_t", age)
+		wave.update_visual()
+		await _frames(2)
+		await _shot("wave_%03d" % int(age * 100))
+		wave.queue_free()
+
+	# Kombo: ilk vuruş (sadece sayı + bar), sonra 3 vuruş + parry (COMBO yazısı ve sayaçlar)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		e.queue_free()
+	await _frames(3)
+	player.global_position = Vector2(560, 614)
+	player.state = Player.State.MOVE
+	var target := BIDDER.instantiate() as Bidder
+	target.max_hp = 99
+	arena.enemies_root.add_child(target)
+	target.set_physics_process(false)
+	target.global_position = Vector2(660, 613)
+	await _frames(40)
+	target.take_damage(1, player)
+	await _frames(4)
+	await _shot("10_kombo_ilk_vurus")
+	await _frames(14)
+	target.take_damage(1, player)
+	await _frames(8)
+	target.take_damage(2, player)
+	await _frames(5)
+	await _shot("11_kombo_uc_vurus")
+	var fake_hit := Hitbox.new()
+	fake_hit.source = target
+	arena.add_child(fake_hit)
+	EventBus.parry_success.emit(player, fake_hit)
+	fake_hit.queue_free()
+	await _frames(24)
+	await _shot("12_kombo_bar_azaliyor")
 	get_tree().quit()

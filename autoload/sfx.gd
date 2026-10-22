@@ -25,7 +25,6 @@ func _ready() -> void:
 		var v := AudioStreamPlayer.new()
 		add_child(v)
 		_voices.append(v)
-	EventBus.parry_success.connect(func(_a: Node, _b: Node) -> void: play("parry", 0.0))
 	EventBus.parry_failed.connect(func(_a: Node) -> void: play("whiff", -4.0))
 	EventBus.dash_used.connect(func(_a: Node) -> void: play("dash", -3.0, 1.0, 0.05))
 	EventBus.enemy_died.connect(func(_e: Node) -> void: play("kill", -2.0, 1.0, 0.06))
@@ -37,6 +36,21 @@ func _on_damage(target: Node, _amount: int, _source: Node) -> void:
 		play("hurt", 0.0)
 	else:
 		play("hit", -2.0, 1.0, 0.08)
+
+
+## Kombo içindeki art arda parry'ler pentatonik bir merdiven çıkar (1. parry en alçak).
+const PARRY_STEPS := [0, 2, 4, 7, 9, 12, 14, 16]
+
+
+## Kombodaki `index`. parry'nin perde çarpanı (1 = ilk = 1.0). Merdivenin sonunda sabit kalır.
+static func parry_pitch(index: int) -> float:
+	var step: int = PARRY_STEPS[clampi(index - 1, 0, PARRY_STEPS.size() - 1)]
+	return pow(2.0, step / 12.0)
+
+
+## `index`: kombodaki kaçıncı parry (1 = ilk). Perde her parry'de yükselir; kombo bitince başa döner.
+func play_parry(index: int = 1) -> void:
+	play("parry", 0.0, parry_pitch(index))
 
 
 ## pitch_jitter: sesin her çalışta hafifçe değişmesi (tekrar hissini azaltır).

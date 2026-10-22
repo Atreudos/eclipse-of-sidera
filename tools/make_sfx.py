@@ -16,13 +16,16 @@ random.seed(7)
 
 
 def write(name, samples, peak=0.85):
-    top = max(1e-9, max(abs(s) for s in samples))
+    """Mono (sayı listesi) ya da stereo ((sol, sağ) çiftleri listesi) yazar. Tepe değeri `peak`e göre ölçekler."""
+    stereo = bool(samples) and isinstance(samples[0], tuple)
+    flat = [v for pair in samples for v in pair] if stereo else samples
+    top = max(1e-9, max(abs(s) for s in flat))
     frames = b"".join(
-        struct.pack("<h", int(max(-1.0, min(1.0, s / top * peak)) * 32767)) for s in samples
+        struct.pack("<h", int(max(-1.0, min(1.0, s / top * peak)) * 32767)) for s in flat
     )
     os.makedirs(OUT, exist_ok=True)
     with wave.open(os.path.join(OUT, name + ".wav"), "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(2 if stereo else 1)
         w.setsampwidth(2)
         w.setframerate(SR)
         w.writeframes(frames)
@@ -59,17 +62,112 @@ class Lowpass:
 
 
 def parry():
-    # Keskin metalik "ting": gürültü tıkı + uyumsuz tonlar + alçak bir tok vuruş
-    partials = [(1568, 1.0, 0.16), (2350, 0.7, 0.12), (3136, 0.55, 0.09), (4700, 0.3, 0.05), (1046, 0.5, 0.2)]
-
-    def f(t, _i):
-        s = noise() * decay(t, 0.004) * 0.9
-        for freq, amp, tau in partials:
-            s += amp * sine(freq, t) * decay(t, tau)
-        s += sine(95, t) * decay(t, 0.07) * 0.9
-        return s * attack(t)
-
-    return render(0.55, f)
+    """Zengin parry sesi (stereo, ~0.95 sn). Katmanlar:
+    tık (anlık his) + tok vuruş (gövde) + metal çarpışma + çan "ting" (beşli/oktavlı, sarı-altın tını)
+    + yükselen parıltı süpürmesi + hafif yankı. Pentatonik perdeyle uyumlu: oyun içinde art arda
+    parry'ler perdeyi yükseltir (autoload/sfx.gd: PARRY_STEPS)."""
+    rnd = random.Random(11)
+    dur = 0.9
+    n = int(dur * SR)
+    f0 = 1318.5  # E6
+    # (frekans çarpanı, genlik, sönüm süresi sn, sağ kanal faz kayması)
+    bell = [
+        (1.0, 0.55, 0.30, 0.0), (1.0035, 0.28, 0.34, 0.9),   # ayarsız ikiz: yavaş parıltı titreşimi
+        (1.5, 0.34, 0.24, 0.5), (2.0, 0.26, 0.20, 1.3),       # beşli, oktav (uyumlu çekirdek)
+        (2.76, 0.18, 0.13, 0.2), (4.07, 0.12, 0.085, 0.8),    # metalik (uyumsuz) tonlar
+        (5.43, 0.08, 0.06, 1.7), (7.1, 0.05, 0.04, 0.4),
+    ]
+    sweep_t = 0.12
+    f_a, f_b = 2200.0, 6400.0
+    # tek kutuplu süzgeç durumları (sol, sağ için ayrı gürültü)
+    hp_prev = [0.0, 0.0]
+    hp_y = [0.0, 0.0]
+    bp_lo = [0.0, 0.0]
+    bp_hi = [0.0, 0.0]
+    spark_hp_prev = [0.0, 0.0]
+    spark_hp_y = [0.0, 0.0]
+    thump_phase = 0.0
+    dry = [[0.0] * n, [0.0] * n]
+    send = [[0.0] * n, [0.0] * n]  # yankıya giden kısım (gürültüsüz)
+    for i in range(n):
+        t = i / SR
+        thump_f = 55.0 + 70.0 * math.exp(-t / 0.02)
+        thump_phase += 2.0 * math.pi * thump_f / SR
+        thump = math.sin(thump_phase) * math.exp(-t / 0.05) * 0.9
+        for ch in (0, 1):
+            x = rnd.uniform(-1.0, 1.0)
+            # tık: yüksek geçiren gürültü
+            hp_y[ch] = 0.97 * (hp_y[ch] + x - hp_prev[ch])
+            hp_prev[ch] = x
+            click = hp_y[ch] * math.exp(-t / 0.0012) * 0.8
+            # metal çarpışma: ~1.5-4.5 kHz bandında gürültü
+            bp_lo[ch] += 0.45 * (x - bp_lo[ch])
+            bp_hi[ch] += 0.12 * (x - bp_hi[ch])
+            clang = (bp_lo[ch] - bp_hi[ch]) * math.exp(-t / 0.05) * 1.6
+            # çan
+            b = 0.0
+            for mult, amp, tau, ph in bell:
+                phase = ph if ch == 1 else 0.0
+                b += amp * math.sin(2.0 * math.pi * f0 * mult * t + phase) * math.exp(-t / tau)
+            b *= min(1.0, t / 0.0006)
+            # yükselen parıltı süpürmesi (kanallara hafif kaydırılmış)
+            c = 0.0
+            ts = t - (0.004 if ch == 1 else 0.0)
+            if 0.0 <= ts < sweep_t:
+                ph_sweep = 2.0 * math.pi * (f_a * ts + 0.5 * (f_b - f_a) / sweep_t * ts * ts)
+                c = math.sin(ph_sweep) * math.sin(math.pi * ts / sweep_t) ** 2 * 0.2
+            # parıltı gürültüsü (>5 kHz)
+            y = rnd.uniform(-1.0, 1.0)
+            spark_hp_y[ch] = 0.8 * (spark_hp_y[ch] + y - spark_hp_prev[ch])
+            spark_hp_prev[ch] = y
+            sparkle = spark_hp_y[ch] * math.exp(-t / 0.09) * 0.28
+            dry[ch][i] = click + thump * 0.8 + clang + b * 0.62 + c + sparkle
+            send[ch][i] = thump * 0.5 + b * 0.62 + c
+    # yankı (Schroeder/Freeverb benzeri): 4 comb + 4 allpass, sağ kanalda biraz farklı gecikmeler
+    def reverb(src, spread):
+        combs = [(1116 + spread, 0.80), (1188 + spread, 0.79), (1277 + spread, 0.78), (1356 + spread, 0.77)]
+        aps = [556 + spread, 441 + spread, 341 + spread, 225 + spread]
+        pre = int(0.006 * SR)
+        comb_buf = [[0.0] * d for d, _ in combs]
+        comb_pos = [0] * len(combs)
+        comb_lp = [0.0] * len(combs)
+        ap_buf = [[0.0] * d for d in aps]
+        ap_pos = [0] * len(aps)
+        out = [0.0] * len(src)
+        for i in range(len(src)):
+            x = src[i - pre] * 0.5 if i >= pre else 0.0
+            acc = 0.0
+            for k, (d, fb) in enumerate(combs):
+                buf = comb_buf[k]
+                v = buf[comb_pos[k]]
+                comb_lp[k] += 0.5 * (v - comb_lp[k])  # yüksek frekansları söndür
+                buf[comb_pos[k]] = x + comb_lp[k] * fb
+                comb_pos[k] = (comb_pos[k] + 1) % d
+                acc += v
+            for k in range(len(aps)):
+                buf = ap_buf[k]
+                v = buf[ap_pos[k]]
+                buf[ap_pos[k]] = acc + v * 0.5
+                acc = v - acc * 0.5
+                ap_pos[k] = (ap_pos[k] + 1) % len(buf)
+            out[i] = acc
+        return out
+    wet_l = reverb(send[0], 0)
+    wet_r = reverb(send[1], 23)
+    out = []
+    fade_n = int(0.04 * SR)
+    for i in range(n):
+        l = dry[0][i] + wet_l[i] * 0.16
+        r = dry[1][i] + wet_r[i] * 0.16
+        # hafif doygunluk: tepe değerleri yumuşatır, sesi "dolgun" yapar
+        l = math.tanh(1.3 * l)
+        r = math.tanh(1.3 * r)
+        if i >= n - fade_n:
+            f = (n - i) / fade_n
+            l *= f
+            r *= f
+        out.append((l, r))
+    return out
 
 
 def hit():
@@ -176,9 +274,11 @@ def slash():
 
 
 if __name__ == "__main__":
-    for name, gen in [
-        ("parry", parry), ("hit", hit), ("hurt", hurt), ("dash", dash), ("whiff", whiff),
-        ("shoot", shoot), ("kill", kill), ("tell_gold", tell_gold), ("tell_red", tell_red), ("slash", slash),
+    # (ad, üretici, tepe seviyesi)
+    for name, gen, peak in [
+        ("parry", parry, 0.78), ("hit", hit, 0.85), ("hurt", hurt, 0.85), ("dash", dash, 0.85), ("whiff", whiff, 0.85),
+        ("shoot", shoot, 0.85), ("kill", kill, 0.85), ("tell_gold", tell_gold, 0.85), ("tell_red", tell_red, 0.85),
+        ("slash", slash, 0.85),
     ]:
-        write(name, gen())
+        write(name, gen(), peak)
         print("yazıldı:", name + ".wav")

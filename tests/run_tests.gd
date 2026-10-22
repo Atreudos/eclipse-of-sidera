@@ -67,6 +67,13 @@ func _run_all() -> void:
 		"mermi_platform": _test_shot_passes_platform,
 		"sprite_yukleyici": _test_sprite_loader,
 		"animasyon": _test_animation_selection,
+		"font": _test_font,
+		"hasar_sayisi": _test_damage_number,
+		"combo_sayac": _test_combo_counter,
+		"combo_gercek": _test_combo_real_fight,
+		"parry_dalga": _test_parry_wave,
+		"parry_dalga_gercek": _test_parry_wave_real,
+		"parry_ses": _test_parry_sound,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -762,3 +769,278 @@ func _test_animation_selection() -> void:
 	check(b.pick_animation() == "attack", "teklifçi atılırken attack")
 	b._phase = Bidder.Phase.RECOVER
 	check(b.pick_animation() == "recover", "teklifçi toparlanırken recover")
+
+
+# ------------------------------------------------------------------ font, hasar sayıları, kombo
+
+func _spawn_dummy_enemy(x: float, hp: int = 50) -> EnemyBase:
+	var e := BIDDER.instantiate() as EnemyBase
+	e.max_hp = hp
+	_world.add_child(e)
+	e.set_physics_process(false)  # sabit hedef (ağaca eklendikten sonra kapatılmalı)
+	e.global_position = Vector2(x, 612)
+	return e
+
+
+func _count_numbers() -> int:
+	var n := 0
+	for c in _world.get_children():
+		if c is DamageNumber:
+			n += 1
+	return n
+
+
+func _test_font() -> void:
+	print("\nFont (AGENTORANGE)")
+	check(ResourceLoader.exists(GameFont.PATH), "font dosyası projede ve içe aktarılmış")
+	var f := GameFont.get_font()
+	check(f != null and f != ThemeDB.fallback_font, "oyun fontu yüklendi (yedek font değil)")
+	var tr_ok := true
+	for ch in "çğıöşüÇĞİÖŞÜ":
+		if not f.has_char(ch.unicode_at(0)):
+			tr_ok = false
+	check(tr_ok, "Türkçe harflerin hepsi fontta var")
+	check(GameFont.width("COMBO", 34) > GameFont.width("COMBO", 17), "yazı genişliği boyutla büyüyor")
+	check(GameFont.YELLOW.r > 0.9 and GameFont.YELLOW.g > 0.7 and GameFont.YELLOW.b < 0.4, "sarı renk sarı")
+
+
+func _test_damage_number() -> void:
+	await _new_world("Hasar sayısı animasyonu")
+	var n := DamageNumber.spawn(_world, Vector2(400, 500), 3, 0.5)
+	check(n != null and n.amount == 3, "sayı oluştu (3)")
+	check(n.base_size > DamageNumber.spawn(_world, Vector2(0, 0), 1).base_size, "büyük hasar daha iri yazılır")
+	check(is_equal_approx(DamageNumber.pop_scale(0.0), 0.45), "belirirken küçükten başlar")
+	check(DamageNumber.pop_scale(0.5) > 1.0, "belirirken hafif aşırı büyür (pat hissi)")
+	check(is_equal_approx(DamageNumber.pop_scale(1.0), 1.0), "sonunda normal boyuta oturur")
+	check(is_equal_approx(n.current_alpha(), 1.0), "başta tam görünür")
+	check(n.color.r > 0.9 and n.color.g > 0.7 and n.color.b < 0.4, "hasar sayısı sarı")
+	await _frames(int(DamageNumber.LIFETIME * 60.0 * 0.8))
+	check(is_instance_valid(n) and n.current_alpha() < 1.0, "yaşamının sonuna doğru sönüyor")
+	await _frames(40)
+	check(not is_instance_valid(n), "süre bitince kendini siliyor")
+
+
+func _test_combo_counter() -> void:
+	await _new_world("Kombo sayacı: sayma, süre, sıfırlama")
+	var p := _spawn_player()
+	var c := p.combo
+	var e := _spawn_dummy_enemy(700.0)
+	var ended_log: Array = []
+	c.ended.connect(func(h: int, pr: int, d: int) -> void: ended_log.append([h, pr, d]))
+	await _frames(10)
+	check(c != null and c.hits == 0 and c.parries == 0 and not c.is_active(), "başlangıçta kombo yok")
+
+	e.take_damage(1, p)
+	check(c.hits == 1 and c.damage == 1, "ilk vuruş sayıldı (1 vuruş, 1 hasar)")
+	check(c.is_active() and not c.is_combo(), "ilk vuruş sıradan: bar var, COMBO yazısı yok")
+	check(is_equal_approx(c.time_left, 1.0), "kombo süresi 1 sn")
+	check(_count_numbers() == 1, "hasar sayısı çıktı")
+	check(c.last_target == e, "gösterge vurulan düşmanı izliyor")
+
+	c.tick(0.6)
+	check(is_equal_approx(c.time_left, 0.4) and is_equal_approx(c.fraction(), 0.4), "bar süreyle azalıyor (0.4)")
+	e.take_damage(2, p)
+	check(c.hits == 2 and c.damage == 3, "ikinci vuruş (2 vuruş, 3 hasar)")
+	check(c.is_combo(), "ikinci vuruşta COMBO yazısı çıkar")
+	check(is_equal_approx(c.time_left, 1.0), "her vuruş barı tazeler")
+
+	var hb := Hitbox.new()
+	hb.source = e
+	_world.add_child(hb)
+	EventBus.parry_success.emit(p, hb)
+	check(c.parries == 1 and c.hits == 2, "parry ayrı sayılıyor (1 parry)")
+	check(is_equal_approx(c.time_left, 1.0), "parry de barı tazeler")
+	hb.queue_free()
+
+	EventBus.parry_success.emit(e, null)
+	check(c.parries == 1, "başkasının parry'si sayılmadı")
+
+	c.tick(0.7)
+	e.take_damage(1, e)
+	check(c.hits == 2, "oyuncudan gelmeyen hasar kombo yapmaz")
+	p.take_damage(1, e)
+	check(c.hits == 2, "oyuncunun yediği hasar kombo yapmaz")
+	check(is_equal_approx(c.time_left, 0.3), "ve süreyi de tazelemez")
+
+	c.tick(0.35)
+	check(not c.is_active(), "süre dolunca kombo bitti")
+	check(c.hits == 0 and c.parries == 0 and c.damage == 0, "sayaçlar SIFIRLANDI")
+	check(ended_log.size() == 1 and ended_log[0] == [2, 1, 3], "bitiş sinyali son sayıları taşıdı %s" % str(ended_log))
+
+	e.take_damage(1, p)
+	check(c.hits == 1 and c.parries == 0 and c.damage == 1, "yeni kombo sıfırdan başladı")
+
+	# Süre bir bekleme ile de (oyun karelerinden) doluyor mu?
+	await _frames(75)
+	check(not c.is_active() and c.hits == 0, "1 sn boyunca vuruş yoksa kendiliğinden sıfırlandı")
+
+	# Kombo süresi stat'tan okunuyor (eşyalar uzatabilir)
+	p.stats.set_base("combo_window", 2.5)
+	e.take_damage(1, p)
+	check(is_equal_approx(c.time_left, 2.5), "combo_window stat'ı süreyi belirliyor")
+
+	# Ölünce kombo biter
+	e.take_damage(1, p)
+	check(c.hits == 2, "ölmeden önce 2 vuruş")
+	p.die()
+	check(not c.is_active() and c.hits == 0, "oyuncu ölünce kombo sıfırlandı")
+
+
+func _test_combo_real_fight() -> void:
+	await _new_world("Kombo: gerçek saldırı ve gerçek parry")
+	var p := _spawn_player()
+	var e := _spawn_dummy_enemy(690.0, 50)
+	await _frames(20)
+	p.dash_charges = 0
+	var c := p.combo
+	var spawned := [0]
+	_world.child_entered_tree.connect(func(n: Node) -> void:
+		if n is DamageNumber:
+			spawned[0] += 1)
+	for hit in 3:
+		var before := c.hits
+		p.intent.attack_pressed = true
+		for i in 60:
+			await get_tree().physics_frame
+			if c.hits > before:
+				break
+		for i in 40:
+			await get_tree().physics_frame
+			if p.state != Player.State.ATTACK:
+				break
+	check(c.hits == 3, "3 gerçek vuruş 3 kez sayıldı (%d)" % c.hits)
+	check(c.damage == 4, "toplam hasar 1+1+2 = 4 (%d)" % c.damage)
+	check(c.is_combo() and c.is_active(), "3'lü seri bir kombo")
+	check(spawned[0] == 3, "her vuruşta bir hasar sayısı çıktı (%d)" % spawned[0])
+
+	# Aynı kombonun içinde gerçek parry: altın mermi hızla gelir
+	var src := _dummy_source(1100.0)
+	var pr := _spawn_projectile(Vector2(800, 612), Vector2(-600, 0), true, src)
+	var pressed := false
+	for i in 150:
+		await get_tree().physics_frame
+		if not pressed and pr.global_position.x - p.global_position.x < 85.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if c.parries > 0:
+			break
+	check(c.parries == 1, "gerçek parry kombo sayacına işledi")
+	check(c.hits == 3 and c.damage == 4, "aynı kombo sürüyor: vuruşlar sıfırlanmadı (%d vuruş)" % c.hits)
+	check(c.events() == 4, "toplam olay 4 (3 vuruş + 1 parry)")
+
+
+# ------------------------------------------------------------------ parry dalgası ve sesi
+
+func _test_parry_wave() -> void:
+	await _new_world("Parry dalgası: ekranı kaplar, menzil dışında soluklaşır")
+	var range_px := 48.0
+	var view := Vector2(1280, 720)
+	var center := Vector2(640, 600)
+	var r_max := ParryWave.cover_radius(center, view)
+	check(r_max >= center.distance_to(Vector2.ZERO) and r_max >= center.distance_to(view), "kaplama yarıçapı en uzak köşeyi aşıyor (%.0f)" % r_max)
+	check(is_equal_approx(ParryWave.ring_alpha_at(range_px * 0.5, range_px), 1.0), "menzil içinde halka tam opak")
+	check(is_equal_approx(ParryWave.ring_alpha_at(range_px, range_px), 1.0), "menzil sınırında hâlâ tam opak")
+	var outside := ParryWave.ring_alpha_at(range_px * 3.0, range_px)
+	check(outside >= 0.1 and outside <= 0.25, "menzil dışında opaklık belirgin düşük (%.2f)" % outside)
+	var mid := ParryWave.ring_alpha_at(range_px * 1.4, range_px)
+	check(mid < 1.0 and mid > outside, "geçiş yumuşak (%.2f)" % mid)
+	var prev := -1.0
+	var monotonic := true
+	for i in 63:
+		var r := ParryWave.radius_at(i * 0.01, range_px, r_max)
+		if r < prev - 0.001:
+			monotonic = false
+		prev = r
+	check(monotonic, "dalga yarıçapı hiç küçülmüyor")
+	check(ParryWave.radius_at(0.0, range_px, r_max) < range_px, "başlangıçta menzilin içinde")
+	check(is_equal_approx(ParryWave.radius_at(ParryWave.INNER_TIME, range_px, r_max), range_px * 1.1), "ilk aşamada menzil kenarına oturuyor")
+	check(ParryWave.radius_at(ParryWave.DURATION, range_px, r_max) >= r_max - 0.01, "sonunda ekranı tamamen kaplıyor")
+	# büyük menzil (eşya ile) -> dalga yine menzile göre ölçekleniyor
+	check(ParryWave.ring_alpha_at(100.0, 140.0) > 0.99 and ParryWave.ring_alpha_at(100.0, 48.0) < 0.5, "opaklık parry menziline göre değişiyor")
+
+	var w := ParryWave.spawn(_world, center, range_px)
+	check(w != null and w.layer < 10, "dalga HUD'un altında bir katmanda")
+	await _frames(2)
+	check(w.current_ring_alpha() > 0.8, "ilk karelerde parlak (%.2f)" % w.current_ring_alpha())
+	check(w.current_radius() < range_px * 1.3, "ilk karelerde menzil civarında (%.0f px)" % w.current_radius())
+	await _frames(24)
+	check(w.current_radius() > range_px * 3.0, "ilerleyen karelerde menzilin çok dışında (%.0f px)" % w.current_radius())
+	check(w.current_ring_alpha() < 0.4, "menzil dışında soluk (%.2f)" % w.current_ring_alpha())
+	await _frames(8)
+	check(w.current_radius() > 500.0, "dalga ekranın büyük bölümünü geçti (%.0f px)" % w.current_radius())
+	await _frames(14)
+	check(not is_instance_valid(w), "süre bitince kendini siliyor")
+
+
+func _count_waves() -> int:
+	var n := 0
+	for c in _world.get_children():
+		if c is ParryWave:
+			n += 1
+	return n
+
+
+func _test_parry_wave_real() -> void:
+	await _new_world("Parry: gerçek parry dalgayı oyuncudan başlatır")
+	var p := _spawn_player()
+	var src := _dummy_source(1100.0)
+	await _frames(20)
+	check(_count_waves() == 0, "parry öncesi dalga yok")
+	var pr := _spawn_projectile(Vector2(820, 612), Vector2(-360, 0), true, src)
+	var pressed := false
+	for i in 120:
+		await get_tree().physics_frame
+		if not pressed and pr.global_position.x - p.global_position.x < 85.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(_parry_ok == 1, "parry başarılı")
+	check(_count_waves() == 1, "parry bir dalga başlattı")
+	for c in _world.get_children():
+		if c is ParryWave:
+			var w := c as ParryWave
+			check(w.world_pos.distance_to(p.global_position) < 1.0, "dalga oyuncunun olduğu yerden çıkıyor")
+			check(is_equal_approx(w.range_world, p.stats.value("parry_zone_radius")), "dalga parry menziline göre ayarlı (%.0f)" % w.range_world)
+	# menzil büyütülürse dalga da ona göre
+	p.stats.set_base("parry_zone_radius", 90.0)
+	await _frames(60)
+	var pr2 := _spawn_projectile(Vector2(820, 612), Vector2(-360, 0), true, src)
+	_parry_ok = 0
+	pressed = false
+	for i in 120:
+		await get_tree().physics_frame
+		if not pressed and pr2.global_position.x - p.global_position.x < 120.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	var found := false
+	for c in _world.get_children():
+		if c is ParryWave and is_equal_approx((c as ParryWave).range_world, 90.0):
+			found = true
+	check(found, "menzil 90 iken dalga da 90'a göre")
+
+
+func _test_parry_sound() -> void:
+	print("\nParry sesi")
+	var stream := load("res://assets/sfx/parry.wav") as AudioStreamWAV
+	check(stream != null, "parry.wav yüklendi")
+	check(stream != null and stream.stereo, "parry sesi stereo")
+	check(stream != null and stream.get_length() > 0.7 and stream.get_length() < 1.1, "süre ~0.9 sn (%.2f)" % (stream.get_length() if stream != null else 0.0))
+	check(is_equal_approx(Sfx.parry_pitch(1), 1.0), "ilk parry: normal perde")
+	check(is_equal_approx(Sfx.parry_pitch(2), pow(2.0, 2.0 / 12.0)), "2. parry: 2 yarım ton yukarı")
+	check(is_equal_approx(Sfx.parry_pitch(4), pow(2.0, 7.0 / 12.0)), "4. parry: beşli yukarı")
+	var prev := 0.0
+	var rising := true
+	for i in range(1, 9):
+		var pitch := Sfx.parry_pitch(i)
+		if pitch <= prev:
+			rising = false
+		prev = pitch
+	check(rising, "art arda parry'lerde perde sürekli yükseliyor")
+	check(is_equal_approx(Sfx.parry_pitch(50), Sfx.parry_pitch(8)), "merdivenin sonunda sabit kalıyor")
+	check(is_equal_approx(Sfx.parry_pitch(0), 1.0), "geçersiz sayı güvenli")
+
