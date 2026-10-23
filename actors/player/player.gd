@@ -6,8 +6,13 @@ extends ActorBase
 ## (Oyun içinde F3 ile açılan debug panelinden de bazılarını canlı değiştirebilirsin.)
 
 signal dash_charges_changed(current: int, maximum: int)
+## Dash bir düşmanın gövdesine çarptı (içinden geçilmez).
+signal dash_bumped(enemy: EnemyBase)
 
 enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
+
+## Düşmanın başına konulunca kayma hızı (px/sn).
+const SLIDE_OFF_SPEED := 220.0
 
 const BASE_STATS := {
 	"max_health": 4.0,
@@ -168,8 +173,44 @@ func _physics_process(delta: float) -> void:
 		State.DEAD:
 			_state_dead(delta)
 	move_and_slide()
+	_post_move(delta)
 	intent.clear_edges()
 	queue_redraw()
+
+
+## Hareketten sonra: düşman gövdesine çarpan dash erken biter; düşmanın başına konulursa yana kayılır.
+func _post_move(delta: float) -> void:
+	var bumped: EnemyBase = null
+	var on_head: EnemyBase = null
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var other := col.get_collider() as EnemyBase
+		if other == null:
+			continue
+		if col.get_normal().y < -0.6:
+			on_head = other
+		elif state == State.DASH and col.get_normal().x * float(_dash_dir) < -0.5:
+			bumped = other
+	if bumped != null:
+		_dash_bump(bumped)
+	elif on_head != null and not dead:
+		var dir := signf(global_position.x - on_head.global_position.x)
+		if dir == 0.0:
+			dir = float(facing)
+		velocity.x = dir * SLIDE_OFF_SPEED
+		move_and_collide(Vector2(dir * SLIDE_OFF_SPEED * delta, 0.0))
+
+
+## Dash bir düşmanın gövdesine çarptı: içinden geçilmez, dash orada biter.
+func _dash_bump(enemy: EnemyBase) -> void:
+	_dash_t = stats.value("dash_time")
+	velocity.x = -float(_dash_dir) * 70.0
+	EventBus.screen_shake.emit(4.0, 0.12)
+	EventBus.camera_kick.emit(Vector2(float(_dash_dir), 0.0), 4.0)
+	var at := (global_position + enemy.global_position) * 0.5
+	HitSpark.spawn(get_parent(), at, Vector2(-float(_dash_dir), -0.2), Color(1.0, 1.0, 1.0), 0.8)
+	Sfx.play("hit", -9.0, 1.5)
+	dash_bumped.emit(enemy)
 
 
 func _process(delta: float) -> void:

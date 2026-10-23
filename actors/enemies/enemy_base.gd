@@ -11,6 +11,8 @@ enum Tell { NONE, GOLD, RED }
 
 const GOLD := Color(1.0, 0.8, 0.2)
 const RED := Color(1.0, 0.22, 0.22)
+## Başına konulan oyuncudan kayma hızı (px/sn).
+const SLIDE_OFF_SPEED := 220.0
 
 # Düşman animasyonları (PNG'ler assets/sprites/<düşman>/ içine konunca otomatik kullanılır).
 const ANIM_SPEC := {
@@ -81,6 +83,17 @@ func _physics_process(delta: float) -> void:
 	else:
 		_ai(delta)
 	move_and_slide()
+	_slide_off_player()
+
+
+## Oyuncunun başına konduysak yana kay (gövdeler katı olduğu için üstünde asılı kalmasın).
+func _slide_off_player() -> void:
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		if col.get_collider() is Player and col.get_normal().y < -0.6:
+			var dir := signf(global_position.x - (col.get_collider() as Node2D).global_position.x)
+			velocity.x = (dir if dir != 0.0 else 1.0) * SLIDE_OFF_SPEED
+			return
 
 
 func _process(delta: float) -> void:
@@ -197,6 +210,8 @@ func die() -> void:
 	remove_from_group("enemies")
 	EventBus.enemy_died.emit(self)
 	set_tell(Tell.NONE)
+	# Ölü düşman artık engel olmaz (oyuncu içinden geçebilir).
+	set_deferred("collision_layer", 0)
 	if hurtbox != null:
 		hurtbox.set_deferred("monitorable", false)
 	_on_death()

@@ -55,6 +55,8 @@ func _run_all() -> void:
 		"parry_erken": _test_parry_early_and_iframes,
 		"kirmizi_mermi": _test_red_projectile,
 		"dash_mermi": _test_dash_through_projectile,
+		"kati_govde": _test_solid_bodies,
+		"kati_govde_dusman": _test_enemy_blocked_by_player,
 		"kombo": _test_melee_combo_and_kill,
 		"teklifci_parry": _test_bidder_lunge_parry,
 		"teklifci_kirmizi": _test_bidder_red_lunge_and_death,
@@ -383,6 +385,93 @@ func _test_dash_through_projectile() -> void:
 			pressed = true
 	check(pressed, "dash tetiklendi")
 	check(p.health == hp0, "dash i-frame'i kırmızı mermiyi geçirdi")
+
+
+func _test_solid_bodies() -> void:
+	await _new_world("Gövdeler katı: oyuncu ve düşman birbirinin içinden geçmez")
+	var p := _spawn_player(500.0)
+	var e := BIDDER.instantiate() as Bidder
+	_world.add_child(e)
+	e.global_position = Vector2(700.0, 612.0)
+	e.set_physics_process(false)
+	await _frames(20)
+	var gap_min := p.body_half_width() + e.body_half_width()
+	# 1) Yürüyerek içinden geçilmez
+	p.intent.move_x = 1.0
+	await _frames(120)
+	p.intent.move_x = 0.0
+	check(p.global_position.x < e.global_position.x, "yürürken düşmanın içinden geçilmiyor (oyuncu %.0f, düşman %.0f)" % [p.global_position.x, e.global_position.x])
+	check(e.global_position.x - p.global_position.x >= gap_min - 1.5, "gövdeler iç içe girmiyor (%.1f px, en az %.1f)" % [e.global_position.x - p.global_position.x, gap_min])
+	# 2) Dash düşmana çarpınca durur
+	p.global_position.x = 600.0
+	await _frames(10)
+	var bumps := [0]
+	p.dash_bumped.connect(func(_en: EnemyBase) -> void: bumps[0] += 1)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	p.intent.dash_pressed = true
+	await _frames(1)
+	var dash_frames := 0
+	for i in 40:
+		await get_tree().physics_frame
+		if p.state == Player.State.DASH:
+			dash_frames += 1
+	p.intent.move_x = 0.0
+	check(bumps[0] == 1, "dash düşmana çarptı (çarpma sayısı %d)" % bumps[0])
+	check(e.global_position.x - p.global_position.x >= gap_min - 1.5, "dash düşmanın içinden geçmedi (%.1f px)" % (e.global_position.x - p.global_position.x))
+	check(dash_frames < 9, "çarpan dash erken bitti (%d kare, tam dash ~10)" % dash_frames)
+	# 3) Dash düşmandan UZAĞA serbest
+	p.global_position.x = 500.0
+	await _frames(10)
+	var x0 := p.global_position.x
+	p.facing = -1
+	p.intent.move_x = -1.0
+	p.intent.dash_pressed = true
+	await _frames(14)
+	p.intent.move_x = 0.0
+	check(x0 - p.global_position.x > 120.0, "düşmandan uzağa dash serbest (%.0f px)" % (x0 - p.global_position.x))
+	# 4) Düşmanın başına inen oyuncu yana kayar
+	p.global_position = Vector2(e.global_position.x, 520.0)
+	p.velocity = Vector2.ZERO
+	await _frames(100)
+	check(p.is_on_floor() and absf(p.global_position.y - 614.0) < 4.0, "düşmanın başında asılı kalmadı, yere indi (y %.0f)" % p.global_position.y)
+	check(absf(p.global_position.x - e.global_position.x) >= gap_min - 1.5, "baştan yana kaydı (%.1f px)" % absf(p.global_position.x - e.global_position.x))
+	# 5) Ölü düşman engel olmaz (ölüm efekti ~0.3 sn'de düşmanı siler; konumu önceden al)
+	var dead_x := e.global_position.x
+	e.take_damage(99, p)
+	await _frames(3)
+	check(e.dead, "düşman öldü")
+	check(e.collision_layer == 0, "ölü düşmanın çarpışma katmanı kapandı (layer %d)" % e.collision_layer)
+	p.global_position.x = dead_x - 70.0
+	await _frames(5)
+	p.intent.move_x = 1.0
+	var crossed := false
+	for i in 40:
+		await get_tree().physics_frame
+		if p.global_position.x > dead_x + 20.0:
+			crossed = true
+			break
+	p.intent.move_x = 0.0
+	check(crossed, "ölü düşmanın içinden geçilebiliyor (oyuncu %.0f, ölü düşman x=%.0f)" % [p.global_position.x, dead_x])
+
+
+func _test_enemy_blocked_by_player() -> void:
+	await _new_world("Gövdeler katı: düşman da oyuncunun içinden geçmez")
+	var p := _spawn_player(500.0)
+	p.stats.set_base("max_health", 99.0)
+	p.health = 99
+	var e := BIDDER.instantiate() as Bidder
+	_world.add_child(e)
+	e.global_position = Vector2(740.0, 612.0)
+	await _frames(240)
+	var gap_min := p.body_half_width() + e.body_half_width()
+	check(not e.dead and not p.dead, "ikisi de hayatta")
+	check(absf(e.global_position.x - p.global_position.x) >= gap_min - 1.5, "kovalayan düşman oyuncunun içine girmedi (%.1f px)" % absf(e.global_position.x - p.global_position.x))
+	# Düşman oyuncunun başına düşerse kayıp iner
+	e.global_position = Vector2(p.global_position.x, p.global_position.y - 90.0)
+	e.velocity = Vector2.ZERO
+	await _frames(100)
+	check(e.is_on_floor() and absf(e.global_position.y - 613.0) < 4.0, "düşman oyuncunun başında asılı kalmadı (y %.0f)" % e.global_position.y)
 
 
 func _test_melee_combo_and_kill() -> void:

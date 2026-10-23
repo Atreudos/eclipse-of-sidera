@@ -15,7 +15,7 @@ size = Vector2(54, 48)
 
 [node name="Bidder" type="CharacterBody2D"]
 collision_layer = 4
-collision_mask = 129
+collision_mask = 131
 script = ExtResource("1_bidder")
 max_hp = 4
 jump_velocity = 880.0
