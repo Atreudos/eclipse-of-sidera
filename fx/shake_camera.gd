@@ -5,7 +5,8 @@ extends Camera2D
 ## TAKİP
 ##  - Oyuncuyu yumuşakça izler. Baktığı yöne doğru "öne bakar" (look-ahead), hızına göre hafifçe öne kayar.
 ##  - Yakındaki düşmana doğru azıcık kayar (aksiyon odağı), oyuncu her zaman ekranda kalır.
-##  - Dikey takip tembeldir: küçük zıplamalar kamerayı oynatmaz, yeni bir zemine inince kamera oraya yerleşir.
+##  - Dikey takip "çok az" oynar: yerdeyken zemine yerleşir (oyuncu ekranın alt-orta kısmında durur),
+##    zıplarken yükselişin küçük bir kısmı kadar yukarı, düşerken hızına göre biraz aşağı kayar, sert inişte hafifçe çöker.
 ## ZOOM
 ##  - Hafif yakınlaşma (base_zoom). Kombo uzadıkça biraz daha yaklaşır, dash'te hafifçe açılır.
 ## SINIRLAR
@@ -34,10 +35,23 @@ extends Camera2D
 @export var look_ahead_swing := 3.0
 ## Koşarken hız başına öne kayma (piksel / (piksel/sn)).
 @export var velocity_lead := 0.08
-## Oyuncu ekranın biraz altında dursun diye kamerayı yukarı iter (negatif = yukarı).
-@export var vertical_bias := -36.0
-## Bu mesafeden (piksel) küçük dikey hareketler kamerayı oynatmaz.
-@export var vertical_dead_zone := 60.0
+## Oyuncu ekranın alt-orta kısmında dursun diye kamerayı yukarı iter (negatif = yukarı).
+@export var vertical_bias := -90.0
+## Havadayken kamera, oyuncunun zemine göre yükselişinin bu oranı kadar kayar (0.25 = dörtte biri; çok az).
+@export var vertical_gain := 0.25
+## Bu havadaki kayma en fazla bu kadar piksel olabilir.
+@export var vertical_range := 48.0
+## Zemine inince zemin referansının yerleşme hızı (1/sn).
+@export var ground_follow := 3.5
+## Düşerken aşağıya, çıkarken yukarıya bakma: hız başına kayma ve üst sınırlar (piksel).
+@export var fall_look := 0.05
+@export var fall_look_max := 55.0
+@export var rise_look := 0.02
+@export var rise_look_max := 12.0
+## Bu hızdan (px/sn) sert inişte kamera hafifçe çöker (itme gücü piksel/24).
+@export var landing_min_speed := 520.0
+@export var landing_kick_min := 2.0
+@export var landing_kick_max := 5.0
 ## Yakındaki düşmana doğru kayma: ağırlık, erişim ve üst sınır (piksel).
 @export var focus_weight := 0.22
 @export var focus_range := 520.0
@@ -70,6 +84,9 @@ var _look_x := 0.0
 var _lead := Vector2.ZERO
 var _focus := Vector2.ZERO
 var _ref_y := 0.0
+var _air_dy := 0.0
+var _was_grounded := true
+var _fall_vy := 0.0
 var _zoom_mod := 0.0
 var _initialized := false
 ## Etkin sınırlar: `bounds`'a yumuşakça kayar, böylece oda değişince kamera sıçramaz.
@@ -144,6 +161,9 @@ func snap() -> void:
 	_lead = Vector2.ZERO
 	_focus = Vector2.ZERO
 	_ref_y = target.global_position.y
+	_air_dy = 0.0
+	_was_grounded = true
+	_fall_vy = 0.0
 	_zoom_mod = _zoom_goal() - base_zoom
 	_pos = _clamp_to_bounds(_desired(), _total_zoom())
 	_initialized = true
@@ -215,7 +235,7 @@ func _total_zoom() -> float:
 ## Hedef kamera merkezi (sınırlar uygulanmadan).
 func _desired() -> Vector2:
 	var pos := target.global_position
-	return Vector2(pos.x + _look_x + _lead.x + _focus.x, _ref_y + vertical_bias + _lead.y + _focus.y)
+	return Vector2(pos.x + _look_x + _lead.x + _focus.x, _ref_y + vertical_bias + _air_dy + _lead.y + _focus.y)
 
 
 ## Etkin sınırlar hedef sınırlara yumuşakça kayar (oda geçişinde kamera sıçramasın).
@@ -253,16 +273,23 @@ func _follow(dt: float) -> void:
 		grounded = (target as CharacterBody2D).is_on_floor()
 	# Öne bakış: yön değiştirince yumuşakça diğer tarafa geçer.
 	_look_x = move_toward(_look_x, _facing() * look_ahead, look_ahead * look_ahead_swing * dt)
-	# Hız payı: koşarken ve düşerken biraz önden bak.
-	var lead_goal := Vector2(clampf(vel.x * velocity_lead, -70.0, 70.0), clampf(vel.y * 0.1, -20.0, 80.0))
+	# Hız payı: koşarken biraz önden, düşerken biraz aşağıdan, çıkarken azıcık yukarıdan bak.
+	var lead_goal := Vector2(
+		clampf(vel.x * velocity_lead, -70.0, 70.0),
+		clampf(vel.y * (fall_look if vel.y > 0.0 else rise_look), -rise_look_max, fall_look_max))
 	_lead = _lead.lerp(lead_goal, 1.0 - exp(-6.0 * dt))
 	# Aksiyon odağı: en yakın düşmana doğru azıcık kay.
 	_focus = _focus.lerp(_focus_goal(pos), 1.0 - exp(-4.0 * dt))
-	# Dikey tembellik: ölü bölge içindeki zıplamalar kamerayı oynatmaz, yerde durunca zemine yerleşir.
+	# Dikey: zemin referansı yerdeyken yavaşça zemine yerleşir; havadayken kamera yükselişin küçük bir kısmı kadar kayar.
 	if grounded:
-		_ref_y = lerpf(_ref_y, pos.y, 1.0 - exp(-4.0 * dt))
-	elif absf(pos.y - _ref_y) > vertical_dead_zone:
-		_ref_y = pos.y - signf(pos.y - _ref_y) * vertical_dead_zone
+		_ref_y = lerpf(_ref_y, pos.y, 1.0 - exp(-ground_follow * dt))
+	_air_dy = clampf((pos.y - _ref_y) * vertical_gain, -vertical_range, vertical_range)
+	# Sert iniş: kamera hafifçe çöker.
+	if grounded and not _was_grounded and _fall_vy > landing_min_speed:
+		var impact := clampf((_fall_vy - landing_min_speed) / 700.0, 0.0, 1.0)
+		_kick_vel.y += lerpf(landing_kick_min, landing_kick_max, impact) * 24.0
+	_was_grounded = grounded
+	_fall_vy = 0.0 if grounded else maxf(vel.y, 0.0)
 	# Zoom
 	_zoom_mod = lerpf(_zoom_mod, _zoom_goal() - base_zoom, 1.0 - exp(-5.0 * dt))
 	var z := _total_zoom()

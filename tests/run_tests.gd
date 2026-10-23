@@ -66,6 +66,7 @@ func _run_all() -> void:
 		"kamera_takip": _test_camera_follow,
 		"kamera_sinir": _test_camera_bounds,
 		"kamera_tepki": _test_camera_reactions,
+		"kamera_dikey": _test_camera_vertical,
 		"kamera_oda_gecis": _test_camera_room_transition,
 		"ekran_flas": _test_screen_flash,
 		"platform_cik": _test_bidder_climbs_platform,
@@ -788,7 +789,7 @@ func _test_camera_reactions() -> void:
 	await _frames(20)
 	var cam := _make_camera(p, Rect2(0.0, -1000.0, 4000.0, 2000.0))
 	await _cam_run(cam, 120)
-	# Dikey tembellik: zıplayınca kamera oyuncuyu bire bir izlemez
+	# Dikey: zıplayınca kamera ÇOK AZ yukarı kayar (bire bir izlemez), inince eski yüksekliğine döner
 	var base_y := cam.center().y
 	var start_p := p.global_position.y
 	p.intent.jump_held = true
@@ -801,8 +802,10 @@ func _test_camera_reactions() -> void:
 		top_p = minf(top_p, p.global_position.y)
 		top_c = minf(top_c, cam.center().y)
 	p.intent.jump_held = false
+	var rose := base_y - top_c
 	check(start_p - top_p > 80.0, "oyuncu zıpladı (%.0f px)" % (start_p - top_p))
-	check(base_y - top_c < (start_p - top_p) * 0.6, "kamera zıplamayı bire bir izlemedi (kamera %.0f px, oyuncu %.0f px)" % [base_y - top_c, start_p - top_p])
+	check(rose >= 8.0, "kamera zıplarken azıcık yukarı kaydı (%.0f px)" % rose)
+	check(rose < (start_p - top_p) * 0.5, "ama zıplamayı bire bir izlemedi (kamera %.0f px, oyuncu %.0f px)" % [rose, start_p - top_p])
 	await _cam_run(cam, 150)
 	check(absf(cam.center().y - base_y) < 3.0, "iniş sonrası kamera eski yüksekliğine döndü (%.1f px fark)" % (cam.center().y - base_y))
 	# Dash'te hafifçe açılır
@@ -840,6 +843,68 @@ func _test_camera_reactions() -> void:
 	await _cam_run(cam, 150)
 	pull = cam.center().x - (p.global_position.x + cam.look_ahead)
 	check(absf(pull) < 6.0, "düşman gidince kamera tekrar oyuncuya döndü (%.1f px)" % pull)
+
+
+func _test_camera_vertical() -> void:
+	await _new_world("Kamera: dikey hareket çok az; çıkarken/düşerken kayma, sert inişte çökme")
+	var p := _spawn_player(1500.0)
+	await _frames(20)
+	var room := Rect2(0.0, 0.0, 4000.0, RoomLayouts.CAMERA_HEIGHT)
+	var cam := _make_camera(p, room)
+	await _cam_run(cam, 120)
+	var base_y := cam.center().y
+	# Oyuncu ekranın alt-orta kısmında durur; zeminin altında da görünür alan var
+	var view := cam.view_rect()
+	var rel := (p.global_position.y - view.position.y) / view.size.y
+	check(rel > 0.58 and rel < 0.78, "oyuncu ekranın alt-orta kısmında (yüksekliğin %%%.0f'i)" % (rel * 100.0))
+	check(view.end.y > RoomLayouts.FLOOR_Y + 100.0, "zeminin altı da görünüyor (görüş alt kenarı y=%.0f)" % view.end.y)
+	check(view.position.y >= room.position.y - 0.5 and view.end.y <= room.end.y + 0.5, "görüş odanın dikey sınırları içinde")
+	# Yüksekten düşüş: kamera azıcık aşağı bakar, oyuncu hep ekranda, sınırda çökme ve geri dönüş
+	p.global_position.y -= 200.0
+	p.velocity = Vector2.ZERO
+	var max_down := 0.0
+	var max_up := 0.0
+	var lost := false
+	var kick_peak := 0.0
+	var landed := false
+	for i in 150:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		max_down = maxf(max_down, cam.center().y - base_y)
+		max_up = maxf(max_up, base_y - cam.center().y)
+		if not cam.view_rect().has_point(p.global_position):
+			lost = true
+		if p.is_on_floor():
+			landed = true
+		if landed:
+			kick_peak = maxf(kick_peak, cam.offset.y)
+	check(landed, "oyuncu yere indi")
+	check(not lost, "düşerken oyuncu hep ekranda")
+	check(max_down > 6.0, "düşerken kamera azıcık aşağı baktı (%.0f px)" % max_down)
+	check(max_down < 70.0 and max_up < 70.0, "dikey kayma çok az kaldı (aşağı %.0f, yukarı %.0f px)" % [max_down, max_up])
+	check(kick_peak > 1.5, "sert inişte kamera hafifçe çöktü (%.1f px)" % kick_peak)
+	await _cam_run(cam, 120)
+	check(absf(cam.center().y - base_y) < 3.0, "iniş sonrası kamera yerine döndü (%.1f px fark)" % (cam.center().y - base_y))
+	check(cam.offset.length() < 0.3, "çökme tamamen söndü (%.2f px)" % cam.offset.length())
+	# Yumuşak iniş (kısa zıplama) kamerayı çökertmez
+	p.global_position.y -= 20.0
+	p.velocity = Vector2.ZERO
+	var soft_peak := 0.0
+	for i in 60:
+		await get_tree().physics_frame
+		cam.step(1.0 / 60.0)
+		soft_peak = maxf(soft_peak, cam.offset.y)
+	check(soft_peak < 0.5, "küçük inişte kamera çökmedi (%.2f px)" % soft_peak)
+	# Yeni bir zemine (yüksek platform) çıkınca kamera oraya yerleşir
+	_add_platform(Rect2(1300.0, 500.0, 400.0, 20.0))
+	await _frames(2)
+	p.global_position = Vector2(1500.0, 440.0)
+	p.velocity = Vector2.ZERO
+	await _cam_run(cam, 150)
+	check(p.is_on_floor() and p.global_position.y < 520.0, "oyuncu platformun üstünde (y %.0f)" % p.global_position.y)
+	check(base_y - cam.center().y > 100.0, "kamera yeni zemine yerleşti (%.0f px yukarı)" % (base_y - cam.center().y))
+	var rel2 := (p.global_position.y - cam.view_rect().position.y) / cam.view_rect().size.y
+	check(rel2 > 0.58 and rel2 < 0.78, "platformda da oyuncu ekranın alt-orta kısmında (%%%.0f)" % (rel2 * 100.0))
 
 
 func _test_camera_room_transition() -> void:

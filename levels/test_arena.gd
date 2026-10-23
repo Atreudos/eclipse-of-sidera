@@ -14,10 +14,13 @@ var _next_wave_t := 1.2
 @onready var player: Player = $Player
 @onready var hud: Hud = $Hud
 @onready var enemies_root: Node2D = $Enemies
+@onready var camera: ShakeCamera = $Camera
 
 
 func _ready() -> void:
 	Hitstop.reset()
+	# Zeminin altında da görünür alan var: kamera yukarı/aşağı azıcık oynayabilsin.
+	camera.set_bounds(Rect2(0.0, 0.0, 1280.0, RoomLayouts.CAMERA_HEIGHT), true)
 
 
 func _process(delta: float) -> void:
