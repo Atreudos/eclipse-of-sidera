@@ -22,7 +22,8 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | K | Parry |
 | J | Saldırı |
 | F3 | Debug paneli (parry penceresi, dash hızı vb. canlı ayar) |
-| R | Arenayı yeniden başlat |
+| R | Yeniden başla (ölünce ya da istediğin an) |
+| F4 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
 
 Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile kaç.
 
@@ -31,7 +32,9 @@ Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile ka�
 Aşama 0 ve 1 tamam: hareket, zıplama, dash (i-frame + şarj), 3'lü saldırı kombosu, parry (altın/kırmızı saldırı ayrımı, hitstop, ses), iki düşman tipi (Teklifçi, Ateşçi) ve test arenası.
 Ek olarak: vuruş flaşı + kıvılcım, yumuşak ekran sarsıntısı/kamera tepmesi, hasar/parry ekran flaşı, üst platformlara çıkabilen düşmanlar ve sprite/animasyon altyapısı.
 Dinamik kamera (oyuncuyu yumuşak takip, baktığı yöne önden bakış, hafif zoom-in; dash'te açılır, kombo uzadıkça yaklaşır), fontlu hasar sayıları, 1 sn'lik kombo barı (COMBO yazısı + vuruş/parry/hasar sayaçları) ve ekranı kaplayan parry dalgası + yeni parry sesi.
-Sıradaki: Aşama 2 (agresiflik metresi, oda sistemi, daha fazla düşman).
+Oyun artık **oda sistemiyle** açılıyor (`levels/run.tscn`): odalar sağa doğru dizilir; düşmanlar ışık sütunuyla dalga dalga doğar, hepsi ölünce kapı açılır, sağa geçince kapı arkandan kapanır. Her odanın yerleşimi (platformlar) ve dalgaları tohuma bağlıdır; her 3 odada renk teması değişir. Ölünce özet ekranı çıkar (R ile yeniden başla). Eski test arenası `levels/test_arena.tscn` olarak duruyor.
+Gövdeler katı: dash düşmanın içinden geçmez (çarpıp durur), birbirinizin başına düşerseniz yana kayarsınız. Kamera yukarı/aşağı da çok az oynar (zıplarken yükselir, düşerken aşağı bakar, sert inişte çöker).
+Sıradaki: Ritim (agresiflik) metresi, 3. düşman (Kasacı), eşya sistemi ve Rakip.
 
 ## Sprite eklemek
 
@@ -52,6 +55,7 @@ Ekran görüntüsü alma (sanal ekranla):
 ```
 xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
   godot --path . --rendering-driver opengl3 --fixed-fps 60 res://tools/screenshots.tscn -- /cikti/klasoru
+# oda sistemi için: res://tools/screenshots_run.tscn
 ```
 
 Geçici ses efektleri `tools/make_sfx.py` ile üretilir.

@@ -273,12 +273,137 @@ def slash():
     return render(dur, f)
 
 
+def door_open():
+    """Kapı açılır: mandal tıkırtısı + alçak kayma gürültüsü + yukarı çıkan iki notalı çın ("geç!")."""
+    lp = Lowpass()
+    dur = 0.75
+
+    def f(t, _i):
+        s = 0.0
+        # mandal: kısa metal tık
+        s += noise() * decay(t, 0.006) * 0.9 * attack(t, 0.0004)
+        # kayma: alçak, hafifçe yükselen gürültü
+        if t > 0.03:
+            env = math.sin(math.pi * min((t - 0.03) / 0.6, 1.0)) ** 1.2
+            s += lp(noise(), 0.05 + 0.1 * min(t / 0.6, 1.0)) * env * 1.3
+        # çın: majör üçlü
+        for start, freq in ((0.10, 659.3), (0.20, 880.0)):
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.35 * sine(freq * 2.0, tt)) * decay(tt, 0.22) * 0.45 * attack(tt, 0.002)
+        return s
+
+    return render(dur, f)
+
+
+def door_slam():
+    """Kapı yere çakılır: ağır tok vuruş + metal çınlaması."""
+    lp = Lowpass()
+    phase = [0.0]
+    dur = 0.6
+
+    def f(t, _i):
+        freq = 48.0 + 70.0 * math.exp(-t / 0.025)
+        phase[0] += 2.0 * math.pi * freq / SR
+        s = math.sin(phase[0]) * decay(t, 0.14) * 1.2
+        s += lp(noise(), 0.3) * decay(t, 0.05) * 1.1
+        s += noise() * decay(t, 0.004) * 0.6
+        # metal çınlaması
+        s += (sine(233.0, t) * 0.25 + sine(351.0, t) * 0.18 + sine(517.0, t) * 0.1) * decay(t, 0.16)
+        return s * attack(t, 0.0006)
+
+    return render(dur, f)
+
+
+def spawn():
+    """Düşman doğuşu: yükselen hışırtı + kısa parlak "pırt"."""
+    lp = Lowpass()
+    phase = [0.0]
+    dur = 0.4
+
+    def f(t, _i):
+        k = min(t / dur, 1.0)
+        env = k ** 1.5 * (1.0 - k) ** 0.5 * 2.0
+        s = lp(noise(), 0.03 + 0.5 * k) * env * 1.4
+        freq = 300.0 + 900.0 * k * k
+        phase[0] += 2.0 * math.pi * freq / SR
+        s += math.sin(phase[0]) * env * 0.35
+        return s
+
+    return render(dur, f)
+
+
+def room_clear():
+    """Oda temiz: parlak pentatonik arpej (C-E-G-C) + hafif parıltı."""
+    dur = 0.9
+
+    def f(t, _i):
+        s = 0.0
+        for i, freq in enumerate((523.3, 659.3, 784.0, 1046.5)):
+            start = 0.075 * i
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.4 * sine(freq * 2.0, tt) + 0.15 * sine(freq * 3.0, tt)) * decay(tt, 0.28) * 0.5 * attack(tt, 0.002)
+        return s
+
+    return render(dur, f)
+
+
+def land():
+    """Sert iniş: kısa, tok ayak sesi."""
+    lp = Lowpass()
+    phase = [0.0]
+
+    def f(t, _i):
+        freq = 70.0 + 60.0 * math.exp(-t / 0.02)
+        phase[0] += 2.0 * math.pi * freq / SR
+        s = math.sin(phase[0]) * decay(t, 0.05) + lp(noise(), 0.25) * decay(t, 0.035) * 0.9
+        return s * attack(t, 0.0008)
+
+    return render(0.16, f)
+
+
+def pickup():
+    """Eşya alma: iki yukarı çıkan parlak not + kısa parıltı."""
+    dur = 0.5
+
+    def f(t, _i):
+        s = 0.0
+        for start, freq in ((0.0, 880.0), (0.07, 1318.5)):
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.3 * sine(freq * 2.0, tt)) * decay(tt, 0.16) * 0.55 * attack(tt, 0.001)
+        s += noise() * decay(t, 0.02) * 0.2
+        return s
+
+    return render(dur, f)
+
+
+def left_behind():
+    """Seçilmeyen eşya Rakip'e gider: alçalan, kasvetli iki not."""
+    dur = 0.7
+
+    def f(t, _i):
+        s = 0.0
+        for start, freq in ((0.0, 311.1), (0.16, 233.1)):
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.5 * sine(freq * 1.5, tt) + 0.2 * sine(freq * 2.0, tt)) * decay(tt, 0.3) * 0.5 * attack(tt, 0.004)
+        return s
+
+    return render(dur, f)
+
+
 if __name__ == "__main__":
     # (ad, üretici, tepe seviyesi)
     for name, gen, peak in [
         ("parry", parry, 0.78), ("hit", hit, 0.85), ("hurt", hurt, 0.85), ("dash", dash, 0.85), ("whiff", whiff, 0.85),
         ("shoot", shoot, 0.85), ("kill", kill, 0.85), ("tell_gold", tell_gold, 0.85), ("tell_red", tell_red, 0.85),
         ("slash", slash, 0.85),
+        # --- oda sistemi ve eşyalar (eski seslerin rastgele akışı bozulmasın diye sona eklendi)
+        ("door_open", door_open, 0.8), ("door_slam", door_slam, 0.9), ("spawn", spawn, 0.7),
+        ("room_clear", room_clear, 0.75), ("land", land, 0.8), ("pickup", pickup, 0.8),
+        ("left_behind", left_behind, 0.8),
     ]:
         write(name, gen(), peak)
         print("yazıldı:", name + ".wav")

@@ -8,6 +8,7 @@ const PLAYER := preload("res://actors/player/player.tscn")
 const PROJECTILE := preload("res://combat/projectile.tscn")
 const SHOOTER := preload("res://actors/enemies/shooter.tscn")
 const BIDDER := preload("res://actors/enemies/bidder.tscn")
+const RUN := preload("res://levels/run.tscn")
 
 var _checks := 0
 var _fails := 0
@@ -68,6 +69,11 @@ func _run_all() -> void:
 		"kamera_tepki": _test_camera_reactions,
 		"kamera_dikey": _test_camera_vertical,
 		"kamera_oda_gecis": _test_camera_room_transition,
+		"oda_yerlesim": _test_room_layouts,
+		"oda_dalga": _test_run_waves,
+		"oda_akis": _test_run_flow,
+		"oda_dalga_akis": _test_run_wave_progression,
+		"oda_olum": _test_run_death,
 		"ekran_flas": _test_screen_flash,
 		"platform_cik": _test_bidder_climbs_platform,
 		"platform_in": _test_bidder_descends_platform,
@@ -947,6 +953,257 @@ func _test_camera_room_transition() -> void:
 	check(max_step <= cap, "yeni oda sınırı uygulanırken kamera sıçramadı (%.1f px)" % max_step)
 	check(cam.view_rect().position.x >= b.position.x - 0.5, "eski oda artık görünmüyor (%.0f)" % cam.view_rect().position.x)
 	check(cam.view_rect().has_point(p.global_position), "oyuncu ekranda")
+
+
+# ------------------------------------------------------------------ oda sistemi
+
+## Koşuyu gerçek sahneden kurar (test için oyuncu betikli, çok canlı). Tohum sabit.
+func _start_run(seed_value: int) -> RunController:
+	var run := RUN.instantiate() as RunController
+	run.seed_value = seed_value
+	var p := run.get_node("Player") as Player
+	p.scripted = true
+	# Kamera gerçek saatle akar; testte süreyi biz veririz (_cam_run).
+	(run.get_node("Camera") as ShakeCamera).set_process(false)
+	_world.add_child(run)
+	p.stats.set_base("max_health", 99.0)
+	p.health = 99
+	return run
+
+
+## Odadaki tüm düşmanları öldürür.
+func _kill_all_enemies(p: Player) -> int:
+	var n := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var a := e as ActorBase
+		if a != null and not a.dead:
+			a.take_damage(99, p)
+			n += 1
+	return n
+
+
+## `cond` doğru olana kadar en fazla `max_frames` kare bekler. Doğru olduğunda true.
+func _wait_until(cond: Callable, max_frames: int) -> bool:
+	for i in max_frames:
+		if cond.call():
+			return true
+		await get_tree().physics_frame
+	return cond.call()
+
+
+func _test_room_layouts() -> void:
+	print("\nOda yerleşimleri geçerli (platformlara çıkılabilir, doğma noktaları yüzeyde)")
+	for id in RoomLayouts.ids():
+		var probs := RoomLayouts.problems(id)
+		check(probs.is_empty(), "yerleşim '%s' kurallara uyuyor %s" % [id, str(probs)])
+		check(RoomLayouts.width_of(id) >= 1280.0, "'%s' en az ekran genişliğinde (%.0f)" % [id, RoomLayouts.width_of(id)])
+		check(RoomLayouts.spawn_points(id).size() >= 5, "'%s' en az 5 doğma noktası" % id)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var repeats := 0
+	var last := ""
+	var seen := {}
+	for i in 60:
+		var id := RoomLayouts.pick(rng, last)
+		if id == last:
+			repeats += 1
+		seen[id] = true
+		last = id
+	check(repeats == 0, "art arda aynı yerleşim gelmiyor")
+	check(seen.size() >= 4, "yerleşimlerin çoğu kullanılıyor (%d çeşit)" % seen.size())
+
+
+func _test_run_waves() -> void:
+	print("\nKoşu: dalga ölçeklenmesi ve tohumla aynı oda içeriği")
+	check(RunController.wave_count_for(0) == 1 and RunController.wave_count_for(1) == 1, "ilk iki oda tek dalga")
+	check(RunController.wave_count_for(2) == 2 and RunController.wave_count_for(4) == 2, "2-4. odalar iki dalga")
+	check(RunController.wave_count_for(5) == 3 and RunController.wave_count_for(20) == 3, "5. oda ve sonrası üç dalga")
+	var prev := 0
+	var monotonic := true
+	var in_range := true
+	for room in 14:
+		for w in RunController.wave_count_for(room):
+			var n := RunController.enemies_in_wave(room, w)
+			if n < 2 or n > 6:
+				in_range = false
+		var first := RunController.enemies_in_wave(room, 0)
+		if first < prev:
+			monotonic = false
+		prev = first
+	check(in_range, "dalga başına 2..6 düşman")
+	check(monotonic, "oda ilerledikçe düşman sayısı azalmıyor")
+	var a := RunController.new()
+	a.run_seed = 4242
+	var b := RunController.new()
+	b.run_seed = 4242
+	var c := RunController.new()
+	c.run_seed = 99
+	var same := true
+	var diff := false
+	for i in 12:
+		if a.layout_for(i) != b.layout_for(i):
+			same = false
+		if a.layout_for(i) != c.layout_for(i):
+			diff = true
+		var wa := a.make_waves(i)
+		var wb := b.make_waves(i)
+		if wa.size() != wb.size():
+			same = false
+		for k in mini(wa.size(), wb.size()):
+			if (wa[k] as Array) != (wb[k] as Array):
+				same = false
+	check(same, "aynı tohum aynı yerleşim ve dalgaları üretiyor")
+	check(diff, "farklı tohum farklı yerleşim üretiyor")
+	check(a.layout_for(0) == RunController.FIRST_LAYOUT, "ilk oda sabit yerleşim")
+	var no_repeat := true
+	for i in range(1, 30):
+		if a.layout_for(i) == a.layout_for(i - 1):
+			no_repeat = false
+	check(no_repeat, "art arda iki oda aynı yerleşimde değil")
+	var w0 := a.make_waves(0)
+	var bidders := (w0[0] as Array).count(BIDDER)
+	var shooters := (w0[0] as Array).count(SHOOTER)
+	check(w0.size() == 1 and bidders == 1 and shooters == 1, "ilk odada bir Teklifçi + bir Ateşçi (%d/%d)" % [bidders, shooters])
+	a.free()
+	b.free()
+	c.free()
+
+
+func _test_run_flow() -> void:
+	await _new_world("Koşu: oda kilitli başlar, temizlenince kapı açılır, sağa geçince arkadan kapanır")
+	var run := _start_run(1234)
+	var p := run.player
+	await _frames(5)
+	var r0 := run.rooms[0] as Room
+	var r1 := run.rooms[1] as Room
+	check(run.current == 0, "koşu 0. odada başladı")
+	check(r0.state == Room.State.ACTIVE, "ilk oda aktif")
+	check(r1 != null and r1.rect.position.x == r0.rect.end.x, "ikinci oda ilkinin hemen sağında (x=%.0f)" % r1.rect.position.x)
+	check(r0.door.is_blocking(), "kapı kapalı (engel)")
+	check(run.hud.overlay.room_number == 1, "HUD oda numarası 1")
+	check(run.hud.announcer.count() >= 1, "oda duyurusu çıktı")
+	check(run.camera.bounds.is_equal_approx(r0.camera_rect()), "kamera sınırı ilk oda (%s)" % str(run.camera.bounds))
+	# Kapıyı zorla geçmeye çalış: kilitliyken geçilemez
+	p.global_position = Vector2(r0.rect.end.x - 90.0, 612.0)
+	p.intent.move_x = 1.0
+	await _frames(45)
+	p.intent.move_x = 0.0
+	check(p.global_position.x < r0.rect.end.x, "kilitli kapıdan geçilemiyor (x=%.0f, kapı %.0f)" % [p.global_position.x, r0.rect.end.x])
+	# İlk dalga doğar
+	p.global_position = Vector2(180.0, 612.0)
+	var spawned := await _wait_until(func() -> bool: return r0.alive_count() >= 2, 240)
+	check(spawned, "ilk dalga doğdu (%d düşman)" % r0.alive_count())
+	var inside := true
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not r0.rect.has_point((e as Node2D).global_position):
+			inside = false
+	check(inside, "düşmanlar oda içinde doğdu")
+	check(r0.wave_number == 1 and not r0.is_cleared(), "dalga 1/1 sürüyor, oda temiz değil")
+	# Hepsini öldür -> oda temiz, kapı açılır
+	var killed := _kill_all_enemies(p)
+	check(killed == 2, "iki düşman öldürüldü (%d)" % killed)
+	var cleared := await _wait_until(func() -> bool: return r0.is_cleared(), 120)
+	check(cleared, "son düşman ölünce oda temizlendi")
+	await _frames(3)
+	check(not r0.door.is_blocking() and r0.door.is_open, "kapı açıldı, artık engel değil")
+	check(run.hud.overlay.cleared, "HUD 'ilerle' gösteriyor")
+	check(int(run.stats["rooms_cleared"]) == 1 and int(run.stats["kills"]) == 2, "istatistikler: 1 oda, 2 öldürme (%s)" % str(run.stats))
+	check(run.camera.bounds.end.x >= r1.camera_rect().end.x - 0.5, "kamera sınırı sağdaki odayı da kapsıyor (%.0f)" % run.camera.bounds.end.x)
+	# Sağa yürü: kapıdan geç
+	p.global_position = Vector2(r0.rect.end.x - 150.0, 612.0)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	var entered := await _wait_until(func() -> bool: return run.current == 1, 150)
+	p.intent.move_x = 0.0
+	check(entered, "sağa geçince 1. odaya girildi")
+	check(p.global_position.x > r1.rect.position.x + RunController.ENTER_DEPTH - 2.0, "oyuncu yeni odanın içinde (x=%.0f)" % p.global_position.x)
+	await _frames(20)
+	check(r0.door.is_blocking() and r0.door.look == Door.Look.SEALED, "arkadaki kapı kapandı ve mühürlendi")
+	check(r1.state == Room.State.ACTIVE, "yeni oda aktif")
+	check(run.hud.overlay.room_number == 2 and not run.hud.overlay.cleared, "HUD oda 2, 'ilerle' kalktı")
+	check(run.rooms.has(2), "sonraki oda (2) hazırlandı")
+	# Geri dönülemez
+	p.intent.move_x = -1.0
+	await _frames(70)
+	p.intent.move_x = 0.0
+	check(p.global_position.x > r1.rect.position.x, "geri dönülemiyor (x=%.0f, sınır %.0f)" % [p.global_position.x, r1.rect.position.x])
+	# Kamera yeni odaya yerleşir, eski oda görünmez
+	await _cam_run(run.camera, 150)
+	check(run.camera.bounds.is_equal_approx(r1.camera_rect()), "kamera sınırı yeni oda")
+	check(run.camera.view_rect().position.x >= r1.rect.position.x - 1.0, "kamera eski odayı göstermiyor (%.0f)" % run.camera.view_rect().position.x)
+	# Odalar silinir: oda 0, oda 2'ye girince gider
+	run.skip_room()
+	await _frames(5)
+	p.global_position = Vector2(r1.rect.end.x - 150.0, 612.0)
+	p.intent.move_x = 1.0
+	var entered2 := await _wait_until(func() -> bool: return run.current == 2, 150)
+	p.intent.move_x = 0.0
+	check(entered2, "2. odaya girildi")
+	await _frames(5)
+	check(not run.rooms.has(0), "iki oda gerideki oda listeden çıktı")
+	check(not is_instance_valid(r0), "iki oda gerideki oda silindi")
+	check(run.rooms.has(1) and run.rooms.has(3), "bir gerideki ve bir ilerideki oda duruyor")
+	run.queue_free()
+
+
+func _test_run_wave_progression() -> void:
+	await _new_world("Koşu: çok dalgalı odada dalgalar sırayla gelir, hepsi bitince kapı açılır")
+	var run := _start_run(777)
+	var p := run.player
+	await _frames(5)
+	# Oda 0 ve 1'i atla
+	for target in [1, 2]:
+		await _wait_until(func() -> bool: return run.current_room().alive_count() > 0 or run.current_room().pending_count() > 0, 200)
+		run.skip_room()
+		await _frames(5)
+		var door_x := (run.rooms[run.current] as Room).rect.end.x
+		p.global_position = Vector2(door_x - 150.0, 612.0)
+		p.intent.move_x = 1.0
+		await _wait_until(func() -> bool: return run.current == target, 150)
+		p.intent.move_x = 0.0
+		await _frames(3)
+	check(run.current == 2, "2. odaya (3. oda) ulaşıldı")
+	var room := run.current_room()
+	check(room.waves.size() == 2, "bu odada iki dalga var")
+	var first_n := RunController.enemies_in_wave(2, 0)
+	var spawned := await _wait_until(func() -> bool: return room.alive_count() >= first_n, 300)
+	check(spawned and room.wave_number == 1, "1. dalga doğdu (%d düşman, beklenen %d)" % [room.alive_count(), first_n])
+	await _frames(30)
+	check(room.alive_count() == first_n, "1. dalgada tam %d düşman (%d)" % [first_n, room.alive_count()])
+	check(room.wave_number == 1, "ikinci dalga henüz gelmedi (düşmanlar canlı)")
+	_kill_all_enemies(p)
+	var second := await _wait_until(func() -> bool: return room.wave_number == 2, 200)
+	check(second, "ilk dalga bitince 2. dalga başladı")
+	check(not room.is_cleared() and room.door.is_blocking(), "oda hâlâ kilitli")
+	check(run.hud.overlay.wave == 2 and run.hud.overlay.wave_total == 2, "HUD dalga 2/2")
+	var n2 := RunController.enemies_in_wave(2, 1)
+	await _wait_until(func() -> bool: return room.alive_count() >= n2, 200)
+	check(room.alive_count() == n2, "2. dalgada %d düşman (%d)" % [n2, room.alive_count()])
+	_kill_all_enemies(p)
+	var done := await _wait_until(func() -> bool: return room.is_cleared(), 200)
+	check(done, "son dalga bitince oda temizlendi")
+	run.queue_free()
+
+
+func _test_run_death() -> void:
+	await _new_world("Koşu: ölünce özet ekranı, istatistikler")
+	var run := _start_run(31)
+	var p := run.player
+	await _frames(5)
+	run.stats["kills"] = 7
+	run.stats["best_combo"] = 12
+	p.stats.set_base("max_health", 1.0)
+	p.health = 1
+	p.take_damage(5, null)
+	await _frames(5)
+	check(p.dead, "oyuncu öldü")
+	check(run.hud.overlay.dead, "ölüm ekranı açıldı")
+	check(int(run.hud.overlay.summary.get("kills", -1)) == 7 and int(run.hud.overlay.summary.get("best_combo", -1)) == 12, "özet istatistikleri taşıyor (%s)" % str(run.hud.overlay.summary))
+	check(RunOverlay.format_time(83.4) == "1:23" and RunOverlay.format_time(5.0) == "0:05", "süre biçimi 1:23 / 0:05")
+	var t0 := float(run.stats["time"])
+	await _frames(30)
+	check(is_equal_approx(float(run.stats["time"]), t0), "ölünce süre sayacı durdu")
+	run.queue_free()
 
 
 func _test_screen_flash() -> void:

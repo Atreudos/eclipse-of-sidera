@@ -6,6 +6,8 @@ extends ActorBase
 ## (Oyun içinde F3 ile açılan debug panelinden de bazılarını canlı değiştirebilirsin.)
 
 signal dash_charges_changed(current: int, maximum: int)
+## Sert bir inişten sonra yere değdi (hız: px/sn).
+signal landed(speed: float)
 ## Dash bir düşmanın gövdesine çarptı (içinden geçilmez).
 signal dash_bumped(enemy: EnemyBase)
 
@@ -13,6 +15,8 @@ enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
 
 ## Düşmanın başına konulunca kayma hızı (px/sn).
 const SLIDE_OFF_SPEED := 220.0
+## Bu hızdan (px/sn) hızlı inişler ses/toz efekti verir.
+const HARD_LANDING_SPEED := 520.0
 
 const BASE_STATS := {
 	"max_health": 4.0,
@@ -172,10 +176,22 @@ func _physics_process(delta: float) -> void:
 			_state_hurt(delta)
 		State.DEAD:
 			_state_dead(delta)
+	var fall_speed := velocity.y
+	var was_on_floor := is_on_floor()
 	move_and_slide()
+	if not was_on_floor and is_on_floor() and fall_speed > HARD_LANDING_SPEED:
+		_on_landed(fall_speed)
 	_post_move(delta)
 	intent.clear_edges()
 	queue_redraw()
+
+
+## Sert iniş: tok ses ve ayak dibinde küçük bir toz halkası.
+func _on_landed(speed: float) -> void:
+	var k := clampf((speed - HARD_LANDING_SPEED) / 700.0, 0.0, 1.0)
+	Sfx.play("land", -11.0 + 7.0 * k, 1.0, 0.05)
+	RingFx.spawn(get_parent(), Vector2(global_position.x, feet_y() - 2.0), Color(1.0, 1.0, 1.0, 0.22 + 0.2 * k), 5.0, 18.0 + 24.0 * k, 0.2)
+	landed.emit(speed)
 
 
 ## Hareketten sonra: düşman gövdesine çarpan dash erken biter; düşmanın başına konulursa yana kayılır.

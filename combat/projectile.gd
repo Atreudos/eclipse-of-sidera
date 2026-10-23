@@ -17,6 +17,7 @@ var _age := 0.0
 
 func _ready() -> void:
 	collides_with_world = true
+	add_to_group("projectiles")
 	super._ready()
 	hit_world.connect(_on_hit_world)
 	landed.connect(_on_landed)

@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## Can, dash şarjları, dalga sayısı ve F3 ile açılan debug/ayar paneli.
+## Can, dash şarjları, oda/dalga bilgisi, duyurular ve F3 ile açılan debug/ayar paneli.
 ## Debug panelinde sayı tuşlarıyla hissi CANLI ayarlayabilirsin:
 ##   1 / 2  parry penceresi  -/+ 0.01 sn
 ##   3 / 4  parry bölgesi yarıçapı  -/+ 4 px
@@ -8,15 +8,22 @@ extends CanvasLayer
 ##   7 / 8  hitstop süresi çarpanı  -/+ 0.25
 
 var player: Player
-var wave := 0
+## Test arenasındaki sonsuz dalga sayacı (oda sistemi olmayan sahneler için).
+var wave := 0:
+	set(value):
+		wave = value
+		if overlay != null:
+			overlay.arena_wave = value
+## Oda/dalga/ilerle oku/ölüm özeti (AGENTORANGE ile çizilir).
+var overlay: RunOverlay
+## Ekranın üstünde kısa süre görünen büyük duyurular.
+var announcer: Announcer
 
 var _hearts: Array[ColorRect] = []
 var _pips: Array[ColorRect] = []
 var _pip_fills: Array[ColorRect] = []
-var _wave_label: Label
 var _debug_label: Label
 var _hint_label: Label
-var _death_label: Label
 
 
 func _ready() -> void:
@@ -54,17 +61,31 @@ func _build() -> void:
 		_pips.append(bg)
 		_pip_fills.append(fill)
 
-	_wave_label = _make_label(root, Vector2(1080, 20), 22)
 	_hint_label = _make_label(root, Vector2(24, 682), 14)
 	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  R yeniden  F3 debug"
 	_hint_label.modulate = Color(1, 1, 1, 0.55)
 	_debug_label = _make_label(root, Vector2(24, 96), 15)
 	_debug_label.visible = false
-	_death_label = _make_label(root, Vector2(0, 300), 40)
-	_death_label.size = Vector2(1280, 80)
-	_death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_death_label.text = "ÖLDÜN  -  R ile yeniden başla"
-	_death_label.visible = false
+	overlay = RunOverlay.new()
+	overlay.name = "Overlay"
+	overlay.arena_wave = wave
+	root.add_child(overlay)
+	announcer = Announcer.new()
+	announcer.name = "Announcer"
+	root.add_child(announcer)
+
+
+## Oda sistemi bilgisi: görünen oda no (1'den), mevcut dalga, toplam dalga, oda temizlendi mi.
+func set_room(room_number: int, wave_now: int, wave_count: int, is_cleared: bool = false) -> void:
+	overlay.room_number = room_number
+	overlay.wave = wave_now
+	overlay.wave_total = wave_count
+	overlay.cleared = is_cleared
+
+
+## Ölüm ekranındaki özet (kills, rooms_cleared, best_combo, time, room).
+func set_summary(data: Dictionary) -> void:
+	overlay.summary = data
 
 
 func _make_label(parent: Control, pos: Vector2, font_size: int) -> Label:
@@ -97,8 +118,7 @@ func _process(_delta: float) -> void:
 		else:
 			_pip_fills[i].color = Color(0.85, 0.95, 1.0)
 		_pip_fills[i].size.x = fill_w
-	_wave_label.text = "Dalga %d" % wave
-	_death_label.visible = player.dead
+	overlay.dead = player.dead
 	_debug_label.text = _debug_text()
 
 

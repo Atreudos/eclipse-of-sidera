@@ -322,7 +322,7 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 
 ### Aşama 2: Çekirdek döngü (hafta 2)
 - [ ] Agresiflik (ritim) metresi
-- [ ] Oda sistemi (3-4 oda, kapı, düşman dalgası)
+- [x] Oda sistemi (5 yerleşim, sağa doğru odalar, kapı, dalgalar, doğuş işareti, ölüm özeti)
 - [ ] Can sistemi + ölüm/yeniden başlama
 - [ ] 3 düşman ailesi
 
