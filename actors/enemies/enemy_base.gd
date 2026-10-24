@@ -5,7 +5,10 @@ extends ActorBase
 ## Saldırı renkleri: ALTIN = parry'lenebilir, KIRMIZI = kaçman gerekir.
 ##
 ## Her düşman ailesi yüksekliğe KENDİ yöntemiyle cevap verir:
-##   Taurus: zıplayıp platforma çıkar.  Sagitta: çıkmaz, yukarıya ateş eder.  (Diğerleri sonra.)
+##   Taurus: zıplayıp platforma çıkar.  Sagitta: çıkmaz, yukarıya ateş eder.  Scorpius: kılıç mesafesini korur.
+##
+## VURULUNCA: zırhsız düşmanın hazırladığı/yaptığı saldırı İPTAL olur (`stagger`), kısa süre savunmasız kalır.
+## Böylece 3'lü kombo kesintisiz akar: kombo yaparken düşman sana saldıramaz.
 
 enum Tell { NONE, GOLD, RED }
 
@@ -13,6 +16,12 @@ const GOLD := Color(1.0, 0.8, 0.2)
 const RED := Color(1.0, 0.22, 0.22)
 ## Başına konulan oyuncudan kayma hızı (px/sn).
 const SLIDE_OFF_SPEED := 220.0
+## Vuruşla sersemleme süreleri (sn). Hafif vuruş, oyuncunun kombo hızından (~0.28 sn) uzun sürer ki zincir kopmasın;
+## ağır vuruş (hasar >= 2: 3. vuruş, parry sonrası güçlü vuruş, ritim bonusu) daha uzun sürer.
+const STAGGER_LIGHT := 0.36
+const STAGGER_HEAVY := 0.6
+## Sarı parry sembolünün belirme süresi (sn).
+const TELL_POP_TIME := 0.18
 
 # Düşman animasyonları (PNG'ler assets/sprites/<düşman>/ içine konunca otomatik kullanılır).
 const ANIM_SPEC := {
@@ -39,11 +48,14 @@ var target: Player = null
 var facing := -1
 var stun_t := 0.0
 var knock_t := 0.0
-## true iken vuruşla geri itilmez (saldırı sırasında "süper zırh").
+## true iken vuruşla geri itilmez ve saldırısı bölünmez ("süper zırh"; ileride zırhlı düşmanlar için).
+## Taurus/Sagitta/Scorpius zırhsızdır: vurulunca saldırıları iptal olur.
 var armored := false
 var nav: PlatformNav
 
 var _tell := Tell.NONE
+## Uyarı başlayalı geçen süre (görsel animasyon için).
+var _tell_age := 0.0
 ## Yanma (Kıvılcım eşyası): kalan süre ve bir sonraki hasar tiki.
 var burn_t := 0.0
 var _burn_tick := 0.0
@@ -81,14 +93,19 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 	velocity.y = minf(velocity.y + gravity * delta, 1200.0)
+	var frozen := false
+	var brake := 2400.0
 	if knock_t > 0.0:
 		knock_t -= delta
-		velocity.x = move_toward(velocity.x, 0.0, 1800.0 * delta)
-	elif stun_t > 0.0:
+		frozen = true
+		brake = 1800.0
+	if stun_t > 0.0:
 		stun_t -= delta
-		velocity.x = move_toward(velocity.x, 0.0, 2400.0 * delta)
+		frozen = true
 		if stun_t <= 0.0:
 			_on_stun_end()
+	if frozen:
+		velocity.x = move_toward(velocity.x, 0.0, brake * delta)
 	else:
 		_ai(delta)
 	move_and_slide()
@@ -110,6 +127,7 @@ func _process(delta: float) -> void:
 		# Sprite ve yer tutucular SAĞA bakacak şekilde çizilir; facing = -1 aynalar.
 		(visual as Node2D).scale.x = facing if facing != 0 else 1
 	if _tell != Tell.NONE:
+		_tell_age += delta
 		if tell_glow != null:
 			tell_glow.modulate.a = 0.7 + 0.25 * sin(Time.get_ticks_msec() / 45.0)
 		queue_redraw()
@@ -170,6 +188,11 @@ func _ai(_delta: float) -> void:
 	pass
 
 
+## Vuruşla bölündü (hazırlanan ya da süren saldırı iptal). Alt sınıflar kendi evrelerini sıfırlar.
+func _on_interrupted() -> void:
+	pass
+
+
 func _on_stun_end() -> void:
 	pass
 
@@ -192,6 +215,8 @@ func stun(duration: float) -> void:
 
 func set_tell(mode: Tell) -> void:
 	var changed := mode != _tell
+	if changed:
+		_tell_age = 0.0
 	_tell = mode
 	if tell_glow != null:
 		tell_glow.visible = mode != Tell.NONE
@@ -201,24 +226,29 @@ func set_tell(mode: Tell) -> void:
 	queue_redraw()
 
 
-## Saldırı uyarısı: altın = parry'le (elmas), kırmızı = kaç (X). Şekil, renk körlüğüne karşı da ayırt edici.
+## Başın üstündeki sarı sembol sadece parry'lenebilir (altın) saldırıda görünür.
+func has_tell_symbol() -> bool:
+	return _tell == Tell.GOLD
+
+
+## Saldırı uyarısı: SADECE parry'lenebilir (altın) saldırıda başın üstünde sarı elmas çıkar.
+## Kırmızı saldırıda sembol yok; yalnızca gövde kırmızı parlar (kaç!).
 func _draw() -> void:
-	if _tell == Tell.NONE:
+	if not has_tell_symbol():
 		return
-	var pulse := 1.0 + 0.18 * sin(Time.get_ticks_msec() / 55.0)
-	var y := -58.0
-	if _tell == Tell.GOLD:
-		var r := 14.0 * pulse
-		var pts := PackedVector2Array([Vector2(0, y - r), Vector2(r, y), Vector2(0, y + r), Vector2(-r, y)])
-		draw_colored_polygon(pts, GOLD)
-		pts.append(pts[0])
-		draw_polyline(pts, Color.WHITE, 2.5)
-	else:
-		var r := 11.0 * pulse
-		draw_line(Vector2(-r, y - r), Vector2(r, y + r), Color.WHITE, 9.0)
-		draw_line(Vector2(-r, y + r), Vector2(r, y - r), Color.WHITE, 9.0)
-		draw_line(Vector2(-r, y - r), Vector2(r, y + r), RED, 5.0)
-		draw_line(Vector2(-r, y + r), Vector2(r, y - r), RED, 5.0)
+	var pop := DamageNumber.pop_scale(_tell_age / TELL_POP_TIME)
+	var pulse := 1.0 + 0.12 * sin(Time.get_ticks_msec() / 55.0)
+	var y := -64.0
+	var r := 15.0 * pulse * pop
+	# Yumuşak hale
+	draw_circle(Vector2(0, y), r * 2.0, Color(1.0, 0.82, 0.25, 0.10))
+	draw_circle(Vector2(0, y), r * 1.5, Color(1.0, 0.85, 0.3, 0.14))
+	var pts := PackedVector2Array([Vector2(0, y - r), Vector2(r * 0.8, y), Vector2(0, y + r), Vector2(-r * 0.8, y)])
+	draw_colored_polygon(pts, GOLD)
+	var inner := PackedVector2Array([Vector2(0, y - r * 0.55), Vector2(r * 0.42, y), Vector2(0, y + r * 0.55), Vector2(-r * 0.42, y)])
+	draw_colored_polygon(inner, Color(1.0, 0.96, 0.7))
+	pts.append(pts[0])
+	draw_polyline(pts, Color.WHITE, 2.5)
 
 
 func on_hit_by(hitbox: Hitbox) -> bool:
@@ -230,11 +260,22 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 	take_damage(amount, hitbox.source)
 	if not dead and not armored:
 		var dir := signf(global_position.x - hitbox.global_position.x)
-		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force
+		var heavy := hitbox.damage >= 2
+		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force * (1.6 if heavy else 1.0)
 		velocity.y = -110.0
-		knock_t = 0.12
+		stagger(STAGGER_HEAVY if heavy else STAGGER_LIGHT)
 		anim.trigger("hurt", 0.2)
 	return true
+
+
+## Vuruşla sersemlet: hazırlanan/süren saldırı iptal olur, düşman `duration` sn boyunca bir şey yapamaz.
+## (Yanma gibi kaynaksız hasar bunu çağırmaz; sadece vuruşlar çağırır.)
+func stagger(duration: float) -> void:
+	if dead or armored:
+		return
+	knock_t = maxf(knock_t, duration)
+	set_tell(Tell.NONE)
+	_on_interrupted()
 
 
 func die() -> void:

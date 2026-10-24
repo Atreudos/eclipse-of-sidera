@@ -9,7 +9,8 @@ extends EnemyBase
 @export var lunge_speed := 640.0
 @export var lunge_time := 0.28
 @export var recover_time := 0.85
-@export_range(0.0, 1.0) var red_chance := 0.25
+## Atılmanın KIRMIZI (parry'lenemez, 2 hasar) olma şansı. Çoğu atılma kırmızıdır; altın (parry) fırsatı seyrek gelir.
+@export_range(0.0, 1.0) var red_chance := 0.6
 
 enum Phase { CHASE, TELEGRAPH, LUNGE, RECOVER }
 
@@ -80,7 +81,6 @@ func _begin_telegraph() -> void:
 	_red = randf() < red_chance
 	_phase = Phase.TELEGRAPH
 	_timer = telegraph_time
-	armored = true
 	facing = 1 if target.global_position.x > global_position.x else -1
 	set_tell(Tell.RED if _red else Tell.GOLD)
 	anim.trigger("telegraph", telegraph_time)
@@ -98,7 +98,6 @@ func _begin_lunge() -> void:
 
 func _end_lunge() -> void:
 	attack_hitbox.active = false
-	armored = false
 	set_tell(Tell.NONE)
 	_phase = Phase.RECOVER
 	_timer = recover_time
@@ -127,6 +126,14 @@ func _on_attack_parried(_by: Node) -> void:
 
 func _on_stunned() -> void:
 	attack_hitbox.active = false
+
+
+## Vurulunca hazırlanan ya da süren atılma iptal olur; kısa süre sonra yeniden dener.
+func _on_interrupted() -> void:
+	if _phase == Phase.TELEGRAPH or _phase == Phase.LUNGE:
+		attack_hitbox.active = false
+		_phase = Phase.CHASE
+		_cooldown = maxf(_cooldown, randf_range(0.7, 1.1))
 
 
 func _on_death() -> void:

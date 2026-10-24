@@ -90,6 +90,11 @@ func _run_all() -> void:
 		"parry_dalga": _test_parry_wave,
 		"parry_dalga_gercek": _test_parry_wave_real,
 		"parry_ses": _test_parry_sound,
+		"sersemleme_taurus": _test_stagger_taurus,
+		"sersemleme_kombo": _test_stagger_combo_real,
+		"sersemleme_sagitta": _test_stagger_sagitta,
+		"sersemleme_kurallar": _test_stagger_rules,
+		"parry_oran": _test_parry_ratio,
 		"esya_db": _test_items_db,
 		"esya_envanter": _test_inventory,
 		"esya_etki_dash": _test_item_dash_effects,
@@ -588,7 +593,7 @@ func _test_taurus_red_lunge_and_death() -> void:
 
 
 func _test_sagitta_cadence() -> void:
-	await _new_world("Sagitta: mermi ritmi (her 3. mermi kırmızı)")
+	await _new_world("Sagitta: mermi ritmi (çoğu kırmızı, her 3. mermi altın)")
 	var p := _spawn_player()
 	p.health = 999
 	var s := SAGITTA.instantiate() as Sagitta
@@ -608,7 +613,7 @@ func _test_sagitta_cadence() -> void:
 			break
 	check(seen.size() >= 3, "sagitta mermi attı (%d adet)" % seen.size())
 	if seen.size() >= 3:
-		check(colors[0] and colors[1] and not colors[2], "ilk iki altın, üçüncü kırmızı %s" % str(colors))
+		check(not colors[0] and not colors[1] and colors[2], "ilk iki kırmızı, üçüncü altın %s" % str(colors))
 
 
 func _count_sparks() -> int:
@@ -2122,3 +2127,189 @@ func _test_item_misc_effects() -> void:
 	check(GameState.umbra_extra_carry == 1, "Aç Kapı: Umbra fazladan 1 eşya taşıyor")
 	inv.remove("open_door")
 	check(GameState.umbra_extra_carry == 0, "çıkarınca bedeli de gider")
+
+
+# ------------------------------------------------------------------ sersemleme (vurulan düşman saldıramaz) ve parry oranı
+
+func _player_hitbox(p: Player, at: Vector2, dmg: int = 1) -> Hitbox:
+	var hb := Hitbox.new()
+	hb.faction = "player"
+	hb.damage = dmg
+	hb.source = p
+	_world.add_child(hb)
+	hb.global_position = at
+	return hb
+
+
+func _test_stagger_taurus() -> void:
+	await _new_world("Sersemleme: vurulan Taurus'un atılması iptal olur")
+	var p := _spawn_player(500.0)
+	var b := TAURUS.instantiate() as Taurus
+	b.red_chance = 0.0
+	b.max_hp = 99
+	_world.add_child(b)
+	b.global_position = Vector2(620.0, 612.0)
+	await _frames(20)
+	# 1) Hazırlık (telegraph) sırasında vurulunca iptal
+	b._begin_telegraph()
+	await _frames(5)
+	check(b._phase == Taurus.Phase.TELEGRAPH and b._tell == EnemyBase.Tell.GOLD, "taurus hazırlanıyor, altın uyarı açık")
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0)))
+	check(b._phase == Taurus.Phase.CHASE, "vurulunca hazırlık iptal oldu (faz %d)" % b._phase)
+	check(b._tell == EnemyBase.Tell.NONE, "uyarı söndü")
+	check(b.knock_t >= EnemyBase.STAGGER_LIGHT - 0.01, "sersemledi (%.2f sn)" % b.knock_t)
+	check(b._cooldown >= 0.7, "hemen yeniden saldırmaz (bekleme %.2f)" % b._cooldown)
+	# Sersemlik süresince ve beklemede saldırmaz: 0.6 sn boyunca atılma yok
+	var attacked := false
+	var hp0 := p.health
+	for i in 36:
+		await get_tree().physics_frame
+		if b._phase == Taurus.Phase.LUNGE or b._phase == Taurus.Phase.TELEGRAPH:
+			attacked = true
+	check(not attacked and p.health == hp0, "0.6 sn boyunca saldırı yok, can kaybı yok")
+	# 2) Atılma (lunge) sırasında vurulunca: hasar veren alan kapanır
+	b.knock_t = 0.0
+	b._cooldown = 0.0
+	b._begin_telegraph()
+	b._begin_lunge()
+	check(b.attack_hitbox.active, "atılma sırasında saldırı alanı açık")
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0)))
+	check(not b.attack_hitbox.active, "atılırken vurulunca saldırı alanı kapandı")
+	check(b._phase == Taurus.Phase.CHASE, "atılma iptal (faz %d)" % b._phase)
+	# 3) Toparlanma (recover) evresinde vurulunca o evre bozulmaz
+	b.knock_t = 0.0
+	b._phase = Taurus.Phase.RECOVER
+	b._timer = 0.8
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0)))
+	check(b._phase == Taurus.Phase.RECOVER, "toparlanırken vurulunca evre aynı kalır")
+
+
+func _test_stagger_combo_real() -> void:
+	await _new_world("Sersemleme: 5+ vuruşluk kombo sırasında düşman sana saldıramaz")
+	var p := _spawn_player(500.0)
+	p.facing = 1
+	var b := TAURUS.instantiate() as Taurus
+	b.red_chance = 1.0  # kırmızı atılma 2 hasar vurur: dokunursa net görülür
+	b.max_hp = 99
+	_world.add_child(b)
+	b.global_position = Vector2(570.0, 612.0)
+	await _frames(15)
+	var hp0 := p.health
+	var hits := [0]
+	var last_hp := [b.health]
+	var lunged := false
+	b._cooldown = 0.0
+	b._begin_telegraph()
+	for i in 220:
+		await get_tree().physics_frame
+		if i % 15 == 0 and not p.dead:
+			p.intent.attack_pressed = true
+		if b.health < last_hp[0]:
+			hits[0] += 1
+		last_hp[0] = b.health
+		if b._phase == Taurus.Phase.LUNGE:
+			lunged = true
+		# Oyuncu düşmanı kovalasın (kombo sürerken yaklaş)
+		var gap := b.global_position.x - p.global_position.x
+		p.intent.move_x = 1.0 if gap > 62.0 else 0.0
+	p.intent.move_x = 0.0
+	check(hits[0] >= 5, "5+ vuruş indirdik (%d)" % hits[0])
+	check(not lunged, "kombo boyunca Taurus hiç atılmadı")
+	check(p.health == hp0, "oyuncu hasar almadı (%d -> %d)" % [hp0, p.health])
+
+
+func _test_stagger_sagitta() -> void:
+	await _new_world("Sersemleme: nişan alan Sagitta vurulunca ateş etmez")
+	var p := _spawn_player(500.0)
+	var s := SAGITTA.instantiate() as Sagitta
+	s.max_hp = 99
+	_world.add_child(s)
+	s.global_position = Vector2(800.0, 612.0)
+	await _frames(15)
+	s._begin_telegraph()
+	await _frames(8)
+	check(s._phase == Sagitta.Phase.TELEGRAPH, "sagitta nişan alıyor")
+	s.on_hit_by(_player_hitbox(p, s.global_position + Vector2(-30.0, 0.0)))
+	check(s._phase == Sagitta.Phase.IDLE and s._tell == EnemyBase.Tell.NONE, "nişan iptal, uyarı söndü")
+	var shots := 0
+	for i in 50:
+		await get_tree().physics_frame
+		for c in _world.get_children():
+			if c is Projectile:
+				shots += 1
+	check(shots == 0, "iptal edilen atış çıkmadı")
+
+
+func _test_stagger_rules() -> void:
+	await _new_world("Sersemleme kuralları: ağır vuruş, zırh, yanma, sersemlikte süre")
+	var p := _spawn_player(300.0)
+	var b := TAURUS.instantiate() as Taurus
+	b.max_hp = 99
+	_world.add_child(b)
+	b.global_position = Vector2(900.0, 612.0)
+	await _frames(15)
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0), 1))
+	check(is_equal_approx(b.knock_t, EnemyBase.STAGGER_LIGHT), "hafif vuruş %.2f sn" % b.knock_t)
+	b.knock_t = 0.0
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0), 2))
+	check(is_equal_approx(b.knock_t, EnemyBase.STAGGER_HEAVY), "ağır vuruş (hasar 2) %.2f sn" % b.knock_t)
+	# Zırhlı düşman bölünmez
+	b.knock_t = 0.0
+	b.armored = true
+	b._phase = Taurus.Phase.TELEGRAPH
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0)))
+	check(b.knock_t == 0.0 and b._phase == Taurus.Phase.TELEGRAPH, "zırhlı düşman sersemlemez, saldırısı bölünmez")
+	b.armored = false
+	b._phase = Taurus.Phase.CHASE
+	# Yanma / kaynaksız hasar sersemletmez
+	b.knock_t = 0.0
+	b.take_damage(1, null)
+	check(b.knock_t == 0.0, "yanma gibi kaynaksız hasar sersemletmedi")
+	# Sersemlemiş (parry sonrası) düşman vurulunca sersemlik süresi akmaya devam eder
+	b.knock_t = 0.0
+	b.stun(1.0)
+	b.on_hit_by(_player_hitbox(p, b.global_position + Vector2(-30.0, 0.0)))
+	var stun0 := b.stun_t
+	await _frames(30)
+	check(stun0 - b.stun_t > 0.45, "vuruş sırasında da sersemlik süresi akıyor (%.2f -> %.2f)" % [stun0, b.stun_t])
+	# Altın uyarı sembolü sadece altın saldırıda
+	b.set_tell(EnemyBase.Tell.GOLD)
+	check(b.has_tell_symbol(), "altın saldırıda sarı sembol var")
+	b.set_tell(EnemyBase.Tell.RED)
+	check(not b.has_tell_symbol(), "kırmızı saldırıda sembol (çarpı) yok")
+	b.set_tell(EnemyBase.Tell.NONE)
+	check(not b.has_tell_symbol(), "uyarı yokken sembol yok")
+
+
+func _test_parry_ratio() -> void:
+	await _new_world("Parry fırsatı seyrek: altın saldırı payı düşük")
+	var p := _spawn_player(300.0)
+	var b := TAURUS.instantiate() as Taurus
+	_world.add_child(b)
+	b.global_position = Vector2(900.0, 612.0)
+	b.set_physics_process(false)
+	b.target = p
+	await _frames(5)
+	var gold := 0
+	var n := 400
+	for i in n:
+		b._begin_telegraph()
+		if not b._red:
+			gold += 1
+		b._phase = Taurus.Phase.CHASE
+		b.set_tell(EnemyBase.Tell.NONE)
+	var share := float(gold) / float(n)
+	check(share > 0.28 and share < 0.52, "Taurus atılmalarının ~%%40'ı altın (%.0f%%)" % (share * 100.0))
+	var s := SAGITTA.instantiate() as Sagitta
+	_world.add_child(s)
+	s.global_position = Vector2(1000.0, 612.0)
+	s.set_physics_process(false)
+	await _frames(5)
+	var golds := 0
+	for i in 12:
+		s._begin_telegraph()
+		if not s._next_is_red:
+			golds += 1
+		s._phase = Sagitta.Phase.IDLE
+		s.set_tell(EnemyBase.Tell.NONE)
+	check(golds == 4, "Sagitta'nın 12 mermisinin 4'ü altın (%d)" % golds)

@@ -1,14 +1,14 @@
 class_name Sagitta
 extends EnemyBase
-## Sagitta: mesafeyi korur, uyarı verip mermi atar. Her 3. mermi KIRMIZI (parry'lenemez).
+## Sagitta: mesafeyi korur, uyarı verip mermi atar. Mermilerin çoğu KIRMIZI (parry'lenemez), her 3.'sü ALTIN.
 
 const PROJECTILE := preload("res://combat/projectile.tscn")
 
 @export var fire_interval := 1.9
 @export var telegraph_time := 0.45
 @export var projectile_speed := 360.0
-## Her N. mermi kırmızı olur (0 = hiç kırmızı yok).
-@export var red_every := 3
+## Her N. mermi altın (parry'lenebilir) olur, diğerleri kırmızıdır (0 = hiç altın yok).
+@export var gold_every := 3
 
 enum Phase { IDLE, TELEGRAPH, COOLDOWN }
 
@@ -63,7 +63,6 @@ func _ai(delta: float) -> void:
 				_phase = Phase.COOLDOWN
 				_timer = 0.35
 				set_tell(Tell.NONE)
-				armored = false
 		Phase.COOLDOWN:
 			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 			_timer -= delta
@@ -74,10 +73,9 @@ func _ai(delta: float) -> void:
 
 func _begin_telegraph() -> void:
 	_shots += 1
-	_next_is_red = red_every > 0 and _shots % red_every == 0
+	_next_is_red = not (gold_every > 0 and _shots % gold_every == 0)
 	_phase = Phase.TELEGRAPH
 	_timer = telegraph_time
-	armored = true
 	set_tell(Tell.RED if _next_is_red else Tell.GOLD)
 	anim.trigger("telegraph", telegraph_time)
 
@@ -98,6 +96,13 @@ func _fire() -> void:
 func _on_stunned() -> void:
 	_phase = Phase.COOLDOWN
 	_timer = 0.3
+
+
+## Vurulunca nişan alıp ateş etmek iptal olur; biraz sonra yeniden hedef alır.
+func _on_interrupted() -> void:
+	if _phase == Phase.TELEGRAPH:
+		_phase = Phase.IDLE
+		_timer = randf_range(0.9, 1.3)
 
 
 func _on_death() -> void:
