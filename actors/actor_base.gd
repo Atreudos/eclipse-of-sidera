@@ -1,6 +1,6 @@
 class_name ActorBase
 extends CharacterBody2D
-## Oyuncu, düşmanlar ve (ileride) Rakip için ortak taban: can, hasar, görsel geri bildirim, animasyon.
+## Oyuncu, düşmanlar ve (ileride) Umbra için ortak taban: can, hasar, görsel geri bildirim, animasyon.
 
 signal damaged(amount: int, source: Node)
 signal died

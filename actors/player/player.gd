@@ -10,6 +10,8 @@ signal dash_charges_changed(current: int, maximum: int)
 signal landed(speed: float)
 ## Dash bir düşmanın gövdesine çarptı (içinden geçilmez).
 signal dash_bumped(enemy: EnemyBase)
+## Etkileşim tuşuna (E) basıldı (ödül sehpası vb. dinler).
+signal interacted
 
 enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
 
@@ -51,6 +53,9 @@ const BASE_STATS := {
 	"hurt_iframes": 1.0,
 	# --- kombo ---
 	"combo_window": 1.0,     # her vuruş/parry bu kadar saniye daha kombo süresi verir
+	# --- ritim (eşyalar bu çarpanları değiştirir) ---
+	"rhythm_gain": 1.0,      # ritim kazanımı çarpanı
+	"rhythm_decay": 1.0,     # ritim düşüş hızı çarpanı
 }
 
 # Kombo: startup = hazırlık, active = vuruş açık, recovery = toparlanma (saniye)
@@ -88,6 +93,12 @@ var dash_charges := 0
 var combo: ComboTracker
 ## Ritim (agresiflik) metresi: kademeye göre hız/hasar/dash bonusu, yüksek kademede parry'den can.
 var rhythm: RhythmMeter
+## Eşyalar: Stats modifier'ları, davranış betikleri, etiket sinerjileri.
+var inventory: Inventory
+## Hayalet Adım eşyası: dash sırasında düşman gövdelerinin içinden geçilir.
+var dash_ghost := false
+## Soğukkanlı eşyası: bu süre (sn) kaldıkça dash şarj harcamaz.
+var free_dash_t := 0.0
 
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -149,6 +160,9 @@ func _ready() -> void:
 	rhythm = RhythmMeter.new()
 	rhythm.name = "Rhythm"
 	add_child(rhythm)
+	inventory = Inventory.new()
+	inventory.name = "Inventory"
+	add_child(inventory)
 
 
 # ---------------------------------------------------------------- giriş
@@ -160,6 +174,7 @@ func _gather_intent() -> void:
 	intent.dash_pressed = Input.is_action_just_pressed("dash")
 	intent.parry_pressed = Input.is_action_just_pressed("parry")
 	intent.attack_pressed = Input.is_action_just_pressed("attack")
+	intent.interact_pressed = Input.is_action_just_pressed("interact")
 
 
 # ---------------------------------------------------------------- ana döngü
@@ -181,12 +196,15 @@ func _physics_process(delta: float) -> void:
 			_state_hurt(delta)
 		State.DEAD:
 			_state_dead(delta)
+	_sync_enemy_collision()
 	var fall_speed := velocity.y
 	var was_on_floor := is_on_floor()
 	move_and_slide()
 	if not was_on_floor and is_on_floor() and fall_speed > HARD_LANDING_SPEED:
 		_on_landed(fall_speed)
 	_post_move(delta)
+	if intent.interact_pressed and not dead:
+		interacted.emit()
 	intent.clear_edges()
 	queue_redraw()
 
@@ -197,6 +215,20 @@ func _on_landed(speed: float) -> void:
 	Sfx.play("land", -11.0 + 7.0 * k, 1.0, 0.05)
 	RingFx.spawn(get_parent(), Vector2(global_position.x, feet_y() - 2.0), Color(1.0, 1.0, 1.0, 0.22 + 0.2 * k), 5.0, 18.0 + 24.0 * k, 0.2)
 	landed.emit(speed)
+
+
+## Hayalet Adım: dash sırasında düşman katmanı çarpışmadan çıkar, dash bitince geri gelir.
+## (Dash düşmanın içinde biterse gövde geri geldiğinde fizik motoru oyuncuyu dışarı iter.)
+func _sync_enemy_collision() -> void:
+	if dash_ghost and state == State.DASH:
+		collision_mask &= ~Layers.ENEMY
+	else:
+		collision_mask |= Layers.ENEMY
+
+
+## Dash yapılabilir mi? (şarj var ya da Soğukkanlı'nın serbest süresi sürüyor)
+func can_dash() -> bool:
+	return dash_charges > 0 or free_dash_t > 0.0
 
 
 ## Hareketten sonra: düşman gövdesine çarpan dash erken biter; düşmanın başına konulursa yana kayılır.
@@ -275,6 +307,7 @@ func pick_animation() -> String:
 
 func _tick_timers(delta: float) -> void:
 	invulnerable_t = maxf(invulnerable_t - delta, 0.0)
+	free_dash_t = maxf(free_dash_t - delta, 0.0)
 	_empower_t = maxf(_empower_t - delta, 0.0)
 	_combo_window_t = maxf(_combo_window_t - delta, 0.0)
 	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
@@ -347,7 +380,7 @@ func _state_move(delta: float) -> void:
 
 
 func _handle_actions() -> void:
-	if intent.dash_pressed and dash_charges > 0:
+	if intent.dash_pressed and can_dash():
 		_start_dash()
 	elif intent.parry_pressed:
 		_start_parry()
@@ -358,8 +391,9 @@ func _handle_actions() -> void:
 # ---------------------------------------------------------------- dash
 
 func _start_dash() -> void:
-	dash_charges -= 1
-	dash_charges_changed.emit(dash_charges, stats.int_value("dash_charges"))
+	if free_dash_t <= 0.0:
+		dash_charges -= 1
+		dash_charges_changed.emit(dash_charges, stats.int_value("dash_charges"))
 	if absf(intent.move_x) > 0.05:
 		_dash_dir = 1 if intent.move_x > 0.0 else -1
 	else:
@@ -504,7 +538,7 @@ func _state_attack(delta: float) -> void:
 	if intent.attack_pressed:
 		_attack_queued = true
 	# iptal: dash her zaman (vuruş başladıktan sonra), parry vuruş bittikten sonra
-	if intent.dash_pressed and dash_charges > 0 and _attack_t >= startup:
+	if intent.dash_pressed and can_dash() and _attack_t >= startup:
 		melee.active = false
 		_start_dash()
 		return

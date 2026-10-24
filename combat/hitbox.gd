@@ -16,8 +16,10 @@ signal hit_world(body: Node)
 @export var active: bool = true:
 	set = set_active
 
-## Saldırıyı başlatan aktör (Rakip sistemi ve eşyalar bunu kullanacak).
+## Saldırıyı başlatan aktör (Umbra sistemi ve eşyalar bunu kullanacak).
+## Parry'lenen mermide `source` parry yapana geçer (hasar ona yazılsın diye); ilk sahibi `original_source`'ta kalır.
 var source: Node = null
+var original_source: Node = null
 
 var _hit_targets: Array[Hurtbox] = []
 
@@ -66,6 +68,13 @@ func _physics_process(_delta: float) -> void:
 		for body in get_overlapping_bodies():
 			hit_world.emit(body)
 			break
+
+
+## Saldırıyı ASIL yapan aktör (parry'den sonra bile). Geçersizse null.
+func attacker() -> Node:
+	if original_source != null and is_instance_valid(original_source):
+		return original_source
+	return source if source != null and is_instance_valid(source) else null
 
 
 ## Oyuncu parry yaptığında çağrılır.

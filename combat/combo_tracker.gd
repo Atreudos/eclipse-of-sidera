@@ -138,6 +138,6 @@ func _on_parry_success(actor: Node, hitbox: Node) -> void:
 		return
 	var hb := hitbox as Hitbox
 	var from: Node2D = null
-	if hb != null and is_instance_valid(hb.source) and hb.source is Node2D:
-		from = hb.source as Node2D
+	if hb != null:
+		from = hb.attacker() as Node2D
 	register_parry(from)

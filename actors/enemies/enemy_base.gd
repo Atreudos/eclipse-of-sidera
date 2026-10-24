@@ -44,6 +44,12 @@ var armored := false
 var nav: PlatformNav
 
 var _tell := Tell.NONE
+## Yanma (Kıvılcım eşyası): kalan süre ve bir sonraki hasar tiki.
+var burn_t := 0.0
+var _burn_tick := 0.0
+
+const BURN_INTERVAL := 0.6
+const BURN_COLOR := Color(1.0, 0.55, 0.15)
 
 @onready var tell_glow: ColorRect = get_node_or_null("Visual/Glow")
 @onready var hurtbox: Hurtbox = get_node_or_null("Hurtbox")
@@ -71,6 +77,9 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 	_find_target()
+	_tick_burn(delta)
+	if dead:
+		return
 	velocity.y = minf(velocity.y + gravity * delta, 1200.0)
 	if knock_t > 0.0:
 		knock_t -= delta
@@ -105,6 +114,8 @@ func _process(delta: float) -> void:
 			tell_glow.modulate.a = 0.7 + 0.25 * sin(Time.get_ticks_msec() / 45.0)
 		queue_redraw()
 	tint = Color(0.6, 0.8, 1.0) if stun_t > 0.0 else Color.WHITE
+	if burn_t > 0.0 and stun_t <= 0.0:
+		tint = Color(1.0, 0.72, 0.5).lerp(Color.WHITE, 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0))
 	anim.play(pick_animation())
 	super._process(delta)
 
@@ -125,6 +136,29 @@ func pick_animation() -> String:
 func _find_target() -> void:
 	if target == null or not is_instance_valid(target):
 		target = get_tree().get_first_node_in_group("player") as Player
+
+
+## Düşmanı tutuşturur: `duration` sn boyunca her 0.6 sn'de 1 hasar (yenilenir, üst üste binmez).
+## Yanma hasarı kaynaksızdır: ritim/kombo doldurmaz, başka eşyaları tetiklemez.
+func ignite(duration: float) -> void:
+	if dead:
+		return
+	if burn_t <= 0.0:
+		_burn_tick = 0.0
+	burn_t = maxf(burn_t, duration)
+
+
+func _tick_burn(delta: float) -> void:
+	if burn_t <= 0.0 or dead:
+		return
+	burn_t = maxf(burn_t - delta, 0.0)
+	_burn_tick += delta
+	if _burn_tick >= BURN_INTERVAL:
+		_burn_tick -= BURN_INTERVAL
+		var n := DamageNumber.spawn(get_parent(), global_position + Vector2(randf_range(-10.0, 10.0), -30.0), 1, randf_range(-0.6, 0.6))
+		if n != null:
+			n.color = BURN_COLOR
+		take_damage(1, null)
 
 
 func is_stunned() -> bool:

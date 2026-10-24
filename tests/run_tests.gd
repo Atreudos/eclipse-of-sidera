@@ -90,6 +90,11 @@ func _run_all() -> void:
 		"parry_dalga": _test_parry_wave,
 		"parry_dalga_gercek": _test_parry_wave_real,
 		"parry_ses": _test_parry_sound,
+		"esya_db": _test_items_db,
+		"esya_envanter": _test_inventory,
+		"esya_etki_dash": _test_item_dash_effects,
+		"esya_etki_parry": _test_item_parry_effects,
+		"esya_etki_diger": _test_item_misc_effects,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -1852,3 +1857,268 @@ func _test_parry_sound() -> void:
 	check(is_equal_approx(Sfx.parry_pitch(50), Sfx.parry_pitch(8)), "merdivenin sonunda sabit kalıyor")
 	check(is_equal_approx(Sfx.parry_pitch(0), 1.0), "geçersiz sayı güvenli")
 
+
+
+# ------------------------------------------------------------------ eşyalar (altyapı; içerik kullanıcının listesine göre gelecek)
+
+func _item(item_id: String) -> ItemData:
+	return ItemDB.get_item(item_id)
+
+
+func _fake_parry_hitbox(src: Node = null) -> Hitbox:
+	var hb := Hitbox.new()
+	hb.faction = "enemy"
+	hb.source = src
+	_world.add_child(hb)
+	return hb
+
+
+func _test_items_db() -> void:
+	print("\nEşya veritabanı")
+	var all := ItemDB.all()
+	check(all.size() >= 10, "en az 10 yer tutucu eşya var (%d)" % all.size())
+	var seen := {}
+	var fields_ok := true
+	var tags_ok := true
+	var fx_ok := true
+	var known := ["PARRY", "DASH", "MERMI", "ALEV", "BUZ", "ZEHIR", "CAN", "RITIM", "KARMA"]
+	for it in all:
+		if seen.has(it.id) or it.id == "" or it.display_name == "" or it.description == "":
+			fields_ok = false
+		seen[it.id] = true
+		for t in it.tags:
+			if not (t in known):
+				tags_ok = false
+		if it.effect_script != null and not (it.effect_script.new() is ItemEffect):
+			fx_ok = false
+	check(fields_ok, "kimlik/ad/açıklama dolu, kimlikler tekil")
+	check(tags_ok, "etiketler bilinen listeden")
+	check(fx_ok, "davranış betikleri ItemEffect'ten türüyor")
+	check(ItemDB.get_item("yok_boyle_esya") == null, "olmayan eşya null döner")
+	var r1 := RandomNumberGenerator.new()
+	r1.seed = 7
+	var pair := ItemDB.roll_pair(r1, ["golden_tooth"], ["frost"])
+	check(pair.size() == 2 and pair[0].id != pair[1].id, "ödül çifti iki farklı eşya")
+	check(not (pair[0].id in ["golden_tooth", "frost"]) and not (pair[1].id in ["golden_tooth", "frost"]), "sahip olunan ve Umbra'ya giden eşya çıkmıyor")
+	var r2 := RandomNumberGenerator.new()
+	r2.seed = 7
+	var pair2 := ItemDB.roll_pair(r2, ["golden_tooth"], ["frost"])
+	check(pair2[0].id == pair[0].id and pair2[1].id == pair[1].id, "aynı tohum aynı çifti verir")
+	# Havuz boşalsa da iki eşya çıkar
+	var every: Array = ItemDB.ids()
+	var pair3 := ItemDB.roll_pair(r2, every, [])
+	check(pair3.size() == 2 and pair3[0].id != pair3[1].id, "havuz tükenince de iki farklı eşya (sahip olunanlar dahil)")
+	# Umbra'nın eşyaları
+	GameState.reset()
+	GameState.leave_behind(_item("frost"))
+	check(GameState.umbra_has("frost") and GameState.umbra_items.size() == 1, "bırakılan eşya Umbra'ya gitti")
+	GameState.reset()
+	check(GameState.umbra_items.is_empty() and GameState.umbra_extra_carry == 0, "yeni koşuda sıfırlanır")
+
+
+func _test_inventory() -> void:
+	await _new_world("Envanter: modifier'lar, etiket sinerjisi, çıkarma")
+	var p := _spawn_player()
+	await _frames(2)
+	var inv := p.inventory
+	check(inv != null and inv.items.is_empty(), "oyuncuda boş envanter var")
+	var w0 := p.stats.value("parry_window")
+	inv.add(_item("golden_tooth"))
+	check(is_equal_approx(p.stats.value("parry_window"), w0 + 0.04), "Altın Diş: parry penceresi +0.04")
+	check(inv.has("golden_tooth") and inv.count("golden_tooth") == 1 and inv.tag_count("PARRY") == 1, "envanter kaydı doğru")
+	inv.add(_item("golden_tooth"))
+	check(is_equal_approx(p.stats.value("parry_window"), w0 + 0.08), "aynı eşya ikinci kez: etkisi üst üste biner")
+	check(inv.remove("golden_tooth") and is_equal_approx(p.stats.value("parry_window"), w0 + 0.04), "çıkarınca bir kopyanın etkisi gider")
+	inv.remove("golden_tooth")
+	check(is_equal_approx(p.stats.value("parry_window"), w0), "hepsi çıkınca stat tabana döndü")
+	check(not inv.remove("golden_tooth"), "olmayan eşya çıkarılamaz")
+	var added := [0]
+	EventBus.item_acquired.connect(func(_a: Node, _i: ItemData) -> void: added[0] += 1)
+	var r0 := p.stats.value("parry_zone_radius")
+	inv.add(_item("echo_bullet"))
+	inv.add(_item("cold_blood"))
+	check(inv.active_synergies().is_empty(), "2 PARRY eşyası: sinerji yok")
+	inv.add(_item("frost"))
+	check(inv.active_synergies().has("PARRY"), "3 PARRY eşyası: sinerji açıldı")
+	check(is_equal_approx(p.stats.value("parry_zone_radius"), r0 + 6.0), "sinerji parry bölgesini büyüttü")
+	check(added[0] == 3, "EventBus.item_acquired her eşyada yayıldı (%d)" % added[0])
+	inv.remove("frost")
+	check(inv.active_synergies().is_empty() and is_equal_approx(p.stats.value("parry_zone_radius"), r0), "eşya çıkınca sinerji de gider")
+	check(inv.items.size() == 2, "kalan eşya sayısı 2")
+
+
+func _test_item_dash_effects() -> void:
+	await _new_world("Eşya etkileri: Üçüncü Şarj, Hayalet Adım, Soğukkanlı")
+	var p := _spawn_player(500.0)
+	await _frames(2)
+	var inv := p.inventory
+	# Üçüncü Şarj
+	var speed0 := p.stats.value("dash_speed")
+	check(p.dash_charges == 2, "başlangıçta 2 şarj")
+	inv.add(_item("third_charge"))
+	check(p.stats.int_value("dash_charges") == 3 and p.dash_charges == 3, "Üçüncü Şarj: üst sınır 3, yeni şarj dolu geldi")
+	check(p.stats.value("dash_speed") < speed0, "bedeli: dash hızı düştü")
+	inv.remove("third_charge")
+	check(p.dash_charges == 2 and is_equal_approx(p.stats.value("dash_speed"), speed0), "çıkarınca şarj ve hız eski haline döndü")
+	# Soğukkanlı: parry'den sonra şarj harcanmaz
+	inv.add(_item("cold_blood"))
+	p.dash_charges = 0
+	check(not p.can_dash(), "şarj yokken dash yok")
+	var hb := _fake_parry_hitbox()
+	EventBus.parry_success.emit(p, hb)
+	check(is_equal_approx(p.free_dash_t, 1.0) and p.can_dash(), "Soğukkanlı: parry sonrası şarjsız dash açık")
+	p.intent.dash_pressed = true
+	await _frames(2)
+	check(p.state == Player.State.DASH and p.dash_charges == 0, "dash yapıldı, şarj harcanmadı")
+	await _frames(70)
+	check(p.free_dash_t <= 0.0, "1 sn dolunca serbest dash kapandı")
+	inv.remove("cold_blood")
+	# Hayalet Adım
+	p.dash_charges = p.stats.int_value("dash_charges")
+	p.global_position = Vector2(660.0, 612.0)
+	p.velocity = Vector2.ZERO
+	var e := BIDDER.instantiate() as Bidder
+	e.max_hp = 99
+	_world.add_child(e)
+	e.global_position = Vector2(740.0, 612.0)
+	e.set_physics_process(false)
+	await _frames(20)
+	inv.add(_item("ghost_step"))
+	check(p.dash_ghost, "Hayalet Adım açık")
+	check(p.collision_mask & Layers.ENEMY != 0, "dash dışında düşman gövdesi katı")
+	var bumps := [0]
+	p.dash_bumped.connect(func(_en: EnemyBase) -> void: bumps[0] += 1)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	p.intent.dash_pressed = true
+	await _frames(3)
+	check(p.state == Player.State.DASH and p.collision_mask & Layers.ENEMY == 0, "dash sırasında düşman gövdesi geçilebilir")
+	await _frames(30)
+	p.intent.move_x = 0.0
+	check(bumps[0] == 0, "çarpma olmadı")
+	check(p.global_position.x > e.global_position.x + 20.0, "düşmanın öbür tarafına geçti (%.0f > %.0f)" % [p.global_position.x, e.global_position.x])
+	check(p.collision_mask & Layers.ENEMY != 0, "dash bitince düşman gövdesi yeniden katı")
+	# Dash düşmanın İÇİNDE biterse takılıp kalmaz, dışarı itilir
+	var gap_min := p.body_half_width() + e.body_half_width()
+	p.global_position = Vector2(e.global_position.x - 150.0, 612.0)
+	p.velocity = Vector2.ZERO
+	await _frames(10)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	p.intent.dash_pressed = true
+	await _frames(2)
+	p.intent.move_x = 0.0
+	p.intent.dash_pressed = false
+	await _frames(60)
+	check(absf(p.global_position.x - e.global_position.x) >= gap_min - 2.0, "dash düşmanın içinde bitse de gövdeler ayrıldı (%.1f px)" % absf(p.global_position.x - e.global_position.x))
+	inv.remove("ghost_step")
+	check(not p.dash_ghost, "çıkarınca hayalet adım kapandı")
+
+
+func _test_item_parry_effects() -> void:
+	await _new_world("Eşya etkileri: Don, Yankılı Mermi, Faiz, Cam Kalp")
+	var p := _spawn_player(300.0)
+	await _frames(2)
+	var inv := p.inventory
+	# Don: parry'lenen saldırıyı yapan düşman donar
+	var e := BIDDER.instantiate() as Bidder
+	e.max_hp = 99
+	_world.add_child(e)
+	e.global_position = Vector2(900.0, 612.0)
+	e.set_physics_process(false)
+	inv.add(_item("frost"))
+	var hb := _fake_parry_hitbox(e)
+	EventBus.parry_success.emit(p, hb)
+	check(e.is_stunned() and e.stun_t > 2.0, "Don: parry'lenen saldırganı dondurdu (%.1f sn)" % e.stun_t)
+	inv.remove("frost")
+	e.stun_t = 0.0
+	EventBus.parry_success.emit(p, hb)
+	check(not e.is_stunned(), "Don çıkarılınca etki yok")
+	# Faiz: dash biriktirir, parry'de çevredeki düşmanlara patlar
+	inv.add(_item("interest"))
+	for i in 3:
+		EventBus.dash_used.emit(p)
+	check(inv.status_lines().size() == 1 and inv.status_lines()[0] == "FAİZ 3", "Faiz HUD yazısı: %s" % str(inv.status_lines()))
+	e.global_position = Vector2(400.0, 612.0)
+	var hp0 := e.health
+	EventBus.parry_success.emit(p, hb)
+	check(e.health == hp0 - 3, "Faiz: biriken 3 hasar yakındaki düşmana patladı (%d -> %d)" % [hp0, e.health])
+	check(inv.status_lines().is_empty(), "birikim sıfırlandı")
+	inv.remove("interest")
+	# Yankılı Mermi: parry'lenen mermi 3'e bölünür
+	inv.add(_item("echo_bullet"))
+	var src := _dummy_source(900.0)
+	var proj := _spawn_projectile(p.global_position + Vector2(30.0, 0.0), Vector2(-200.0, 0.0), true, src)
+	p.intent.parry_pressed = true
+	await _frames(3)
+	var mine := 0
+	for n in _world.get_children():
+		var pr := n as Projectile
+		if pr != null and pr.faction == "player":
+			mine += 1
+	check(is_instance_valid(proj) and mine == 3, "Yankılı Mermi: parry sonrası 3 oyuncu mermisi (%d)" % mine)
+	inv.remove("echo_bullet")
+	# Cam Kalp (lanetli): can 1, parry penceresi x2
+	await _frames(40)
+	var w0 := p.stats.value("parry_window")
+	p.health = p.stats.int_value("max_health")
+	inv.add(_item("glass_heart"))
+	check(p.stats.int_value("max_health") == 1 and p.health == 1, "Cam Kalp: en çok can 1")
+	check(is_equal_approx(p.stats.value("parry_window"), w0 * 2.0), "parry penceresi iki katı (%.2f)" % p.stats.value("parry_window"))
+	inv.remove("glass_heart")
+	check(p.stats.int_value("max_health") == 4 and is_equal_approx(p.stats.value("parry_window"), w0), "çıkarınca değerler döndü")
+
+
+func _test_item_misc_effects() -> void:
+	await _new_world("Eşya etkileri: Kıvılcım, Coşku, Kıpırdama, Aç Kapı")
+	var p := _spawn_player(200.0)
+	await _frames(2)
+	var inv := p.inventory
+	var r := p.rhythm
+	r.set_process(false)
+	# Kıvılcım: vuruş tutuşturur, yanma hasarı ritim/kombo doldurmaz
+	var e := BIDDER.instantiate() as Bidder
+	e.max_hp = 99
+	_world.add_child(e)
+	e.global_position = Vector2(1100.0, 612.0)
+	e.stun(30.0)
+	inv.add(_item("spark"))
+	e.take_damage(1, p)
+	check(e.burn_t > 1.0, "Kıvılcım: vurulan düşman tutuştu (%.1f sn)" % e.burn_t)
+	var hits0 := p.combo.hits
+	var rv0 := r.value
+	var hp0 := e.health
+	await _frames(45)
+	check(e.health == hp0 - 1, "yanma 0.6 sn'de 1 hasar verdi (%d -> %d)" % [hp0, e.health])
+	check(p.combo.hits == hits0 and is_equal_approx(r.value, rv0), "yanma hasarı kombo ve ritmi doldurmadı")
+	await _frames(100)
+	check(e.burn_t <= 0.0, "yanma sona erdi")
+	inv.remove("spark")
+	# Coşku: Coşkulu'da hasar x1.5; hasar alınca ritim tamamen sıfırlanır
+	r.reset()
+	var dmg0 := p.stats.value("attack_damage")
+	inv.add(_item("euphoria"))
+	r.add(80.0)
+	check(r.tier == 3 and is_equal_approx(p.stats.value("attack_damage"), dmg0 * 2.0 * 1.5), "Coşku: Coşkulu'da hasar x2 (ritim) x1.5 (eşya) = %.1f" % p.stats.value("attack_damage"))
+	p.take_damage(1, null)
+	check(r.value == 0.0 and r.tier == 0, "hasar alınca ritim sıfırlandı (%.0f)" % r.value)
+	inv.remove("euphoria")
+	check(not r.drop_to_floor, "çıkarınca tek kademe düşme geri geldi")
+	# Kıpırdama: ritim daha yavaş dolar, daha yavaş düşer
+	r.reset()
+	inv.add(_item("restless"))
+	var hb := _fake_parry_hitbox()
+	EventBus.dodge_success.emit(p, hb)
+	check(is_equal_approx(r.value, r.gain_dodge * 0.8), "Kıpırdama: kazanım x0.8 (%.1f)" % r.value)
+	r.reset()
+	r.add(40.0)
+	r.tick(1.0)
+	r.tick(1.0)  # 2 sn dolunca düşüş başlar: son saniyede decay_rate x0.55
+	check(is_equal_approx(40.0 - r.value, r.decay_rate * 0.55), "Kıpırdama: düşüş x0.55 (%.1f düştü)" % (40.0 - r.value))
+	inv.remove("restless")
+	# Aç Kapı: hasar x2, Umbra fazladan taşır
+	GameState.reset()
+	inv.add(_item("open_door"))
+	check(GameState.umbra_extra_carry == 1, "Aç Kapı: Umbra fazladan 1 eşya taşıyor")
+	inv.remove("open_door")
+	check(GameState.umbra_extra_carry == 0, "çıkarınca bedeli de gider")

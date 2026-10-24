@@ -12,6 +12,7 @@ func _init() -> void:
 		"dash": [_key(KEY_SHIFT), _key(KEY_L), _joy_btn(JOY_BUTTON_RIGHT_SHOULDER)],
 		"attack": [_key(KEY_J), _mouse(MOUSE_BUTTON_LEFT), _joy_btn(JOY_BUTTON_X)],
 		"parry": [_key(KEY_K), _mouse(MOUSE_BUTTON_RIGHT), _joy_btn(JOY_BUTTON_B)],
+		"interact": [_key(KEY_E), _joy_btn(JOY_BUTTON_Y)],
 		"restart": [_key(KEY_R)],
 		"debug_toggle": [_key(KEY_F3)],
 	}

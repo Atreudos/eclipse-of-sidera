@@ -29,6 +29,7 @@ func launch(vel: Vector2, is_parryable: bool, shooter: Node, dmg: int = 1) -> vo
 	velocity = vel
 	parryable = is_parryable
 	source = shooter
+	original_source = shooter
 	damage = dmg
 	rotation = vel.angle()
 	queue_redraw()

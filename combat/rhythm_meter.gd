@@ -33,6 +33,8 @@ const TIER_EFFECTS: Array = [
 ## Düşme hızı (değer/sn).
 @export var decay_rate := 14.0
 
+## true ise hasar alınca ritim tamamen sıfırlanır (Coşku eşyası); false ise bir kademe düşer.
+var drop_to_floor := false
 ## Parry'den can toparlama şansı, kademeye göre (testlerde değiştirilebilir).
 var heal_chances: Array[float] = [0.0, 0.0, 0.15, 0.25]
 var rng := RandomNumberGenerator.new()
@@ -89,7 +91,7 @@ func tick(delta: float) -> void:
 		return
 	_idle += delta
 	if _idle >= decay_delay:
-		_set_value(value - decay_rate * delta)
+		_set_value(value - decay_rate * _stat("rhythm_decay") * delta)
 
 
 ## Değeri artırır (kazanım). Düşme gecikmesi sıfırlanır.
@@ -153,19 +155,26 @@ func _is_player_dead() -> bool:
 
 # ---------------------------------------------------------------- olaylar
 
+## Oyuncunun stat'ı (eşyalar "rhythm_gain" / "rhythm_decay" çarpanlarını değiştirir). Yoksa 1.
+func _stat(stat_name: String) -> float:
+	if player == null or player.stats == null or not player.stats.base.has(stat_name):
+		return 1.0
+	return player.stats.value(stat_name)
+
+
 func _on_damage_dealt(target: Node, _amount: int, source: Node) -> void:
 	if player == null or source != player:
 		return
 	var t := target as ActorBase
 	if t == null or t == player or t.faction != "enemy":
 		return
-	add(gain_hit)
+	add(gain_hit * _stat("rhythm_gain"))
 
 
 func _on_parry_success(actor: Node, _hitbox: Node) -> void:
 	if actor != player:
 		return
-	add(gain_parry)
+	add(gain_parry * _stat("rhythm_gain"))
 	var chance: float = heal_chances[tier]
 	if chance > 0.0 and rng.randf() < chance:
 		player.heal(1)
@@ -173,15 +182,18 @@ func _on_parry_success(actor: Node, _hitbox: Node) -> void:
 
 func _on_dodge_success(actor: Node, _hitbox: Node) -> void:
 	if actor == player:
-		add(gain_dodge)
+		add(gain_dodge * _stat("rhythm_gain"))
 
 
 func _on_enemy_died(_enemy: Node) -> void:
-	add(gain_kill)
+	add(gain_kill * _stat("rhythm_gain"))
 
 
 func _on_player_damaged(_amount: int, _source: Node) -> void:
-	drop_tier()
+	if drop_to_floor:
+		reset()
+	else:
+		drop_tier()
 
 
 func _on_player_died() -> void:

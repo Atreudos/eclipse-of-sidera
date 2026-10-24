@@ -48,3 +48,9 @@ signal rhythm_changed(value: float, tier: int)
 ## Ritim kademesi değişti (0 Soğuk, 1 Isınmış, 2 Ateşli, 3 Coşkulu).
 @warning_ignore("unused_signal")
 signal rhythm_tier_changed(tier: int, previous: int)
+## Oyuncu bir eşya aldı.
+@warning_ignore("unused_signal")
+signal item_acquired(actor: Node, item: ItemData)
+## Seçilmeyen eşya Umbra'ya gitti.
+@warning_ignore("unused_signal")
+signal item_left_behind(item: ItemData)
