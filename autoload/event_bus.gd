@@ -36,3 +36,15 @@ signal room_cleared(index: int)
 signal combo_updated(hits: int, parries: int, damage: int)
 @warning_ignore("unused_signal")
 signal combo_ended(hits: int, parries: int, damage: int)
+## Oyuncu bir saldırıyı dash'in dokunulmazlık karelerinde savuşturdu (agresiflik ödülü).
+@warning_ignore("unused_signal")
+signal dodge_success(actor: Node, hitbox: Node)
+## Bir aktör can kazandı.
+@warning_ignore("unused_signal")
+signal healed(actor: Node, amount: int)
+## Ritim (agresiflik) metresi değeri değişti.
+@warning_ignore("unused_signal")
+signal rhythm_changed(value: float, tier: int)
+## Ritim kademesi değişti (0 Soğuk, 1 Isınmış, 2 Ateşli, 3 Coşkulu).
+@warning_ignore("unused_signal")
+signal rhythm_tier_changed(tier: int, previous: int)

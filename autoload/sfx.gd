@@ -7,6 +7,7 @@ extends Node
 const NAMES := [
 	"parry", "hit", "hurt", "dash", "whiff", "shoot", "kill", "tell_gold", "tell_red", "slash",
 	"door_open", "door_slam", "spawn", "room_clear", "land", "pickup", "left_behind",
+	"tier_up", "tier_down", "heal",
 ]
 const VOICES := 12
 
@@ -32,6 +33,7 @@ func _ready() -> void:
 	EventBus.dash_used.connect(func(_a: Node) -> void: play("dash", -3.0, 1.0, 0.05))
 	EventBus.enemy_died.connect(func(_e: Node) -> void: play("kill", -2.0, 1.0, 0.06))
 	EventBus.room_cleared.connect(func(_i: int) -> void: play("room_clear", -2.0))
+	EventBus.healed.connect(func(_a: Node, _n: int) -> void: play("heal", -2.0))
 	EventBus.damage_dealt.connect(_on_damage)
 
 

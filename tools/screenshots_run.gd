@@ -66,6 +66,13 @@ func _run() -> void:
 	await _shot("r2_dogus_isaretleri")
 	await _frames(40)
 	await _shot("r3_savas")
+	# Ritim çubuğu: ATEŞLİ kademesi (kademe atlama animasyonu sırasında) ve COŞKULU
+	player.rhythm.add(55.0)
+	await _frames(6)
+	await _shot("r3b_ritim_atesli")
+	player.rhythm.add(25.0)
+	await _frames(40)
+	await _shot("r3c_ritim_coskulu")
 	_kill_all()
 	await _frames(75)
 	player.global_position = Vector2((run.rooms[0] as Room).rect.end.x - 380.0, 612.0)

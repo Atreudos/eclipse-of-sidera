@@ -18,6 +18,8 @@ var wave := 0:
 var overlay: RunOverlay
 ## Ekranın üstünde kısa süre görünen büyük duyurular.
 var announcer: Announcer
+## Ritim (agresiflik) çubuğu.
+var rhythm_bar: RhythmBar
 
 var _hearts: Array[ColorRect] = []
 var _pips: Array[ColorRect] = []
@@ -30,6 +32,18 @@ func _ready() -> void:
 	layer = 10
 	_build()
 	player = get_tree().get_first_node_in_group("player") as Player
+	EventBus.rhythm_tier_changed.connect(_on_rhythm_tier_changed)
+
+
+func _exit_tree() -> void:
+	if EventBus.rhythm_tier_changed.is_connected(_on_rhythm_tier_changed):
+		EventBus.rhythm_tier_changed.disconnect(_on_rhythm_tier_changed)
+
+
+## Kademe yükselince küçük bir duyuru (düşüşlerde sessiz).
+func _on_rhythm_tier_changed(tier: int, previous: int) -> void:
+	if tier > previous and tier >= 1:
+		announcer.push(RhythmMeter.tier_name(tier), RhythmBar.TIER_COLORS[tier], 40, 0.9)
 
 
 func _build() -> void:
@@ -64,7 +78,12 @@ func _build() -> void:
 	_hint_label = _make_label(root, Vector2(24, 682), 14)
 	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  R yeniden  F3 debug"
 	_hint_label.modulate = Color(1, 1, 1, 0.55)
-	_debug_label = _make_label(root, Vector2(24, 96), 15)
+	rhythm_bar = RhythmBar.new()
+	rhythm_bar.name = "RhythmBar"
+	rhythm_bar.position = Vector2(24, 82)
+	rhythm_bar.size = Vector2(260, 60)
+	root.add_child(rhythm_bar)
+	_debug_label = _make_label(root, Vector2(24, 160), 15)
 	_debug_label.visible = false
 	overlay = RunOverlay.new()
 	overlay.name = "Overlay"
@@ -119,12 +138,14 @@ func _process(_delta: float) -> void:
 			_pip_fills[i].color = Color(0.85, 0.95, 1.0)
 		_pip_fills[i].size.x = fill_w
 	overlay.dead = player.dead
+	if rhythm_bar.meter == null and player.rhythm != null:
+		rhythm_bar.bind(player.rhythm)
 	_debug_label.text = _debug_text()
 
 
 func _debug_text() -> String:
 	var s := player.stats
-	return "FPS %d\nDurum: %s\nParry penceresi (1/2): %.2f sn\nParry bölgesi (3/4): %.0f px\nDash hızı (5/6): %.0f\nHitstop çarpanı (7/8): %.2f\nDash şarjı: %d" % [
+	return "FPS %d\nDurum: %s\nParry penceresi (1/2): %.2f sn\nParry bölgesi (3/4): %.0f px\nDash hızı (5/6): %.0f\nHitstop çarpanı (7/8): %.2f\nDash şarjı: %d\nRitim: %.0f (%s)" % [
 		Engine.get_frames_per_second(),
 		Player.State.keys()[player.state],
 		s.value("parry_window"),
@@ -132,6 +153,8 @@ func _debug_text() -> String:
 		s.value("dash_speed"),
 		Hitstop.duration_mult,
 		player.dash_charges,
+		player.rhythm.value if player.rhythm != null else 0.0,
+		RhythmMeter.tier_name(player.rhythm.tier) if player.rhythm != null else "-",
 	]
 
 

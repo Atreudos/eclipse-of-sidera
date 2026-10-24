@@ -36,6 +36,13 @@ static func draw_centered(ci: CanvasItem, text: String, center: Vector2, size: i
 	_draw_at(ci, f, text, pos, size, color, halo)
 
 
+## Yazıyı soldan hizalı çizer: `left_center` yazının SOL-ORTA noktasıdır.
+static func draw_left(ci: CanvasItem, text: String, left_center: Vector2, size: int, color: Color, halo: bool = true) -> void:
+	var f := get_font()
+	var pos := Vector2(left_center.x, left_center.y + (f.get_ascent(size) - f.get_descent(size)) * 0.5)
+	_draw_at(ci, f, text, pos, size, color, halo)
+
+
 ## Renkli parçalardan oluşan tek satır. runs: [[yazı, renk], ...]. Satır `center` etrafında ortalanır.
 ## Örnek: [["12", SARI], [" VURUŞ", BEYAZ]]
 static func draw_runs_centered(ci: CanvasItem, runs: Array, center: Vector2, size: int, alpha: float = 1.0, halo: bool = true) -> void:

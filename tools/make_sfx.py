@@ -394,6 +394,54 @@ def left_behind():
     return render(dur, f)
 
 
+def tier_up():
+    """Ritim kademesi yükseldi: iki notalı, parlak yükselen çın (oyunda perde kademeye göre ayarlanır)."""
+    dur = 0.42
+
+    def f(t, _i):
+        s = 0.0
+        for start, freq in ((0.0, 587.3), (0.07, 880.0)):
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.5 * sine(freq * 2.0, tt) + 0.2 * sine(freq * 3.0, tt)) * decay(tt, 0.13) * 0.5 * attack(tt, 0.001)
+        s += noise() * decay(t, 0.012) * 0.15
+        return s
+
+    return render(dur, f)
+
+
+def tier_down():
+    """Ritim kademesi düştü: kısa, matlaşan alçalan iki not."""
+    lp = Lowpass()
+    dur = 0.4
+
+    def f(t, _i):
+        s = 0.0
+        for start, freq in ((0.0, 392.0), (0.09, 261.6)):
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.3 * sine(freq * 2.0, tt)) * decay(tt, 0.1) * 0.5 * attack(tt, 0.002)
+        return lp(s, 0.35)
+
+    return render(dur, f)
+
+
+def heal():
+    """Can toparlama: yumuşak, yükselen üç notalı arpej."""
+    dur = 0.6
+
+    def f(t, _i):
+        s = 0.0
+        for i, freq in enumerate((523.3, 659.3, 784.0)):
+            start = 0.06 * i
+            if t >= start:
+                tt = t - start
+                s += (sine(freq, tt) + 0.25 * sine(freq * 2.0, tt)) * decay(tt, 0.2) * 0.5 * attack(tt, 0.003)
+        return s
+
+    return render(dur, f)
+
+
 if __name__ == "__main__":
     # (ad, üretici, tepe seviyesi)
     for name, gen, peak in [
@@ -404,6 +452,7 @@ if __name__ == "__main__":
         ("door_open", door_open, 0.8), ("door_slam", door_slam, 0.9), ("spawn", spawn, 0.7),
         ("room_clear", room_clear, 0.75), ("land", land, 0.8), ("pickup", pickup, 0.8),
         ("left_behind", left_behind, 0.8),
+        ("tier_up", tier_up, 0.8), ("tier_down", tier_down, 0.7), ("heal", heal, 0.75),
     ]:
         write(name, gen(), peak)
         print("yazıldı:", name + ".wav")

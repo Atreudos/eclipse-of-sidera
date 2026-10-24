@@ -86,6 +86,8 @@ var facing := 1
 var dash_charges := 0
 ## Kombo sayacı (vuruş/parry sayısı, hasar sayıları, kombo barı).
 var combo: ComboTracker
+## Ritim (agresiflik) metresi: kademeye göre hız/hasar/dash bonusu, yüksek kademede parry'den can.
+var rhythm: RhythmMeter
 
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -144,6 +146,9 @@ func _ready() -> void:
 	combo = ComboTracker.new()
 	combo.name = "Combo"
 	add_child(combo)
+	rhythm = RhythmMeter.new()
+	rhythm.name = "Rhythm"
+	add_child(rhythm)
 
 
 # ---------------------------------------------------------------- giriş
@@ -453,6 +458,9 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 		_do_parry(hitbox)
 		return false
 	if is_invulnerable():
+		# Dash'in dokunulmazlık karesinde savuşturulan saldırı = "dodge" (agresiflik ödülü).
+		if state == State.DASH and _dash_t < stats.value("dash_iframes"):
+			EventBus.dodge_success.emit(self, hitbox)
 		return false
 	take_damage(hitbox.damage, hitbox.source)
 	_enter_hurt(hitbox)

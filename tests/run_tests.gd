@@ -69,6 +69,9 @@ func _run_all() -> void:
 		"kamera_tepki": _test_camera_reactions,
 		"kamera_dikey": _test_camera_vertical,
 		"kamera_oda_gecis": _test_camera_room_transition,
+		"ritim": _test_rhythm_meter,
+		"ritim_dodge": _test_rhythm_dodge_and_heal,
+		"ritim_gercek": _test_rhythm_real_fight,
 		"oda_yerlesim": _test_room_layouts,
 		"oda_dalga": _test_run_waves,
 		"oda_akis": _test_run_flow,
@@ -989,6 +992,201 @@ func _wait_until(cond: Callable, max_frames: int) -> bool:
 			return true
 		await get_tree().physics_frame
 	return cond.call()
+
+
+# ------------------------------------------------------------------ ritim (agresiflik) metresi
+
+func _test_rhythm_meter() -> void:
+	await _new_world("Ritim: kazanımlar, kademeler, azalma, hasarla düşüş, kademe etkileri")
+	var p := _spawn_player(500.0)
+	p.stats.set_base("max_health", 99.0)
+	p.health = 99
+	var r := p.rhythm
+	r.set_process(false)  # zamanı biz veririz (tick)
+	check(r != null and r.value == 0.0 and r.tier == 0, "ritim 0'dan başlıyor (SOĞUK)")
+	check(RhythmMeter.tier_for(0.0) == 0 and RhythmMeter.tier_for(24.9) == 0, "0-25 SOĞUK")
+	check(RhythmMeter.tier_for(25.0) == 1 and RhythmMeter.tier_for(49.9) == 1, "25-50 ISINMIŞ")
+	check(RhythmMeter.tier_for(50.0) == 2 and RhythmMeter.tier_for(74.9) == 2, "50-75 ATEŞLİ")
+	check(RhythmMeter.tier_for(75.0) == 3 and RhythmMeter.tier_for(100.0) == 3, "75-100 COŞKULU")
+	check(RhythmMeter.tier_name(2) == "ATEŞLİ" and RhythmMeter.tier_name(99) == "COŞKULU", "kademe adları")
+	# Kazanımlar
+	var e := BIDDER.instantiate() as Bidder
+	e.max_hp = 99
+	_world.add_child(e)
+	e.global_position = Vector2(900.0, 612.0)
+	e.set_physics_process(false)
+	await _frames(3)
+	e.take_damage(1, p)
+	check(is_equal_approx(r.value, r.gain_hit), "vuruş ritmi doldurdu (+%.0f -> %.0f)" % [r.gain_hit, r.value])
+	var before := r.value
+	p.take_damage(1, e)
+	check(is_equal_approx(r.value, before), "oyuncunun aldığı hasar ritmi doldurmaz (kademe 0'da düşmez de)")
+	before = r.value
+	var fake_hit := Hitbox.new()
+	fake_hit.source = e
+	_world.add_child(fake_hit)
+	EventBus.parry_success.emit(p, fake_hit)
+	check(is_equal_approx(r.value, before + r.gain_parry), "parry ritmi doldurdu (+%.0f -> %.0f)" % [r.gain_parry, r.value])
+	before = r.value
+	EventBus.dodge_success.emit(p, fake_hit)
+	check(is_equal_approx(r.value, before + r.gain_dodge), "dodge ritmi doldurdu (+%.0f)" % r.gain_dodge)
+	before = r.value
+	e.take_damage(500, p)
+	check(is_equal_approx(r.value, before + r.gain_hit + r.gain_kill), "öldürme = vuruş + öldürme kazanımı (+%.0f)" % (r.value - before))
+	fake_hit.queue_free()
+	# Üst sınır
+	r.add(500.0)
+	check(r.value == RhythmMeter.MAX_VALUE and r.tier == 3, "değer 100'de sınırlı, COŞKULU")
+	# Kademe sinyalleri
+	r.reset()
+	var changes: Array = []
+	r.tier_changed.connect(func(t: int, prev: int) -> void: changes.append([t, prev]))
+	r.add(30.0)
+	r.add(30.0)
+	r.add(30.0)
+	check(changes == [[1, 0], [2, 1], [3, 2]], "kademe sinyalleri sırayla geldi %s" % str(changes))
+	# Azalma: 2 sn bekleme payı, sonra düşer
+	r.reset()
+	r.add(60.0)
+	r.tick(1.9)
+	check(is_equal_approx(r.value, 60.0), "2 sn dolmadan değer düşmedi")
+	r.tick(0.2)
+	check(r.value < 60.0 and r.value > 55.0, "2 sn sonra düşmeye başladı (%.1f)" % r.value)
+	r.tick(0.5)
+	var v1 := r.value
+	r.tick(0.5)
+	check(is_equal_approx(v1 - r.value, r.decay_rate * 0.5), "düşüş hızı %.0f/sn" % r.decay_rate)
+	r.add(5.0)
+	var v2 := r.value
+	r.tick(1.5)
+	check(is_equal_approx(r.value, v2), "yeni kazanım bekleme süresini sıfırladı")
+	r.paused = true
+	r.tick(10.0)
+	check(is_equal_approx(r.value, v2), "duraklatılınca değer donuyor")
+	r.paused = false
+	r.tick(30.0)
+	check(r.value == 0.0 and r.tier == 0, "uzun süre beklersen sıfıra iner")
+	# Hasar alınca bir kademe düşer
+	r.add(80.0)
+	check(r.tier == 3, "COŞKULU'ya çıktı")
+	p.take_damage(1, null)
+	check(r.tier == 2 and is_equal_approx(r.value, 50.0), "hasar: COŞKULU -> ATEŞLİ başı (%.0f)" % r.value)
+	p.take_damage(1, null)
+	check(r.tier == 1 and is_equal_approx(r.value, 25.0), "hasar: ATEŞLİ -> ISINMIŞ başı (%.0f)" % r.value)
+	p.take_damage(1, null)
+	p.take_damage(1, null)
+	check(r.tier == 0 and r.value == 0.0, "hasar: dibe iniyor, eksiye düşmüyor")
+	# Kademe etkileri: Stats modifier'ı olarak uygulanır, geri alınınca taban değerler döner
+	var base_speed := float(Player.BASE_STATS["move_speed"])
+	var base_recharge := float(Player.BASE_STATS["dash_recharge"])
+	var base_window := float(Player.BASE_STATS["parry_window"])
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed) and is_equal_approx(p.stats.value("attack_damage"), 1.0), "SOĞUK: bonus yok")
+	r.add(30.0)
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed * 1.06), "ISINMIŞ: koşma +%%6 (%.0f)" % p.stats.value("move_speed"))
+	r.reset()
+	r.add(60.0)
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed * 1.10), "ATEŞLİ: koşma +%10")
+	check(is_equal_approx(p.stats.value("attack_damage"), 1.5), "ATEŞLİ: hasar x1.5")
+	check(is_equal_approx(p.stats.value("dash_recharge"), base_recharge * 0.75), "ATEŞLİ: dash şarjı %25 hızlı")
+	r.add(30.0)
+	check(is_equal_approx(p.stats.value("attack_damage"), 2.0) and is_equal_approx(p.stats.value("move_speed"), base_speed * 1.16), "COŞKULU: hasar x2, koşma +%16")
+	check(is_equal_approx(p.stats.value("parry_window"), base_window + 0.02), "COŞKULU: parry penceresi +0.02 sn (%.2f)" % p.stats.value("parry_window"))
+	r.reset()
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed) and is_equal_approx(p.stats.value("attack_damage"), 1.0), "sıfırlanınca bonuslar tamamen kalktı")
+	check(is_equal_approx(p.stats.value("parry_window"), base_window) and is_equal_approx(p.stats.value("dash_recharge"), base_recharge), "parry penceresi ve dash şarjı da eski haline döndü")
+	# Oda temizlenince donar, yeni odada çözülür
+	r.add(40.0)
+	EventBus.room_cleared.emit(0)
+	r.tick(10.0)
+	check(r.paused and is_equal_approx(r.value, 40.0), "oda temizlenince ritim donar")
+	EventBus.room_entered.emit(1)
+	check(not r.paused, "yeni odaya girince ritim yeniden akar")
+	r.reset()
+
+
+func _test_rhythm_dodge_and_heal() -> void:
+	await _new_world("Ritim: dash'le savuşturma (dodge) ve Ateşli'de parry'den can")
+	var p := _spawn_player(500.0)
+	p.stats.set_base("max_health", 10.0)
+	p.health = 6
+	var r := p.rhythm
+	r.set_process(false)
+	var enemy_hb := Hitbox.new()
+	enemy_hb.faction = "enemy"
+	enemy_hb.damage = 1
+	_world.add_child(enemy_hb)
+	enemy_hb.global_position = p.global_position
+	var dodges := [0]
+	EventBus.dodge_success.connect(func(_a: Node, _h: Node) -> void: dodges[0] += 1)
+	# Dash'in ilk karelerinde saldırı değerse = dodge
+	p.state = Player.State.DASH
+	p._dash_t = 0.0
+	var landed := p.on_hit_by(enemy_hb)
+	check(not landed and p.health == 6, "dash dokunulmazken hasar yok")
+	check(dodges[0] == 1 and is_equal_approx(r.value, r.gain_dodge), "dodge sinyali geldi, ritim doldu (%.0f)" % r.value)
+	# Dokunulmazlık bittikten sonra aynı dash'te saldırı değerse hasar + dodge yok
+	p._dash_t = 0.3
+	landed = p.on_hit_by(enemy_hb)
+	check(landed and p.health == 5, "dash dokunulmazlığı bitince hasar alınıyor")
+	check(dodges[0] == 1, "iframe dışında dodge sayılmadı")
+	p.state = Player.State.MOVE
+	p.invulnerable_t = 0.0
+	# Parry sonrası dokunulmazlık dodge değildir
+	p.invulnerable_t = 0.5
+	p.on_hit_by(enemy_hb)
+	check(dodges[0] == 1, "hasar sonrası dokunulmazlık dodge sayılmadı")
+	p.invulnerable_t = 0.0
+	# Can toparlama: sadece ATEŞLİ ve üstü; şans 1'e çekilerek deterministik test
+	r.reset()
+	r.heal_chances = [1.0, 1.0, 1.0, 1.0] as Array[float]
+	var heals := [0]
+	EventBus.healed.connect(func(_a: Node, n: int) -> void: heals[0] += n)
+	r.heal_chances = [0.0, 0.0, 1.0, 1.0] as Array[float]
+	p.health = 5
+	r.add(20.0)  # parry +12 -> 32 = ISINMIŞ
+	EventBus.parry_success.emit(p, enemy_hb)
+	check(r.tier == 1 and p.health == 5, "ISINMIŞ'ta parry can vermez (kademe %d)" % r.tier)
+	r.reset()
+	r.add(45.0)  # parry +12 -> 57 = ATEŞLİ
+	EventBus.parry_success.emit(p, enemy_hb)
+	check(r.tier == 2 and p.health == 6 and heals[0] == 1, "ATEŞLİ'de parry 1 can verdi (can %d)" % p.health)
+	p.health = 10
+	EventBus.parry_success.emit(p, enemy_hb)
+	check(p.health == 10 and heals[0] == 1, "can zaten doluyken fazladan can yok")
+	r.heal_chances = [0.0, 0.0, 0.0, 0.0] as Array[float]
+	p.health = 5
+	EventBus.parry_success.emit(p, enemy_hb)
+	check(p.health == 5, "şans 0'sa can gelmez")
+	check(p.heal(3) == 3 and p.health == 8, "heal() istenen kadar yeniler")
+	check(p.heal(99) == 2 and p.health == 10, "heal() en çok max can'a kadar")
+	enemy_hb.queue_free()
+
+
+func _test_rhythm_real_fight() -> void:
+	await _new_world("Ritim: gerçek dövüşte vuruşlar ritmi doldurur, HUD çubuğu bağlanır")
+	var run := _start_run(2024)
+	var p := run.player
+	var r := p.rhythm
+	await _frames(5)
+	check(run.hud.rhythm_bar.meter == r, "HUD ritim çubuğu oyuncunun metresine bağlı")
+	var shown := run.hud.announcer.count()
+	r.add(30.0)
+	check(run.hud.announcer.count() > shown, "kademe yükselince duyuru çıktı")
+	r.reset()
+	# Boşta duran bir düşmana gerçekten vur
+	var e := BIDDER.instantiate() as Bidder
+	e.max_hp = 99
+	run.enemies_root.add_child(e)
+	e.global_position = Vector2(p.global_position.x + 52.0, 612.0)
+	e.set_physics_process(false)
+	await _frames(10)
+	p.facing = 1
+	for i in 3:
+		p.intent.attack_pressed = true
+		await _frames(25)
+	check(r.value >= r.gain_hit * 2.0, "gerçek vuruşlar ritmi doldurdu (%.0f)" % r.value)
+	run.queue_free()
+
 
 
 func _test_room_layouts() -> void:

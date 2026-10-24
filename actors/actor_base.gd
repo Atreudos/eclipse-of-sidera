@@ -120,6 +120,19 @@ func take_damage(amount: int, source: Node = null) -> void:
 		die()
 
 
+## Can yeniler (en çok max_health'e kadar). Gerçekten kazanılan can miktarını döndürür.
+func heal(amount: int = 1) -> int:
+	if dead or stats == null:
+		return 0
+	var gained := mini(amount, stats.int_value("max_health") - health)
+	if gained <= 0:
+		return 0
+	health += gained
+	flash(Color(0.55, 1.0, 0.65), 0.22)
+	EventBus.healed.emit(self, gained)
+	return gained
+
+
 ## Vuruş geri bildirimi: flaş + kıvılcım. Alt sınıflar _hit_flash'ı değiştirebilir.
 func _hit_feedback(source: Node) -> void:
 	_hit_flash()
