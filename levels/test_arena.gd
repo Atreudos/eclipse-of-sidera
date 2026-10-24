@@ -2,8 +2,8 @@ extends Node2D
 ## Test arenası: parry/dash hissini denemek için sonsuz dalgalar.
 ## Dalga bitince (tüm düşmanlar ölünce) kısa bir aradan sonra bir sonraki dalga gelir.
 
-const SHOOTER := preload("res://actors/enemies/shooter.tscn")
-const BIDDER := preload("res://actors/enemies/bidder.tscn")
+const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
+const TAURUS := preload("res://actors/enemies/taurus.tscn")
 
 const SPAWN_X := [140.0, 1140.0, 420.0, 860.0, 640.0]
 const SPAWN_Y := 200.0
@@ -42,7 +42,7 @@ func _spawn_wave() -> void:
 	hud.wave = wave
 	var count := 1 + wave / 2
 	for i in count:
-		var scene: PackedScene = SHOOTER if (wave + i) % 2 == 0 else BIDDER
+		var scene: PackedScene = SAGITTA if (wave + i) % 2 == 0 else TAURUS
 		var e := scene.instantiate() as Node2D
 		enemies_root.add_child(e)
 		e.global_position = Vector2(SPAWN_X[(wave + i) % SPAWN_X.size()], SPAWN_Y)

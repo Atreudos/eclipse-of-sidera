@@ -1,6 +1,6 @@
-class_name Shooter
+class_name Sagitta
 extends EnemyBase
-## Ateşçi: mesafeyi korur, uyarı verip mermi atar. Her 3. mermi KIRMIZI (parry'lenemez).
+## Sagitta: mesafeyi korur, uyarı verip mermi atar. Her 3. mermi KIRMIZI (parry'lenemez).
 
 const PROJECTILE := preload("res://combat/projectile.tscn")
 
@@ -19,7 +19,7 @@ var _next_is_red := false
 
 
 func anim_folder() -> String:
-	return "res://assets/sprites/shooter"
+	return "res://assets/sprites/sagitta"
 
 
 func _ready() -> void:

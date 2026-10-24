@@ -1,19 +1,24 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://actors/enemies/shooter.gd" id="1_shooter"]
+[ext_resource type="Script" path="res://actors/enemies/taurus.gd" id="1_taurus"]
 [ext_resource type="Script" path="res://combat/hurtbox.gd" id="2_hurt"]
+[ext_resource type="Script" path="res://combat/hitbox.gd" id="3_hit"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
-size = Vector2(30, 50)
+size = Vector2(34, 54)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
-size = Vector2(32, 52)
+size = Vector2(36, 56)
 
-[node name="Shooter" type="CharacterBody2D"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack"]
+size = Vector2(54, 48)
+
+[node name="Taurus" type="CharacterBody2D"]
 collision_layer = 4
 collision_mask = 131
-script = ExtResource("1_shooter")
-max_hp = 3
+script = ExtResource("1_taurus")
+max_hp = 4
+jump_velocity = 880.0
 
 [node name="Body" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_body")
@@ -23,27 +28,27 @@ shape = SubResource("RectangleShape2D_body")
 [node name="Placeholder" type="Node2D" parent="Visual"]
 
 [node name="Rect" type="ColorRect" parent="Visual/Placeholder"]
-offset_left = -15.0
-offset_top = -25.0
-offset_right = 15.0
-offset_bottom = 25.0
+offset_left = -17.0
+offset_top = -27.0
+offset_right = 17.0
+offset_bottom = 27.0
 mouse_filter = 2
-color = Color(0.2, 0.62, 0.6, 1)
+color = Color(0.58, 0.38, 0.8, 1)
 
 [node name="Eye" type="ColorRect" parent="Visual/Placeholder"]
 offset_left = 2.0
-offset_top = -15.0
-offset_right = 12.0
-offset_bottom = -9.0
+offset_top = -17.0
+offset_right = 14.0
+offset_bottom = -10.0
 mouse_filter = 2
 color = Color(0.95, 0.95, 0.9, 1)
 
 [node name="Glow" type="ColorRect" parent="Visual"]
 visible = false
-offset_left = -19.0
-offset_top = -29.0
-offset_right = 19.0
-offset_bottom = 29.0
+offset_left = -21.0
+offset_top = -31.0
+offset_right = 21.0
+offset_bottom = 31.0
 mouse_filter = 2
 color = Color(1, 0.8, 0.2, 0.5)
 
@@ -53,3 +58,11 @@ faction = "enemy"
 
 [node name="Shape" type="CollisionShape2D" parent="Hurtbox"]
 shape = SubResource("RectangleShape2D_hurt")
+
+[node name="AttackHitbox" type="Area2D" parent="."]
+script = ExtResource("3_hit")
+faction = "enemy"
+active = false
+
+[node name="Shape" type="CollisionShape2D" parent="AttackHitbox"]
+shape = SubResource("RectangleShape2D_attack")

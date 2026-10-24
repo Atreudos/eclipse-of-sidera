@@ -4,8 +4,8 @@ extends Node
 ##   xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 ##     godot --path . --rendering-driver opengl3 --fixed-fps 60 res://tools/screenshots.tscn -- /cikti/klasoru
 
-const SHOOTER := preload("res://actors/enemies/shooter.tscn")
-const BIDDER := preload("res://actors/enemies/bidder.tscn")
+const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
+const TAURUS := preload("res://actors/enemies/taurus.tscn")
 const PROJECTILE := preload("res://combat/projectile.tscn")
 
 var out_dir := "user://shots"
@@ -46,8 +46,8 @@ func _run() -> void:
 	await _shot("1_arena")
 
 	# Düşman uyarıları: altın (parry'lenebilir) ve kırmızı (kaçılmalı)
-	var s := SHOOTER.instantiate() as Shooter
-	var b := BIDDER.instantiate() as Bidder
+	var s := SAGITTA.instantiate() as Sagitta
+	var b := TAURUS.instantiate() as Taurus
 	arena.enemies_root.add_child(s)
 	arena.enemies_root.add_child(b)
 	s.global_position = Vector2(1020, 600)
@@ -114,7 +114,7 @@ func _run() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
 	await _frames(3)
-	var dummy := BIDDER.instantiate() as Bidder
+	var dummy := TAURUS.instantiate() as Taurus
 	arena.enemies_root.add_child(dummy)
 	dummy.set_physics_process(false)
 	dummy.global_position = Vector2(700, 613)
@@ -134,7 +134,7 @@ func _run() -> void:
 	# Platformdaki oyuncuya düşman zıplayıp çıkar
 	await _frames(40)
 	player.global_position = Vector2(300, 464)
-	var climber := BIDDER.instantiate() as Bidder
+	var climber := TAURUS.instantiate() as Taurus
 	arena.enemies_root.add_child(climber)
 	climber.global_position = Vector2(700, 613)
 	var frames_used := 0
@@ -144,7 +144,7 @@ func _run() -> void:
 		if climber.is_on_floor() and climber.feet_y() < 500.0:
 			break
 	await _frames(6)
-	print("teklifçi platforma çıktı: ", climber.feet_y() < 500.0, " (", frames_used, " kare)")
+	print("taurus platforma çıktı: ", climber.feet_y() < 500.0, " (", frames_used, " kare)")
 	await _shot("9_platformda_dusman")
 
 	# Parry dalgası: belirli yaşlarda dondurulmuş kareler (menzil içinde parlak, dışında soluk)
@@ -169,7 +169,7 @@ func _run() -> void:
 	await _frames(3)
 	player.global_position = Vector2(560, 614)
 	player.state = Player.State.MOVE
-	var target := BIDDER.instantiate() as Bidder
+	var target := TAURUS.instantiate() as Taurus
 	target.max_hp = 99
 	arena.enemies_root.add_child(target)
 	target.set_physics_process(false)

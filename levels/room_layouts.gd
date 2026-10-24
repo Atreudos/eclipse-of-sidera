@@ -23,7 +23,7 @@ const LAYOUTS := {
 		"platforms": [],
 		"spawns": [[820, 640], [1000, 640], [1180, 640], [1360, 640], [920, 640]],
 	},
-	# İki yan platform (test arenasındaki gibi): Ateşçiler yukarıdan sıkıştırır.
+	# İki yan platform (test arenasındaki gibi): Sagitta'lar yukarıdan sıkıştırır.
 	"iki_kule": {
 		"width": 1600,
 		"platforms": [[260, 490, 240], [1120, 490, 240]],

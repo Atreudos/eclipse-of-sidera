@@ -5,7 +5,7 @@ extends ActorBase
 ## Saldırı renkleri: ALTIN = parry'lenebilir, KIRMIZI = kaçman gerekir.
 ##
 ## Her düşman ailesi yüksekliğe KENDİ yöntemiyle cevap verir:
-##   Teklifçi: zıplayıp platforma çıkar.  Ateşçi: çıkmaz, yukarıya ateş eder.  (Diğerleri sonra.)
+##   Taurus: zıplayıp platforma çıkar.  Sagitta: çıkmaz, yukarıya ateş eder.  (Diğerleri sonra.)
 
 enum Tell { NONE, GOLD, RED }
 

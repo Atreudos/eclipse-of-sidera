@@ -9,8 +9,8 @@ extends Node2D
 
 signal room_changed(index: int)
 
-const SHOOTER := preload("res://actors/enemies/shooter.tscn")
-const BIDDER := preload("res://actors/enemies/bidder.tscn")
+const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
+const TAURUS := preload("res://actors/enemies/taurus.tscn")
 
 ## İlk oda: test arenasına benzer (iki platform), oyuncu alışsın.
 const FIRST_LAYOUT := "iki_kule"
@@ -76,10 +76,10 @@ func make_waves(room_index: int) -> Array:
 		var flip := r.randi_range(0, 1)
 		var wave: Array = []
 		for k in count:
-			wave.append(SHOOTER if (k + flip) % 2 == 0 else BIDDER)
+			wave.append(SAGITTA if (k + flip) % 2 == 0 else TAURUS)
 		waves.append(wave)
 	if room_index == 0:
-		waves[0] = [BIDDER, SHOOTER]  # ilk odada her aileden bir tane
+		waves[0] = [TAURUS, SAGITTA]  # ilk odada her aileden bir tane
 	return waves
 
 

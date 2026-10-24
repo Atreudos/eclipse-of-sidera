@@ -6,8 +6,8 @@ extends Node
 
 const PLAYER := preload("res://actors/player/player.tscn")
 const PROJECTILE := preload("res://combat/projectile.tscn")
-const SHOOTER := preload("res://actors/enemies/shooter.tscn")
-const BIDDER := preload("res://actors/enemies/bidder.tscn")
+const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
+const TAURUS := preload("res://actors/enemies/taurus.tscn")
 const RUN := preload("res://levels/run.tscn")
 
 var _checks := 0
@@ -59,9 +59,9 @@ func _run_all() -> void:
 		"kati_govde": _test_solid_bodies,
 		"kati_govde_dusman": _test_enemy_blocked_by_player,
 		"kombo": _test_melee_combo_and_kill,
-		"teklifci_parry": _test_bidder_lunge_parry,
-		"teklifci_kirmizi": _test_bidder_red_lunge_and_death,
-		"atesci": _test_shooter_cadence,
+		"taurus_parry": _test_taurus_lunge_parry,
+		"taurus_kirmizi": _test_taurus_red_lunge_and_death,
+		"sagitta": _test_sagitta_cadence,
 		"vurus_geri_bildirim": _test_hit_feedback,
 		"kamera": _test_camera_fx,
 		"kamera_takip": _test_camera_follow,
@@ -78,8 +78,8 @@ func _run_all() -> void:
 		"oda_dalga_akis": _test_run_wave_progression,
 		"oda_olum": _test_run_death,
 		"ekran_flas": _test_screen_flash,
-		"platform_cik": _test_bidder_climbs_platform,
-		"platform_in": _test_bidder_descends_platform,
+		"platform_cik": _test_taurus_climbs_platform,
+		"platform_in": _test_taurus_descends_platform,
 		"mermi_platform": _test_shot_passes_platform,
 		"sprite_yukleyici": _test_sprite_loader,
 		"animasyon": _test_animation_selection,
@@ -405,7 +405,7 @@ func _test_dash_through_projectile() -> void:
 func _test_solid_bodies() -> void:
 	await _new_world("Gövdeler katı: oyuncu ve düşman birbirinin içinden geçmez")
 	var p := _spawn_player(500.0)
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	_world.add_child(e)
 	e.global_position = Vector2(700.0, 612.0)
 	e.set_physics_process(false)
@@ -475,7 +475,7 @@ func _test_enemy_blocked_by_player() -> void:
 	var p := _spawn_player(500.0)
 	p.stats.set_base("max_health", 99.0)
 	p.health = 99
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	_world.add_child(e)
 	e.global_position = Vector2(740.0, 612.0)
 	await _frames(240)
@@ -492,7 +492,7 @@ func _test_enemy_blocked_by_player() -> void:
 func _test_melee_combo_and_kill() -> void:
 	await _new_world("Yakın dövüş kombosu ve öldürme")
 	var p := _spawn_player()
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	_world.add_child(b)
 	b.set_physics_process(false)  # sabit hedef (ağaca eklendikten sonra kapatılmalı)
 	b.global_position = Vector2(700, 612)
@@ -518,10 +518,10 @@ func _test_melee_combo_and_kill() -> void:
 	check(p.dash_charges == 1, "öldürme 1 dash şarjı geri verdi")
 
 
-func _test_bidder_lunge_parry() -> void:
-	await _new_world("Teklifçi: altın atılma parry'lenince sersemler")
+func _test_taurus_lunge_parry() -> void:
+	await _new_world("Taurus: altın atılma parry'lenince sersemler")
 	var p := _spawn_player()
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	b.red_chance = 0.0
 	_world.add_child(b)
 	b.global_position = Vector2(830, 612)
@@ -530,16 +530,16 @@ func _test_bidder_lunge_parry() -> void:
 	var pressed := false
 	for i in 300:
 		await get_tree().physics_frame
-		if not pressed and b._phase == Bidder.Phase.LUNGE and b.global_position.x - p.global_position.x < 120.0:
+		if not pressed and b._phase == Taurus.Phase.LUNGE and b.global_position.x - p.global_position.x < 120.0:
 			p.intent.parry_pressed = true
 			pressed = true
 		if _parry_ok > 0:
 			break
 	await _frames(2)
-	check(pressed, "teklifçi atıldı")
+	check(pressed, "taurus atıldı")
 	check(_parry_ok == 1, "atılma parry'lendi")
 	check(p.health == hp0, "can kaybı yok")
-	check(b.is_stunned(), "teklifçi sersemledi")
+	check(b.is_stunned(), "taurus sersemledi")
 	# sersemlemiş hedefe vur: parry sonrası güçlü vuruş (x2) * sersem bonusu (x1.5) = 3
 	var hb := b.health
 	p.global_position.x = b.global_position.x - 50.0
@@ -552,10 +552,10 @@ func _test_bidder_lunge_parry() -> void:
 	check(hb - b.health == 3, "güçlü vuruş + sersem bonusu = 3 hasar (%d)" % (hb - b.health))
 
 
-func _test_bidder_red_lunge_and_death() -> void:
-	await _new_world("Teklifçi: kırmızı atılma parry'lenemez, ölüm")
+func _test_taurus_red_lunge_and_death() -> void:
+	await _new_world("Taurus: kırmızı atılma parry'lenemez, ölüm")
 	var p := _spawn_player()
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	b.red_chance = 1.0
 	_world.add_child(b)
 	b.global_position = Vector2(830, 612)
@@ -564,7 +564,7 @@ func _test_bidder_red_lunge_and_death() -> void:
 	var pressed := false
 	for i in 300:
 		await get_tree().physics_frame
-		if not pressed and b._phase == Bidder.Phase.LUNGE and b.global_position.x - p.global_position.x < 120.0:
+		if not pressed and b._phase == Taurus.Phase.LUNGE and b.global_position.x - p.global_position.x < 120.0:
 			p.intent.parry_pressed = true
 			pressed = true
 		if p.health < hp0:
@@ -575,7 +575,7 @@ func _test_bidder_red_lunge_and_death() -> void:
 	p.invulnerable_t = 0.0
 	p.health = 1
 	b.global_position = Vector2(p.global_position.x + 190.0, 612)
-	b._phase = Bidder.Phase.CHASE
+	b._phase = Taurus.Phase.CHASE
 	b._cooldown = 0.0
 	b.stun_t = 0.0
 	b.knock_t = 0.0
@@ -587,11 +587,11 @@ func _test_bidder_red_lunge_and_death() -> void:
 	check(p.state == Player.State.DEAD, "ölüm durumuna geçti")
 
 
-func _test_shooter_cadence() -> void:
-	await _new_world("Ateşçi: mermi ritmi (her 3. mermi kırmızı)")
+func _test_sagitta_cadence() -> void:
+	await _new_world("Sagitta: mermi ritmi (her 3. mermi kırmızı)")
 	var p := _spawn_player()
 	p.health = 999
-	var s := SHOOTER.instantiate() as Shooter
+	var s := SAGITTA.instantiate() as Sagitta
 	_world.add_child(s)
 	s.global_position = Vector2(1000, 612)
 	await _frames(10)
@@ -606,7 +606,7 @@ func _test_shooter_cadence() -> void:
 				colors.append(pr.parryable)
 		if seen.size() >= 4:
 			break
-	check(seen.size() >= 3, "ateşçi mermi attı (%d adet)" % seen.size())
+	check(seen.size() >= 3, "sagitta mermi attı (%d adet)" % seen.size())
 	if seen.size() >= 3:
 		check(colors[0] and colors[1] and not colors[2], "ilk iki altın, üçüncü kırmızı %s" % str(colors))
 
@@ -622,7 +622,7 @@ func _count_sparks() -> int:
 func _test_hit_feedback() -> void:
 	await _new_world("Vuruş geri bildirimi: flash + kıvılcım")
 	var p := _spawn_player()
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	_world.add_child(b)
 	b.set_physics_process(false)  # _ready bunu geri açtığı için ağaca eklendikten SONRA kapatılır
 	b.global_position = Vector2(900, 613)
@@ -845,7 +845,7 @@ func _test_camera_reactions() -> void:
 		cam.step(1.0 / 60.0)
 	check(absf(cam.zoom.x - base_zoom) < 0.005, "kombo bitince zoom döndü (%.3f)" % cam.zoom.x)
 	# Yakındaki düşmana doğru azıcık kayar
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	_world.add_child(e)
 	e.global_position = Vector2(p.global_position.x + 350.0, 612.0)
 	e.set_physics_process(false)
@@ -1015,7 +1015,7 @@ func _test_rhythm_meter() -> void:
 	check(RhythmMeter.tier_for(75.0) == 3 and RhythmMeter.tier_for(100.0) == 3, "75-100 COŞKULU")
 	check(RhythmMeter.tier_name(2) == "ATEŞLİ" and RhythmMeter.tier_name(99) == "COŞKULU", "kademe adları")
 	# Kazanımlar
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
 	_world.add_child(e)
 	e.global_position = Vector2(900.0, 612.0)
@@ -1179,7 +1179,7 @@ func _test_rhythm_real_fight() -> void:
 	check(run.hud.announcer.count() > shown, "kademe yükselince duyuru çıktı")
 	r.reset()
 	# Boşta duran bir düşmana gerçekten vur
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
 	run.enemies_root.add_child(e)
 	e.global_position = Vector2(p.global_position.x + 52.0, 612.0)
@@ -1264,9 +1264,9 @@ func _test_run_waves() -> void:
 			no_repeat = false
 	check(no_repeat, "art arda iki oda aynı yerleşimde değil")
 	var w0 := a.make_waves(0)
-	var bidders := (w0[0] as Array).count(BIDDER)
-	var shooters := (w0[0] as Array).count(SHOOTER)
-	check(w0.size() == 1 and bidders == 1 and shooters == 1, "ilk odada bir Teklifçi + bir Ateşçi (%d/%d)" % [bidders, shooters])
+	var taurus_n := (w0[0] as Array).count(TAURUS)
+	var sagitta_n := (w0[0] as Array).count(SAGITTA)
+	check(w0.size() == 1 and taurus_n == 1 and sagitta_n == 1, "ilk odada bir Taurus + bir Sagitta (%d/%d)" % [taurus_n, sagitta_n])
 	a.free()
 	b.free()
 	c.free()
@@ -1423,13 +1423,13 @@ func _test_screen_flash() -> void:
 const PLATFORM_RECT := Rect2(390, 490, 220, 20)
 
 
-func _test_bidder_climbs_platform() -> void:
-	await _new_world("Teklifçi: üst platformdaki oyuncuya zıplayıp çıkar")
+func _test_taurus_climbs_platform() -> void:
+	await _new_world("Taurus: üst platformdaki oyuncuya zıplayıp çıkar")
 	_add_platform(PLATFORM_RECT)
 	var p := _spawn_player(500.0)
 	p.health = 999
 	p.global_position = Vector2(500, 490.0 - 26.0)
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	b.red_chance = 0.0
 	_world.add_child(b)
 	b.global_position = Vector2(900, 613)
@@ -1440,7 +1440,7 @@ func _test_bidder_climbs_platform() -> void:
 	var jumped := false
 	for i in 900:
 		await get_tree().physics_frame
-		if b.is_on_floor() and b.feet_y() > 600.0 and b._phase != Bidder.Phase.CHASE:
+		if b.is_on_floor() and b.feet_y() > 600.0 and b._phase != Taurus.Phase.CHASE:
 			lunged_below = true  # altından boşuna saldırmaya çalıştı
 		if not b.is_on_floor() and b.velocity.y < -200.0:
 			jumped = true
@@ -1452,17 +1452,17 @@ func _test_bidder_climbs_platform() -> void:
 	check(reached, "platformun üstüne çıktı (ayak y=%.0f)" % b.feet_y())
 
 
-func _test_bidder_descends_platform() -> void:
-	await _new_world("Teklifçi: platformdan, altındaki oyuncuya iner")
+func _test_taurus_descends_platform() -> void:
+	await _new_world("Taurus: platformdan, altındaki oyuncuya iner")
 	_add_platform(PLATFORM_RECT)
 	var p := _spawn_player(500.0)
 	p.health = 999
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	b.red_chance = 0.0
 	_world.add_child(b)
 	b.global_position = Vector2(500, 490.0 - 27.0)
 	await _frames(20)
-	check(b.is_on_floor() and b.feet_y() < 495.0, "teklifçi platformda başladı")
+	check(b.is_on_floor() and b.feet_y() < 495.0, "taurus platformda başladı")
 	var landed := false
 	for i in 600:
 		await get_tree().physics_frame
@@ -1473,12 +1473,12 @@ func _test_bidder_descends_platform() -> void:
 
 
 func _test_shot_passes_platform() -> void:
-	await _new_world("Ateşçi: mermi platformdan geçip üstteki oyuncuya ulaşır")
+	await _new_world("Sagitta: mermi platformdan geçip üstteki oyuncuya ulaşır")
 	_add_platform(PLATFORM_RECT)
 	var p := _spawn_player(500.0)
 	p.health = 50
 	p.global_position = Vector2(500, 490.0 - 26.0)
-	var s := SHOOTER.instantiate() as Shooter
+	var s := SAGITTA.instantiate() as Sagitta
 	_world.add_child(s)
 	s.global_position = Vector2(560, 615)
 	await _frames(20)
@@ -1488,7 +1488,7 @@ func _test_shot_passes_platform() -> void:
 		if p.health < 50:
 			hit = true
 			break
-	check(hit, "alttaki ateşçinin mermisi platformdan geçip oyuncuya çarptı")
+	check(hit, "alttaki Sagitta'nın mermisi platformdan geçip oyuncuya çarptı")
 
 
 func _test_sprite_loader() -> void:
@@ -1501,7 +1501,7 @@ func _test_sprite_loader() -> void:
 	check((frames_sq[1] as AtlasTexture).region == Rect2(32, 0, 32, 32), "ikinci karenin bölgesi doğru")
 	check(SpriteSetLoader.slice_strip(tex, 48).size() == 2, "kare genişliği 48 verilince 2 kare")
 	check(SpriteSetLoader.build("res://assets/sprites/yok_boyle_klasor", Player.ANIM_SPEC) == null, "PNG yoksa null döner (yer tutucu kalır)")
-	var sf := SpriteSetLoader.build("res://assets/sprites/player", Player.ANIM_SPEC)
+	var sf := SpriteSetLoader.build("res://assets/sprites/sidera", Player.ANIM_SPEC)
 	check(sf == null, "boş sprite klasörü: yer tutucu görsel kullanılıyor")
 
 
@@ -1570,24 +1570,24 @@ func _test_animation_selection() -> void:
 	p.anim.trigger("attack1", 0.3)
 	check(p.anim.current == "attack1" and p.anim.sprite.is_playing(), "attack1 oynuyor")
 	# düşman için
-	var b := BIDDER.instantiate() as Bidder
+	var b := TAURUS.instantiate() as Taurus
 	_world.add_child(b)
 	b.global_position = Vector2(900, 613)
 	await _frames(20)
 	b.anim.use_frames(_fake_frames(["idle", "run", "telegraph", "attack", "recover"] as Array[String]))
-	check(b.pick_animation() == "idle" or b.pick_animation() == "run", "teklifçi yürürken idle/run (%s)" % b.pick_animation())
-	b._phase = Bidder.Phase.TELEGRAPH
-	check(b.pick_animation() == "telegraph", "teklifçi hazırlanırken telegraph")
-	b._phase = Bidder.Phase.LUNGE
-	check(b.pick_animation() == "attack", "teklifçi atılırken attack")
-	b._phase = Bidder.Phase.RECOVER
-	check(b.pick_animation() == "recover", "teklifçi toparlanırken recover")
+	check(b.pick_animation() == "idle" or b.pick_animation() == "run", "taurus yürürken idle/run (%s)" % b.pick_animation())
+	b._phase = Taurus.Phase.TELEGRAPH
+	check(b.pick_animation() == "telegraph", "taurus hazırlanırken telegraph")
+	b._phase = Taurus.Phase.LUNGE
+	check(b.pick_animation() == "attack", "taurus atılırken attack")
+	b._phase = Taurus.Phase.RECOVER
+	check(b.pick_animation() == "recover", "taurus toparlanırken recover")
 
 
 # ------------------------------------------------------------------ font, hasar sayıları, kombo
 
 func _spawn_dummy_enemy(x: float, hp: int = 50) -> EnemyBase:
-	var e := BIDDER.instantiate() as EnemyBase
+	var e := TAURUS.instantiate() as EnemyBase
 	e.max_hp = hp
 	_world.add_child(e)
 	e.set_physics_process(false)  # sabit hedef (ağaca eklendikten sonra kapatılmalı)
@@ -1977,7 +1977,7 @@ func _test_item_dash_effects() -> void:
 	p.dash_charges = p.stats.int_value("dash_charges")
 	p.global_position = Vector2(660.0, 612.0)
 	p.velocity = Vector2.ZERO
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
 	_world.add_child(e)
 	e.global_position = Vector2(740.0, 612.0)
@@ -2021,7 +2021,7 @@ func _test_item_parry_effects() -> void:
 	await _frames(2)
 	var inv := p.inventory
 	# Don: parry'lenen saldırıyı yapan düşman donar
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
 	_world.add_child(e)
 	e.global_position = Vector2(900.0, 612.0)
@@ -2077,7 +2077,7 @@ func _test_item_misc_effects() -> void:
 	var r := p.rhythm
 	r.set_process(false)
 	# Kıvılcım: vuruş tutuşturur, yanma hasarı ritim/kombo doldurmaz
-	var e := BIDDER.instantiate() as Bidder
+	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
 	_world.add_child(e)
 	e.global_position = Vector2(1100.0, 612.0)

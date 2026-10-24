@@ -1,6 +1,6 @@
-class_name Bidder
+class_name Taurus
 extends EnemyBase
-## Teklifçi: yaklaşır, uyarı verir, atılıp vurur. Atılma ALTIN ise parry'lenince sersemler;
+## Taurus: yaklaşır, uyarı verir, atılıp vurur. Atılma ALTIN ise parry'lenince sersemler;
 ## bazen KIRMIZI (2 hasar, parry'lenemez) atılır, o zaman dash'lemelisin.
 
 @export var walk_speed := 115.0
@@ -25,7 +25,7 @@ const ATTACK_LEVEL_TOLERANCE := 72.0
 
 
 func anim_folder() -> String:
-	return "res://assets/sprites/bidder"
+	return "res://assets/sprites/taurus"
 
 
 func _ready() -> void:

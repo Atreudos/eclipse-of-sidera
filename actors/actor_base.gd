@@ -34,7 +34,7 @@ func _ready() -> void:
 	_setup_visual()
 
 
-## Alt sınıflar: sprite klasörü (örn. "res://assets/sprites/player") ve animasyon tanımı.
+## Alt sınıflar: sprite klasörü (örn. "res://assets/sprites/sidera") ve animasyon tanımı.
 func anim_folder() -> String:
 	return ""
 

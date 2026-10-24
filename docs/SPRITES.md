@@ -4,7 +4,7 @@ Kod hazır: PNG'leri doğru klasöre, doğru isimle koyunca oyun **kendiliğinde
 
 ## Nasıl çalışır
 
-1. PNG'leri `assets/sprites/<karakter>/` klasörüne at (`player`, `bidder`, `shooter`).
+1. PNG'leri `assets/sprites/<karakter>/` klasörüne at (`sidera`, `taurus`, `sagitta`, `scorpius`).
 2. Godot'u aç (yeni dosyaları kendisi içe aktarır) ve oyna.
 3. Bir animasyonun PNG'si yoksa yedeğine düşer (aşağıdaki tablolarda "yedek" sütunu). Klasörde hiç PNG yoksa şimdiki renkli kutular görünür.
 
@@ -20,12 +20,12 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 - **Aynı animasyondaki tüm kareler aynı boyutta olmalı.** Şeritte kare genişliği = görüntü yüksekliği (kare kare). Kare kare değilse bana söyle, kare genişliğini kodda ayarlarım.
 - **Yön:** Karakterler **sağa bakacak** şekilde çizilir. Oyun sola dönünce kendisi aynalar (düşmanlar da sağa bakacak şekilde çizilir).
 - **Hizalama:** Karenin **alt orta noktası** karakterin ayakları olur (çarpışma kutusunun altı). Karakteri karenin altına yasla, ayaklar alt kenara değsin.
-- **Boyut önerisi:** Çarpışma kutuları: oyuncu 26x52, Teklifçi 34x54, Ateşçi 30x50 piksel. Kare olarak 64x64 rahat eder (karakter ortada, başın üstünde birkaç piksel boşluk). Kılıç savurması gibi geniş hareketler için 96x96 da olur, ama hepsi aynı boyutta olmalı.
+- **Boyut önerisi:** Çarpışma kutuları: oyuncu 26x52, Taurus 34x54, Sagitta 30x50 piksel. Kare olarak 64x64 rahat eder (karakter ortada, başın üstünde birkaç piksel boşluk). Kılıç savurması gibi geniş hareketler için 96x96 da olur, ama hepsi aynı boyutta olmalı.
 - **Piksel art:** Proje keskin (nearest) filtreleme kullanıyor, bulanıklaşmaz.
 - **Hız (fps) ve döngü** kodda ayarlı, kare sayın farklıysa sorun değil. Hızları sonra birlikte ince ayar yaparız.
 - **Saldırı animasyonları** saldırının süresine otomatik uydurulur (hızlanır/yavaşlar). Öneri: ilk ~%20 hazırlık, %20-%55 vuruş anı, kalanı toparlanma.
 
-## Oyuncu: `assets/sprites/player/`
+## Sidera (oyuncu): `assets/sprites/sidera/`
 
 | Dosya | Ne zaman oynar | Döngü | Önerilen kare | Yedek |
 |---|---|---|---|---|
@@ -42,7 +42,7 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 | `hurt` | hasar alınca (0.22 sn) | hayır | 2 | idle |
 | `death` | ölüm (son karede kalır) | hayır | 5-8 | hurt |
 
-## Düşmanlar: `assets/sprites/bidder/` (Teklifçi) ve `assets/sprites/shooter/` (Ateşçi)
+## Düşmanlar: `assets/sprites/taurus/` (Taurus) ve `assets/sprites/sagitta/` (Sagitta)
 
 İkisi de aynı isimleri kullanır, her düşmanın kendi klasörü olur.
 
@@ -50,9 +50,9 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 |---|---|---|---|---|
 | `idle` | bekliyor | evet | 4 | (yok, temel) |
 | `run` | yürüyor | evet | 6 | idle |
-| `jump` | zıplıyor (Teklifçi platforma çıkarken) | hayır | 2 | idle |
+| `jump` | zıplıyor (Taurus platforma çıkarken) | hayır | 2 | idle |
 | `fall` | düşüyor | evet | 2 | jump |
-| `telegraph` | saldırı hazırlığı (Teklifçi 0.55 sn, Ateşçi 0.45 sn) | hayır | 4 | idle |
+| `telegraph` | saldırı hazırlığı (Taurus 0.55 sn, Sagitta 0.45 sn) | hayır | 4 | idle |
 | `attack` | atılma (0.28 sn) veya ateş etme (0.35 sn) | hayır | 3-4 | telegraph |
 | `recover` | atılma sonrası toparlanma (0.85 sn) | hayır | 3 | idle |
 | `stun` | parry sonrası sersemleme | evet | 2-4 | hurt |

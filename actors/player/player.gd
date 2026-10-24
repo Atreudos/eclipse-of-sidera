@@ -65,7 +65,7 @@ const ATTACKS := [
 	{"startup": 0.09, "active": 0.12, "recovery": 0.24, "dmg": 2.0, "size": Vector2(90, 56), "reach": 52.0, "lunge": 340.0},
 ]
 
-# Animasyonlar (PNG'ler assets/sprites/player/ içine konunca otomatik kullanılır; bkz. docs/SPRITES.md).
+# Animasyonlar (PNG'ler assets/sprites/sidera/ içine konunca otomatik kullanılır; bkz. docs/SPRITES.md).
 # fps: saniyedeki kare, loop: döngü, fallback: dosya yoksa yedek animasyon.
 const ANIM_SPEC := {
 	"idle": {"fps": 8.0, "loop": true},
@@ -131,7 +131,7 @@ var _blink_t := 0.0
 
 
 func anim_folder() -> String:
-	return "res://assets/sprites/player"
+	return "res://assets/sprites/sidera"
 
 
 func anim_spec() -> Dictionary:

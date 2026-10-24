@@ -9,7 +9,7 @@ extends RefCounted
 ## Ayrıntı: docs/SPRITES.md
 
 
-## folder: "res://assets/sprites/player".  spec: {anim_adı: {"fps": 10, "loop": true, "fallback": "idle", "frame_w": 0}}
+## folder: "res://assets/sprites/sidera".  spec: {anim_adı: {"fps": 10, "loop": true, "fallback": "idle", "frame_w": 0}}
 ## Hiç animasyon bulunamazsa null döner (yer tutucu görsel kullanılır).
 static func build(folder: String, spec: Dictionary) -> SpriteFrames:
 	var frames := SpriteFrames.new()
