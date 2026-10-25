@@ -442,6 +442,41 @@ def heal():
     return render(dur, f)
 
 
+def thrust():
+    """Rapier dürtüşü: hızlı hava yarma + ince metal çınlaması."""
+    dur = 0.24
+    lp = Lowpass()
+    lp2 = Lowpass()
+
+    def f(t, _i):
+        n = noise()
+        a = 0.04 + 0.5 * min(1.0, t / 0.09)
+        hp = n - lp(n, 0.02)
+        whoosh = lp2(hp, a) * attack(t, 0.002) * decay(t, 0.07) * 1.3
+        ping = (sine(2650.0, t) + 0.5 * sine(3980.0, t) + 0.25 * sine(5300.0, t)) * attack(t, 0.0015) * decay(t, 0.055) * 0.5
+        return whoosh + ping
+
+    return render(dur, f)
+
+
+def vanish():
+    """Gölge adımı (sahte saldırıya kanınca arkana geçiş): yumuşak hava patlaması + alçalan ton."""
+    dur = 0.32
+    lp = Lowpass()
+    ph = [0.0]
+
+    def f(t, _i):
+        n = noise()
+        a = 0.35 * decay(t, 0.09) + 0.02
+        air = lp(n, a) * attack(t, 0.004) * decay(t, 0.1) * 1.4
+        freq = 520.0 * math.exp(-t * 9.0) + 90.0
+        ph[0] += 2.0 * math.pi * freq / SR
+        tone = math.sin(ph[0]) * decay(t, 0.12) * 0.55 * attack(t, 0.003)
+        return air + tone
+
+    return render(dur, f)
+
+
 if __name__ == "__main__":
     # (ad, üretici, tepe seviyesi)
     for name, gen, peak in [
@@ -453,6 +488,8 @@ if __name__ == "__main__":
         ("room_clear", room_clear, 0.75), ("land", land, 0.8), ("pickup", pickup, 0.8),
         ("left_behind", left_behind, 0.8),
         ("tier_up", tier_up, 0.8), ("tier_down", tier_down, 0.7), ("heal", heal, 0.75),
+        # --- Scorpius
+        ("thrust", thrust, 0.8), ("vanish", vanish, 0.75),
     ]:
         write(name, gen(), peak)
         print("yazıldı:", name + ".wav")

@@ -54,3 +54,6 @@ signal item_acquired(actor: Node, item: ItemData)
 ## Seçilmeyen eşya Umbra'ya gitti.
 @warning_ignore("unused_signal")
 signal item_left_behind(item: ItemData)
+## Oyuncu parry tuşuna bastı (pencere şimdi açıldı). Sahte saldırıya kanan "erken parry"yi düşman buradan anlar.
+@warning_ignore("unused_signal")
+signal parry_started(actor: Node)

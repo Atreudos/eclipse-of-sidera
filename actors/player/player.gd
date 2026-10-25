@@ -422,6 +422,7 @@ func _refresh_parry_zone() -> void:
 
 
 func _start_parry() -> void:
+	EventBus.parry_started.emit(self)
 	_refresh_parry_zone()
 	state = State.PARRY
 	_parry_t = 0.0

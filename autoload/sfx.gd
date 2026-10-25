@@ -7,7 +7,7 @@ extends Node
 const NAMES := [
 	"parry", "hit", "hurt", "dash", "whiff", "shoot", "kill", "tell_gold", "tell_red", "slash",
 	"door_open", "door_slam", "spawn", "room_clear", "land", "pickup", "left_behind",
-	"tier_up", "tier_down", "heal",
+	"tier_up", "tier_down", "heal", "thrust", "vanish",
 ]
 const VOICES := 12
 

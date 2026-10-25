@@ -20,7 +20,7 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 - **Aynı animasyondaki tüm kareler aynı boyutta olmalı.** Şeritte kare genişliği = görüntü yüksekliği (kare kare). Kare kare değilse bana söyle, kare genişliğini kodda ayarlarım.
 - **Yön:** Karakterler **sağa bakacak** şekilde çizilir. Oyun sola dönünce kendisi aynalar (düşmanlar da sağa bakacak şekilde çizilir).
 - **Hizalama:** Karenin **alt orta noktası** karakterin ayakları olur (çarpışma kutusunun altı). Karakteri karenin altına yasla, ayaklar alt kenara değsin.
-- **Boyut önerisi:** Çarpışma kutuları: oyuncu 26x52, Taurus 34x54, Sagitta 30x50 piksel. Kare olarak 64x64 rahat eder (karakter ortada, başın üstünde birkaç piksel boşluk). Kılıç savurması gibi geniş hareketler için 96x96 da olur, ama hepsi aynı boyutta olmalı.
+- **Boyut önerisi:** Çarpışma kutuları: oyuncu 26x52, Taurus 34x54, Sagitta 30x50, Scorpius 30x52 piksel. Kare olarak 64x64 rahat eder (karakter ortada, başın üstünde birkaç piksel boşluk). Kılıç savurması gibi geniş hareketler için 96x96 da olur, ama hepsi aynı boyutta olmalı.
 - **Piksel art:** Proje keskin (nearest) filtreleme kullanıyor, bulanıklaşmaz.
 - **Hız (fps) ve döngü** kodda ayarlı, kare sayın farklıysa sorun değil. Hızları sonra birlikte ince ayar yaparız.
 - **Saldırı animasyonları** saldırının süresine otomatik uydurulur (hızlanır/yavaşlar). Öneri: ilk ~%20 hazırlık, %20-%55 vuruş anı, kalanı toparlanma.
@@ -44,7 +44,7 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 
 ## Düşmanlar: `assets/sprites/taurus/` (Taurus) ve `assets/sprites/sagitta/` (Sagitta)
 
-İkisi de aynı isimleri kullanır, her düşmanın kendi klasörü olur.
+İkisi de aynı isimleri kullanır, her düşmanın kendi klasörü olur. Scorpius da aynı tabloyu kullanır, ayrıca ek animasyonları vardır (aşağıda).
 
 | Dosya | Ne zaman oynar | Döngü | Önerilen kare | Yedek |
 |---|---|---|---|---|
@@ -59,6 +59,20 @@ Her animasyon için iki biçimden **biri** kabul edilir:
 | `hurt` | vurulunca | hayır | 2 | idle |
 | `death` | ölüm (bitince söner) | hayır | 5-7 | hurt |
 
+## Scorpius ek animasyonları: `assets/sprites/scorpius/`
+
+Yukarıdaki düşman tablosundaki isimlerin hepsi geçerlidir (`idle`, `run` = yürüyüş, `jump`, `fall`, `telegraph` = dürtüş hazırlığı, `attack` = dürtüş, `recover`, `stun`, `hurt`, `death`). Bunlara ek olarak:
+
+| Dosya | Ne zaman oynar | Döngü | Önerilen kare | Yedek |
+|---|---|---|---|---|
+| `backflip` | rakip fazla yaklaşınca geriye takla/sıçrayış (0.42 sn) | hayır | 5-6 | jump |
+| `retreat` | dürtüşten hemen sonra geriye süzülüş (0.34 sn) | hayır | 3-4 | run |
+| `vanish` | sahte hamleye kanınca kaybolma (0.1 sn) | hayır | 2-3 | attack |
+| `stab_telegraph` | rakibin arkasında kısa hazırlık (0.2 sn) | hayır | 2-3 | telegraph |
+| `stab` | sırttan vuruş (0.1 sn) | hayır | 2-3 | attack |
+
+`attack` karesi **uzun bir rapier uzanışı** olmalı: dürtüş çizgisi karakterin önünde yaklaşık 112 piksel uzar. Karenin 96x96 veya daha geniş olması iyi olur.
+
 ## Koddan çizilenler (şimdilik)
 
-Altın elmas / kırmızı X uyarıları, mermiler, parry halkası, vuruş kıvılcımları ve kılıç izi koddan çiziliyor. İstersen bunları da sonra PNG'ye çeviririz.
+Altın elmas uyarısı (sadece parry'lenebilir saldırılarda; kırmızı saldırıda sembol yok, sadece kırmızı parıltı), mermiler, parry halkası, vuruş kıvılcımları, dürtüş izi ve kılıç izi koddan çiziliyor. İstersen bunları da sonra PNG'ye çeviririz.

@@ -1,0 +1,76 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://actors/enemies/scorpius.gd" id="1_scorpius"]
+[ext_resource type="Script" path="res://combat/hurtbox.gd" id="2_hurt"]
+[ext_resource type="Script" path="res://combat/hitbox.gd" id="3_hit"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(30, 52)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
+size = Vector2(32, 54)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack"]
+size = Vector2(112, 16)
+
+[node name="Scorpius" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 131
+script = ExtResource("1_scorpius")
+max_hp = 3
+jump_velocity = 880.0
+
+[node name="Body" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="Visual" type="Node2D" parent="."]
+
+[node name="Placeholder" type="Node2D" parent="Visual"]
+
+[node name="Rect" type="ColorRect" parent="Visual/Placeholder"]
+offset_left = -15.0
+offset_top = -26.0
+offset_right = 15.0
+offset_bottom = 26.0
+mouse_filter = 2
+color = Color(0.86, 0.42, 0.16, 1)
+
+[node name="Tail" type="ColorRect" parent="Visual/Placeholder"]
+offset_left = -25.0
+offset_top = -36.0
+offset_right = -13.0
+offset_bottom = -20.0
+mouse_filter = 2
+color = Color(0.62, 0.22, 0.1, 1)
+
+[node name="Eye" type="ColorRect" parent="Visual/Placeholder"]
+offset_left = 2.0
+offset_top = -17.0
+offset_right = 13.0
+offset_bottom = -11.0
+mouse_filter = 2
+color = Color(0.95, 0.95, 0.9, 1)
+
+[node name="Glow" type="ColorRect" parent="Visual"]
+visible = false
+offset_left = -19.0
+offset_top = -30.0
+offset_right = 19.0
+offset_bottom = 30.0
+mouse_filter = 2
+color = Color(1, 0.8, 0.2, 0.5)
+
+[node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("2_hurt")
+faction = "enemy"
+
+[node name="Shape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("RectangleShape2D_hurt")
+
+[node name="AttackHitbox" type="Area2D" parent="."]
+script = ExtResource("3_hit")
+faction = "enemy"
+active = false
+
+[node name="Shape" type="CollisionShape2D" parent="AttackHitbox"]
+shape = SubResource("RectangleShape2D_attack")

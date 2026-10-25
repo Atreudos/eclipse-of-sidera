@@ -56,6 +56,8 @@ var nav: PlatformNav
 var _tell := Tell.NONE
 ## Uyarı başlayalı geçen süre (görsel animasyon için).
 var _tell_age := 0.0
+## Görünürlük çarpanı (0 = görünmez). Scorpius'un gölge adımı kullanır.
+var visual_alpha := 1.0
 ## Yanma (Kıvılcım eşyası): kalan süre ve bir sonraki hasar tiki.
 var burn_t := 0.0
 var _burn_tick := 0.0
@@ -134,6 +136,7 @@ func _process(delta: float) -> void:
 	tint = Color(0.6, 0.8, 1.0) if stun_t > 0.0 else Color.WHITE
 	if burn_t > 0.0 and stun_t <= 0.0:
 		tint = Color(1.0, 0.72, 0.5).lerp(Color.WHITE, 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0))
+	tint.a = visual_alpha
 	anim.play(pick_animation())
 	super._process(delta)
 

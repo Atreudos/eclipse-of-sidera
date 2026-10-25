@@ -8,6 +8,7 @@ const PLAYER := preload("res://actors/player/player.tscn")
 const PROJECTILE := preload("res://combat/projectile.tscn")
 const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
+const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
 const RUN := preload("res://levels/run.tscn")
 
 var _checks := 0
@@ -90,6 +91,13 @@ func _run_all() -> void:
 		"parry_dalga": _test_parry_wave,
 		"parry_dalga_gercek": _test_parry_wave_real,
 		"parry_ses": _test_parry_sound,
+		"scorpius_mesafe": _test_scorpius_spacing,
+		"scorpius_dürtüş": _test_scorpius_lunge,
+		"scorpius_parry": _test_scorpius_parry_stun,
+		"scorpius_yem": _test_scorpius_feint_bait,
+		"scorpius_sahte": _test_scorpius_feint_calm,
+		"scorpius_kurallar": _test_scorpius_rules,
+		"scorpius_platform": _test_scorpius_platform,
 		"sersemleme_taurus": _test_stagger_taurus,
 		"sersemleme_kombo": _test_stagger_combo_real,
 		"sersemleme_sagitta": _test_stagger_sagitta,
@@ -1272,6 +1280,33 @@ func _test_run_waves() -> void:
 	var taurus_n := (w0[0] as Array).count(TAURUS)
 	var sagitta_n := (w0[0] as Array).count(SAGITTA)
 	check(w0.size() == 1 and taurus_n == 1 and sagitta_n == 1, "ilk odada bir Taurus + bir Sagitta (%d/%d)" % [taurus_n, sagitta_n])
+	# Scorpius: 3. odanın 2. dalgasında tek başına tanışılır, sonra yavaş yavaş artar
+	var early_none := true
+	for i in 2:
+		for wave in a.make_waves(i):
+			if (wave as Array).has(SCORPIUS):
+				early_none = false
+	check(early_none, "ilk iki odada Scorpius yok")
+	var w2 := a.make_waves(2)
+	check(w2.size() == 2 and not (w2[0] as Array).has(SCORPIUS), "3. odanın 1. dalgasında Scorpius yok")
+	check((w2[1] as Array).count(SCORPIUS) == 1, "3. odanın 2. dalgasında tam bir Scorpius (%d)" % (w2[1] as Array).count(SCORPIUS))
+	check((w2[1] as Array).size() == RunController.enemies_in_wave(2, 1), "Scorpius düşman sayısını artırmıyor, birinin yerine geçiyor")
+	var cap_ok := true
+	var late_has := true
+	for i in range(3, 20):
+		var ws := a.make_waves(i)
+		for k in ws.size():
+			var arr := ws[k] as Array
+			var sc := arr.count(SCORPIUS)
+			if sc > arr.size() / 2:
+				cap_ok = false
+			if sc < 1:
+				late_has = false
+			if arr.size() != RunController.enemies_in_wave(i, k):
+				cap_ok = false
+	check(cap_ok, "Scorpius dalganın en fazla yarısı ve dalga boyu değişmiyor")
+	check(late_has, "3. odadan sonra her dalgada en az bir Scorpius var")
+	check(RunController.enemy_title(SCORPIUS) == "SCORPIUS" and RunController.enemy_title(TAURUS) == "TAURUS", "duyuru adı dosya adından geliyor")
 	a.free()
 	b.free()
 	c.free()
@@ -1382,6 +1417,13 @@ func _test_run_wave_progression() -> void:
 	_kill_all_enemies(p)
 	var second := await _wait_until(func() -> bool: return room.wave_number == 2, 200)
 	check(second, "ilk dalga bitince 2. dalga başladı")
+	check(run.seen_enemies.has(SCORPIUS.resource_path), "Scorpius görüldü olarak işaretlendi")
+	var announced := false
+	for it in run.hud.announcer._items:
+		for part in it["runs"]:
+			if str(part[0]).contains("SCORPIUS"):
+				announced = true
+	check(announced, "yeni düşman duyurusu çıktı (SCORPIUS)")
 	check(not room.is_cleared() and room.door.is_blocking(), "oda hâlâ kilitli")
 	check(run.hud.overlay.wave == 2 and run.hud.overlay.wave_total == 2, "HUD dalga 2/2")
 	var n2 := RunController.enemies_in_wave(2, 1)
@@ -2313,3 +2355,363 @@ func _test_parry_ratio() -> void:
 		s._phase = Sagitta.Phase.IDLE
 		s.set_tell(EnemyBase.Tell.NONE)
 	check(golds == 4, "Sagitta'nın 12 mermisinin 4'ü altın (%d)" % golds)
+
+
+# ------------------------------------------------------------------ Scorpius (rapier'li vur-kaç düşmanı)
+
+func _spawn_scorpius(x: float, attacks_done: int = 1) -> Scorpius:
+	var sc := SCORPIUS.instantiate() as Scorpius
+	sc.max_hp = 99
+	_world.add_child(sc)
+	sc.global_position = Vector2(x, 612.0)
+	sc._attacks_done = attacks_done
+	sc._decide_t = 999.0  # kendi kendine saldırmasın; testler `_begin_attack` ile başlatır
+	return sc
+
+
+func _test_scorpius_spacing() -> void:
+	await _new_world("Scorpius: kılıç menzilini korur (yürür, geri takla atar, köşede dürtüşür)")
+	var p := _spawn_player(300.0)
+	p.health = 999
+	var sc := _spawn_scorpius(900.0)
+	await _frames(10)
+	# 1) Uzaktayken sakin adımlarla yaklaşır
+	var d0 := sc.global_position.x - p.global_position.x
+	await _frames(60)
+	var d1 := sc.global_position.x - p.global_position.x
+	check(d0 - d1 > 100.0 and d0 - d1 < 150.0, "uzaktayken ~130 px/sn yürüyor (%.0f px/sn)" % (d0 - d1))
+	for i in 400:
+		await get_tree().physics_frame
+		if sc.global_position.x - p.global_position.x <= sc.far_range + 2.0:
+			break
+	var dist := sc.global_position.x - p.global_position.x
+	check(dist <= sc.far_range + 4.0 and dist >= sc.close_range, "kılıç menziline girip durdu (%.0f px)" % dist)
+	await _frames(40)
+	dist = sc.global_position.x - p.global_position.x
+	check(absf(dist - sc.ideal_distance) < 45.0, "ideal mesafeye (%.0f) yakın bekliyor: %.0f px" % [sc.ideal_distance, dist])
+	check(sc._phase == Scorpius.Phase.SPACING, "hâlâ mesafe kontrolünde")
+	# 2) Oyuncu çok yaklaşınca geri takla
+	p.global_position.x = sc.global_position.x - 60.0
+	sc._hop_cooldown = 0.0
+	var flipped := false
+	var rotated := false
+	var landed_at := -1
+	for i in 80:
+		await get_tree().physics_frame
+		if sc._phase == Scorpius.Phase.BACKFLIP:
+			flipped = true
+			if absf((sc.visual as Node2D).rotation) > 0.5:
+				rotated = true
+		elif flipped and sc._phase == Scorpius.Phase.SPACING:
+			landed_at = i
+			break
+	check(flipped, "çok yakında geri takla attı")
+	check(rotated, "takla sırasında gövde dönüyor (yer tutucu)")
+	check(landed_at > 0, "takla bitip mesafe kontrolüne döndü")
+	dist = sc.global_position.x - p.global_position.x
+	check(dist >= 115.0 and dist <= 185.0, "takladan sonra kılıç menzilinde (%.0f px)" % dist)
+	check(sc.facing == -1, "takla sırasında hedefe bakmaya devam etti")
+	# 3) Köşeye sıkışınca (arkası duvar) takla atamaz, dürtüşle karşılık verir
+	await _new_world("Scorpius: köşeye sıkışınca çaresiz dürtüş")
+	var wall := StaticBody2D.new()
+	wall.collision_layer = Layers.WORLD
+	wall.collision_mask = 0
+	var wcs := CollisionShape2D.new()
+	var wrs := RectangleShape2D.new()
+	wrs.size = Vector2(20.0, 500.0)
+	wcs.shape = wrs
+	wcs.position = Vector2(850.0, 400.0)
+	wall.add_child(wcs)
+	_world.add_child(wall)
+	var p2 := _spawn_player(740.0)
+	p2.health = 999
+	var sc2 := _spawn_scorpius(800.0)
+	await _frames(10)
+	sc2._decide_t = 0.2
+	var flipped2 := false
+	var attacked := false
+	var was_feint := false
+	for i in 120:
+		await get_tree().physics_frame
+		if sc2._phase == Scorpius.Phase.BACKFLIP:
+			flipped2 = true
+		if sc2._phase == Scorpius.Phase.TELL:
+			attacked = true
+			was_feint = sc2._feint
+			break
+	check(not flipped2, "arkası duvarken takla atmadı")
+	check(attacked and not was_feint, "köşede gerçek bir dürtüş başlattı")
+
+
+func _test_scorpius_lunge() -> void:
+	await _new_world("Scorpius: gerçek dürtüş (kısa altın uyarı, hızlı hat), sonra geri çekilme")
+	var p := _spawn_player(500.0)
+	var sc := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp0 := p.health
+	sc._begin_attack(false)
+	await _frames(3)
+	check(sc._phase == Scorpius.Phase.TELL and sc._tell == EnemyBase.Tell.GOLD and sc.has_tell_symbol(), "altın uyarı ve sarı sembol")
+	check(not sc.attack_hitbox.active, "uyarı sırasında hasar alanı kapalı")
+	var lunge_frame := -1
+	var retreat_frame := -1
+	for i in 120:
+		await get_tree().physics_frame
+		if lunge_frame < 0 and sc._phase == Scorpius.Phase.LUNGE:
+			lunge_frame = i + 3
+			check(sc.attack_hitbox.active and sc.attack_hitbox.parryable and sc.attack_hitbox.damage == 1, "dürtüş: altın, parry'lenebilir, 1 hasar")
+			check(absf(sc.attack_hitbox.position.x - float(sc.facing) * Scorpius.BLADE_CENTER) < 0.1, "hasar alanı önde (bakılan yönde) ve uzun")
+		if lunge_frame >= 0 and sc._phase == Scorpius.Phase.RETREAT:
+			retreat_frame = i + 3
+			break
+	var t_lunge := float(lunge_frame) / 60.0
+	check(lunge_frame > 0 and absf(t_lunge - sc.tell_time) < 0.08, "uyarı çok kısa: %.2f sn (hedef %.2f)" % [t_lunge, sc.tell_time])
+	check(retreat_frame > lunge_frame and float(retreat_frame - lunge_frame) / 60.0 < 0.2, "dürtüş çok hızlı biter, hemen geri çekilir (%d kare)" % (retreat_frame - lunge_frame))
+	check(p.health == hp0 - 1, "parry'lenmeyen dürtüş 1 hasar verdi (%d -> %d)" % [hp0, p.health])
+	check(not sc.attack_hitbox.active, "geri çekilirken hasar alanı kapalı")
+	var x_retreat_start := sc.global_position.x
+	await _frames(40)
+	check(sc._phase == Scorpius.Phase.SPACING, "geri çekilme bitip mesafe kontrolüne döndü")
+	check(sc.global_position.x - x_retreat_start > 100.0, "oyuncudan uzaklaştı (%.0f px)" % (sc.global_position.x - x_retreat_start))
+	check(sc._tell == EnemyBase.Tell.NONE, "uyarı söndü")
+	# Dash ile savuşturma: dürtüş boşa gider, yine geri çekilir
+	await _new_world("Scorpius: dürtüşe dash (dodge)")
+	var p2 := _spawn_player(500.0)
+	p2.facing = 1
+	var sc2 := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp1 := p2.health
+	var dodges := [0]
+	EventBus.dodge_success.connect(func(_a: Node, _h: Node) -> void: dodges[0] += 1)
+	sc2._begin_attack(false)
+	var dashed := false
+	for i in 120:
+		await get_tree().physics_frame
+		# Dürtüşten hemen önce dash: dokunulmazlık karesi dürtüşü yakalar
+		if not dashed and sc2._phase == Scorpius.Phase.TELL and sc2._timer < 0.03:
+			p2.intent.dash_pressed = true
+			dashed = true
+		if dashed and sc2._attacks_done >= 2:
+			break
+	check(dashed and sc2._attacks_done >= 2, "dürtüş tamamlandı ve Scorpius yoluna devam etti")
+	check(p2.health == hp1, "dürtüşe denk gelen dash hasar yedirmedi (can %d)" % p2.health)
+	check(dodges[0] == 1, "dodge sayıldı (%d)" % dodges[0])
+
+
+func _test_scorpius_parry_stun() -> void:
+	await _new_world("Scorpius: gerçek dürtüşü tam zamanında parry'le -> geri çekilemez, 1.5 sn stun")
+	var p := _spawn_player(500.0)
+	var sc := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp0 := p.health
+	sc._begin_attack(false)
+	var pressed := false
+	for i in 120:
+		await get_tree().physics_frame
+		# Dürtüşten ~0.05 sn önce bas: pencere (0.12 sn) dürtüşü yakalar.
+		if not pressed and sc._phase == Scorpius.Phase.TELL and sc._timer < 0.05:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(pressed and _parry_ok == 1, "dürtüş parry'lendi")
+	check(p.health == hp0, "can kaybı yok")
+	check(sc.is_stunned() and sc.stun_t > 1.3 and sc.stun_t <= sc.stun_time, "Scorpius %.1f sn sersemledi" % sc.stun_t)
+	check(sc._phase == Scorpius.Phase.STUNNED and not sc.attack_hitbox.active, "hasar alanı kapandı")
+	var x0 := sc.global_position.x
+	await _frames(50)
+	check(absf(sc.global_position.x - x0) < 25.0 and sc._phase == Scorpius.Phase.STUNNED, "geri çekilmedi, olduğu yerde (%.0f px kaydı)" % absf(sc.global_position.x - x0))
+	# Sersemlemişken vurulursa x1.5 hasar (ve güçlü parry vuruşu)
+	var hb := sc.health
+	sc.on_hit_by(_player_hitbox(p, sc.global_position + Vector2(-30.0, 0.0), 1))
+	check(hb - sc.health == 2, "sersemlemiş düşman 1.5 kat hasar alır (%d)" % (hb - sc.health))
+	check(sc.is_stunned(), "vuruş sersemliği bitirmedi")
+	await _frames(60)
+	check(not sc.is_stunned() and sc._phase == Scorpius.Phase.SPACING, "1.5 sn sonra toparlandı, mesafe kontrolüne döndü")
+
+
+func _test_scorpius_feint_bait() -> void:
+	await _new_world("Scorpius: sahte saldırıya erken parry = arkana geçip sırttan vurur")
+	var p := _spawn_player(500.0)
+	var sc := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp0 := p.health
+	var side0 := signf(sc.global_position.x - p.global_position.x)
+	sc._begin_attack(true)
+	await _frames(5)
+	check(sc._feint and sc._tell == EnemyBase.Tell.GOLD and sc.has_tell_symbol(), "sahte saldırı da aynı altın uyarıyla başlar")
+	# 0.08 sn'de erken parry
+	p.intent.parry_pressed = true
+	var vanished := false
+	var ghost_layer_ok := false
+	var alpha_low := false
+	var appeared := -1
+	for i in 60:
+		await get_tree().physics_frame
+		if sc._phase == Scorpius.Phase.VANISH:
+			vanished = true
+			ghost_layer_ok = sc.collision_layer == 0
+			alpha_low = alpha_low or sc.visual_alpha < 0.6
+		if vanished and sc._phase == Scorpius.Phase.STAB_TELL:
+			appeared = i
+			break
+	check(vanished, "yem yutulunca kayboldu")
+	check(ghost_layer_ok, "kaybolurken gövdesi dokunulmaz")
+	check(appeared >= 0, "oyuncunun arkasında belirdi")
+	var side1 := signf(sc.global_position.x - p.global_position.x)
+	check(side1 == -side0, "oyuncunun öbür yanında (önce %+d, şimdi %+d)" % [int(side0), int(side1)])
+	check(absf(absf(sc.global_position.x - p.global_position.x) - Scorpius.STAB_OFFSET) < 6.0, "arkasında ~%.0f px (%.0f)" % [Scorpius.STAB_OFFSET, absf(sc.global_position.x - p.global_position.x)])
+	check(sc.collision_layer == Layers.ENEMY and sc.visual_alpha > 0.99, "belirince gövde ve görünüm geri geldi")
+	check(sc._tell == EnemyBase.Tell.RED and not sc.has_tell_symbol(), "arkadan vuruş kırmızı (parry'lenemez, sembolsüz)")
+	check(sc.facing == -side1, "oyuncuya dönük")
+	var stabbed := false
+	for i in 60:
+		await get_tree().physics_frame
+		if sc._phase == Scorpius.Phase.STAB:
+			stabbed = true
+			check(sc.attack_hitbox.active and not sc.attack_hitbox.parryable, "sırttan vuruş parry'lenemez")
+			break
+	check(stabbed, "sırttan vurdu")
+	await _frames(12)
+	check(p.health == hp0 - 1, "erken parry cezası: 1 hasar (%d -> %d)" % [hp0, p.health])
+	await _frames(50)
+	check(sc._phase == Scorpius.Phase.SPACING and sc._attacks_done == 2, "sonra geri çekilip mesafe kontrolüne döndü")
+
+
+func _test_scorpius_feint_calm() -> void:
+	await _new_world("Scorpius: sahte saldırıda sakin kalırsan boşa çıkar")
+	var p := _spawn_player(500.0)
+	var sc := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp0 := p.health
+	sc._begin_attack(true)
+	var hitbox_ever := false
+	var vanish_ever := false
+	var ended := false
+	for i in 90:
+		await get_tree().physics_frame
+		if sc.attack_hitbox.active:
+			hitbox_ever = true
+		if sc._phase == Scorpius.Phase.VANISH or sc._phase == Scorpius.Phase.STAB:
+			vanish_ever = true
+		if sc._phase == Scorpius.Phase.FEINT_END or sc._phase == Scorpius.Phase.RETREAT:
+			ended = true
+	check(ended, "sahte saldırı boşa çıkıp geri çekilmeye geçti")
+	check(not hitbox_ever and not vanish_ever, "hasar alanı hiç açılmadı, arkana geçmedi")
+	check(p.health == hp0, "can kaybı yok")
+	check(sc._tell == EnemyBase.Tell.NONE, "uyarı söndü")
+	# Geç basış (gerçek dürtüşü yakalayabilecek zamanda) tuzağa düşmez
+	await _new_world("Scorpius: sahte saldırıda geç parry tuzağa düşmez, erken olan düşer (pencereye göre)")
+	var p2 := _spawn_player(500.0)
+	var sc2 := _spawn_scorpius(635.0)
+	await _frames(10)
+	var hp1 := p2.health
+	sc2._begin_attack(true)
+	var vanish2 := false
+	var pressed := false
+	for i in 60:
+		await get_tree().physics_frame
+		if not pressed and sc2._phase_t >= sc2._tell_total - 0.10:
+			p2.intent.parry_pressed = true
+			pressed = true
+		if sc2._phase == Scorpius.Phase.VANISH:
+			vanish2 = true
+	check(pressed and not vanish2, "pencere (%.2f) içinde basılan parry yem sayılmadı" % p2.stats.value("parry_window"))
+	check(p2.health == hp1, "can kaybı yok")
+	# Pencere büyükse (eşya) "erken" sınırı da öne kayar: 0.2 sn pencerede 0.17 sn'deki basış erken değil
+	await _new_world("Scorpius: erken sınırı oyuncunun parry penceresine uyar")
+	var p3 := _spawn_player(500.0)
+	p3.stats.set_base("parry_window", 0.2)
+	var sc3 := _spawn_scorpius(635.0)
+	await _frames(10)
+	sc3._begin_attack(true)
+	var vanish3 := false
+	var pressed3 := false
+	for i in 60:
+		await get_tree().physics_frame
+		if not pressed3 and sc3._phase_t >= 0.17:
+			p3.intent.parry_pressed = true
+			pressed3 = true
+		if sc3._phase == Scorpius.Phase.VANISH:
+			vanish3 = true
+	check(pressed3 and not vanish3, "geniş pencerede (0.20) 0.17 sn'deki basış gerçek dürtüşü yakalardı, yem değil")
+
+
+func _test_scorpius_rules() -> void:
+	await _new_world("Scorpius: sahte saldırı kuralları, vurulunca iptal")
+	var p := _spawn_player(300.0)
+	var sc := _spawn_scorpius(900.0, 0)
+	await _frames(5)
+	var any_feint := false
+	for i in 60:
+		sc._last_feint = false
+		if sc._pick_feint():
+			any_feint = true
+	check(not any_feint, "ilk saldırı hiçbir zaman sahte değil")
+	sc._attacks_done = 3
+	sc._last_feint = true
+	check(not sc._pick_feint() and not sc._last_feint, "bir sahteden sonra gerçek gelir")
+	var feints := 0
+	for i in 400:
+		sc._last_feint = false
+		if sc._pick_feint():
+			feints += 1
+	var share := float(feints) / 400.0
+	check(share > 0.25 and share < 0.45, "sahte oranı ~%%35 (%.0f%%)" % (share * 100.0))
+	check(is_equal_approx(sc.stun_time, 1.5), "parry stun'ı 1.5 sn")
+	check(sc.max_hp == 99 and SCORPIUS.instantiate().max_hp == 3, "sahnede 3 can")
+	# Vurulunca hazırlanan dürtüş iptal olur
+	sc._attacks_done = 1
+	sc.global_position.x = 435.0
+	sc.set_physics_process(false)
+	sc._begin_attack(false)
+	sc.set_physics_process(true)
+	await _frames(5)
+	check(sc._phase == Scorpius.Phase.TELL, "hazırlanıyor")
+	sc.on_hit_by(_player_hitbox(p, sc.global_position + Vector2(-30.0, 0.0)))
+	check(sc._phase == Scorpius.Phase.SPACING and sc._tell == EnemyBase.Tell.NONE, "vurulunca dürtüş iptal, uyarı söndü")
+	check(not sc.attack_hitbox.active, "hasar alanı kapalı")
+	# Dürtüş sırasında vurulunca hasar alanı kapanır
+	sc.knock_t = 0.0
+	sc._begin_attack(false)
+	sc._begin_lunge()
+	check(sc.attack_hitbox.active, "dürtüş aktif")
+	sc.on_hit_by(_player_hitbox(p, sc.global_position + Vector2(-30.0, 0.0)))
+	check(not sc.attack_hitbox.active and sc._phase == Scorpius.Phase.SPACING, "dürtüş sırasında vurulunca iptal")
+	# Animasyon seçimi
+	sc.knock_t = 0.0
+	sc._phase = Scorpius.Phase.TELL
+	check(sc.pick_animation() == "telegraph", "uyarı: telegraph animasyonu")
+	sc._phase = Scorpius.Phase.BACKFLIP
+	check(sc.pick_animation() == "backflip", "takla: backflip animasyonu")
+	sc._phase = Scorpius.Phase.STAB
+	check(sc.pick_animation() == "stab", "sırttan vuruş: stab animasyonu")
+	check(sc.anim_spec().has("backflip") and sc.anim_spec().has("telegraph"), "animasyon tanımı taban + Scorpius'a özgü")
+
+
+func _test_scorpius_platform() -> void:
+	await _new_world("Scorpius: üst platformdaki oyuncuya zıplayıp çıkar")
+	_add_platform(PLATFORM_RECT)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	p.global_position = Vector2(500, 490.0 - 26.0)
+	var sc := SCORPIUS.instantiate() as Scorpius
+	sc.max_hp = 99
+	_world.add_child(sc)
+	sc.global_position = Vector2(900, 613)
+	await _frames(20)
+	var reached := false
+	var jumped := false
+	var attacked_below := false
+	for i in 900:
+		await get_tree().physics_frame
+		if sc.is_on_floor() and sc.feet_y() > 600.0 and sc._phase == Scorpius.Phase.TELL:
+			attacked_below = true
+		if not sc.is_on_floor() and sc.velocity.y < -200.0:
+			jumped = true
+		if sc.is_on_floor() and sc.feet_y() < 500.0:
+			reached = true
+			break
+	check(not attacked_below, "altındayken boşuna dürtüş başlatmadı")
+	check(jumped and reached, "platforma zıplayıp çıktı (ayak y=%.0f)" % sc.feet_y())

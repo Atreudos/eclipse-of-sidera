@@ -4,6 +4,7 @@ extends Node2D
 
 const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
+const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
 
 const SPAWN_X := [140.0, 1140.0, 420.0, 860.0, 640.0]
 const SPAWN_Y := 200.0
@@ -43,6 +44,8 @@ func _spawn_wave() -> void:
 	var count := 1 + wave / 2
 	for i in count:
 		var scene: PackedScene = SAGITTA if (wave + i) % 2 == 0 else TAURUS
+		if i == 0 and wave >= 3 and wave % 3 == 0:
+			scene = SCORPIUS  # her 3. dalgada bir Scorpius
 		var e := scene.instantiate() as Node2D
 		enemies_root.add_child(e)
 		e.global_position = Vector2(SPAWN_X[(wave + i) % SPAWN_X.size()], SPAWN_Y)

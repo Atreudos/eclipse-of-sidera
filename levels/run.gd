@@ -11,6 +11,10 @@ signal room_changed(index: int)
 
 const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
+const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
+
+## Scorpius ilk kez bu odada (0'dan sayılır) görünür: 3. oda, 2. dalga.
+const SCORPIUS_FIRST_ROOM := 2
 
 ## İlk oda: test arenasına benzer (iki platform), oyuncu alışsın.
 const FIRST_LAYOUT := "iki_kule"
@@ -30,6 +34,8 @@ var rooms := {}
 var current := -1
 var stats := {"kills": 0, "rooms_cleared": 0, "best_combo": 0, "time": 0.0, "room": 1}
 var player: Player
+## Bu koşuda karşılaşılan düşman türleri (sahne yolu -> true). Taurus ve Sagitta baştan tanıdıktır.
+var seen_enemies := {SAGITTA.resource_path: true, TAURUS.resource_path: true}
 
 @onready var camera: ShakeCamera = $Camera
 @onready var rooms_root: Node2D = $Rooms
@@ -67,6 +73,22 @@ func layout_for(room_index: int) -> String:
 	return RoomLayouts.pick(rng_for(room_index, "layout"), layout_for(room_index - 1))
 
 
+## Bir dalgada kaç Scorpius olacağı. Zorlayıcı bir düşman: 3. odanın 2. dalgasında tek bir tane tanışır,
+## sonra yavaşça artar; dalganın en fazla yarısı olabilir.
+static func scorpius_in_wave(room_index: int, wave_index: int, enemy_count: int) -> int:
+	if room_index < SCORPIUS_FIRST_ROOM:
+		return 0
+	if room_index == SCORPIUS_FIRST_ROOM and wave_index == 0:
+		return 0
+	var n := 1 + (room_index - SCORPIUS_FIRST_ROOM) / 4
+	return clampi(n, 0, enemy_count / 2)
+
+
+## Düşman sahnesinin duyuru adı: dosya adından ("scorpius.tscn" -> "SCORPIUS").
+static func enemy_title(scene: PackedScene) -> String:
+	return scene.resource_path.get_file().get_basename().to_upper()
+
+
 ## Oda `i`'nin dalgaları: her dalga bir PackedScene dizisi.
 func make_waves(room_index: int) -> Array:
 	var r := rng_for(room_index, "waves")
@@ -77,6 +99,16 @@ func make_waves(room_index: int) -> Array:
 		var wave: Array = []
 		for k in count:
 			wave.append(SAGITTA if (k + flip) % 2 == 0 else TAURUS)
+		var scorpions := scorpius_in_wave(room_index, w, count)
+		if scorpions > 0:
+			var slots: Array = range(count)
+			for i in range(slots.size() - 1, 0, -1):
+				var j := r.randi_range(0, i)
+				var tmp = slots[i]
+				slots[i] = slots[j]
+				slots[j] = tmp
+			for i in scorpions:
+				wave[slots[i]] = SCORPIUS
 		waves.append(wave)
 	if room_index == 0:
 		waves[0] = [TAURUS, SAGITTA]  # ilk odada her aileden bir tane
@@ -180,6 +212,18 @@ func _on_wave_started(wave_number: int, wave_total: int) -> void:
 	hud.set_room(room.index + 1, wave_number, wave_total)
 	if wave_number >= 2:
 		hud.announcer.push_runs([["DALGA ", GameFont.WHITE], [str(wave_number), GameFont.YELLOW]], 44, 1.1)
+	_announce_new_enemies(room.waves[wave_number - 1])
+
+
+## Koşuda ilk kez karşılaşılan düşman türü duyurulur ("YENİ DÜŞMAN  SCORPIUS").
+## İlk odanın düşmanları (Taurus, Sagitta) tanıdık sayılır: onlar için duyuru çıkmaz.
+func _announce_new_enemies(wave: Array) -> void:
+	for scene in wave:
+		var key := (scene as PackedScene).resource_path
+		if seen_enemies.has(key):
+			continue
+		seen_enemies[key] = true
+		hud.announcer.push_runs([["YENİ DÜŞMAN  ", GameFont.WHITE], [enemy_title(scene), GameFont.YELLOW]], 46, 1.7)
 
 
 func _on_room_cleared(room: Room) -> void:
