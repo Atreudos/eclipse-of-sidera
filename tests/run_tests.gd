@@ -103,6 +103,7 @@ func _run_all() -> void:
 		"sersemleme_sagitta": _test_stagger_sagitta,
 		"sersemleme_kurallar": _test_stagger_rules,
 		"parry_oran": _test_parry_ratio,
+		"god_modu": _test_god_mode,
 		"esya_db": _test_items_db,
 		"esya_envanter": _test_inventory,
 		"esya_etki_dash": _test_item_dash_effects,
@@ -1904,6 +1905,80 @@ func _test_parry_sound() -> void:
 	check(is_equal_approx(Sfx.parry_pitch(50), Sfx.parry_pitch(8)), "merdivenin sonunda sabit kalıyor")
 	check(is_equal_approx(Sfx.parry_pitch(0), 1.0), "geçersiz sayı güvenli")
 
+
+
+# ------------------------------------------------------------------ deneme (god) modu
+
+func _f_key(code: Key) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.pressed = true
+	return e
+
+
+func _test_god_mode() -> void:
+	await _new_world("Deneme modu (F4): can düşmez, dash ve parry bekleme yok")
+	GameState.god_mode = false
+	var p := _spawn_player()
+	await _frames(2)
+	check(not GameState.god_mode, "varsayılan: kapalı")
+	GameState._unhandled_key_input(_f_key(KEY_F4))
+	check(GameState.god_mode, "F4 modu açtı")
+	var hp0 := p.health
+	p.take_damage(3, null)
+	check(p.health == hp0 and not p.dead, "3 hasar aldı ama can düşmedi (%d/%d)" % [p.health, hp0])
+	p.take_damage(99, null)
+	check(p.health == hp0 and not p.dead, "ölümcül hasar da öldürmedi")
+	# dash: şarj bitse de yapılır, harcanmaz
+	p.dash_charges = 0
+	check(p.can_dash(), "şarjsız bile dash yapılabilir")
+	p.intent.dash_pressed = true
+	await _frames(2)
+	check(p.state == Player.State.DASH, "dash başladı")
+	check(p.dash_charges == p.stats.int_value("dash_charges"), "şarjlar anında dolu (%d)" % p.dash_charges)
+	await _frames(20)
+	var dashes := 0
+	for i in 5:
+		p.intent.dash_pressed = true
+		await _frames(2)
+		if p.state == Player.State.DASH:
+			dashes += 1
+		await _frames(14)
+	check(dashes == 5, "art arda 5 dash: hepsi yapıldı (%d)" % dashes)
+	# parry: kaçırınca toparlanma neredeyse yok
+	p.state = Player.State.MOVE
+	await _frames(3)
+	p.intent.parry_pressed = true
+	await _frames(2)
+	check(p.state == Player.State.PARRY, "parry açıldı")
+	await _frames(14)
+	check(p.state == Player.State.MOVE, "kaçırılan parry'den hemen çıkıldı (%s)" % Player.State.keys()[p.state])
+	# kapatınca her şey normale döner
+	GameState._unhandled_key_input(_f_key(KEY_F4))
+	check(not GameState.god_mode, "F4 tekrar basınca kapandı")
+	p.health = 4
+	p.invulnerable_t = 0.0
+	p.take_damage(1, null)
+	check(p.health == 3, "kapalıyken hasar can götürür (%d)" % p.health)
+	p.dash_charges = 0
+	check(not p.can_dash(), "kapalıyken şarjsız dash yok")
+	# Oda atlama artık F6'da
+	GameState.god_mode = false
+	await _new_world("Deneme modu: HUD rozeti ve oda atlama (F6)")
+	var run := _start_run(55)
+	await _frames(5)
+	check(not run.hud.overlay.god_mode, "rozet kapalı")
+	var ann0 := run.hud.announcer.count()
+	GameState.god_mode = true
+	check(run.hud.overlay.god_mode and run.hud.announcer.count() == ann0 + 1, "açılınca rozet çıktı ve duyuru yapıldı")
+	GameState.god_mode = false
+	check(not run.hud.overlay.god_mode, "kapanınca rozet gitti")
+	await _wait_until(func() -> bool: return run.current_room().alive_count() > 0, 200)
+	run._unhandled_key_input(_f_key(KEY_F4))
+	check(not run.current_room().is_cleared(), "F4 artık odayı atlamıyor")
+	run._unhandled_key_input(_f_key(KEY_F6))
+	check(run.current_room().is_cleared(), "F6 odayı temizledi")
+	run.queue_free()
 
 
 # ------------------------------------------------------------------ eşyalar (altyapı; içerik kullanıcının listesine göre gelecek)

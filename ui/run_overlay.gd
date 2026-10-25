@@ -16,6 +16,8 @@ var wave_total := 0
 ## Oda temizlendi: sağa ilerle okunu göster.
 var cleared := false
 var dead := false
+## Deneme (god) modu açık: üstte rozet gösterilir.
+var god_mode := false
 ## Ölüm özeti: kills, rooms_cleared, best_combo, time
 var summary := {}
 
@@ -63,6 +65,9 @@ func _draw() -> void:
 			GameFont.draw_runs_centered(self, [["DALGA ", GameFont.WHITE], [str(shown), GameFont.YELLOW], ["/%d" % wave_total, GameFont.WHITE]], Vector2(w - MARGIN_RIGHT, 84.0), 22)
 	elif arena_wave > 0:
 		GameFont.draw_runs_centered(self, [["DALGA ", GameFont.WHITE], [str(arena_wave), GameFont.YELLOW]], Vector2(w - MARGIN_RIGHT, 44.0), 30)
+	if god_mode and not dead:
+		var pulse := 0.7 + 0.3 * sin(_t * 3.0)
+		GameFont.draw_runs_centered(self, [["DENEME MODU", GameFont.YELLOW]], Vector2(w * 0.5, 28.0), 24, pulse)
 	if cleared and not dead:
 		_draw_go_hint(w, h)
 	if dead:

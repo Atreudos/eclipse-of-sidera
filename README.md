@@ -25,7 +25,8 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | J | Saldırı |
 | F3 | Debug paneli (parry penceresi, dash hızı vb. canlı ayar) |
 | R | Yeniden başla (ölünce ya da istediğin an) |
-| F4 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
+| F4 | **Deneme modu (god)**: can düşmez, dash ve parry bekleme yok. Tekrar basınca kapanır, ölüp yeniden başlasan da açık kalır |
+| F6 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
 
 Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile kaç.
 

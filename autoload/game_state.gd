@@ -3,6 +3,16 @@ extends Node
 ## Umbra dövüşü (Aşama 4) buradaki envanteri kullanacak.
 
 signal umbra_changed
+signal god_mode_changed(enabled: bool)
+
+## Deneme (god) modu, F4 ile açılıp kapanır: can düşmez, dash/parry bekleme yok. Geliştirme ve deneme içindir.
+## `reset()` bunu kapatmaz: ölüp yeniden başlasan da açık kalır.
+var god_mode := false:
+	set(value):
+		if god_mode == value:
+			return
+		god_mode = value
+		god_mode_changed.emit(value)
 
 ## Oyuncunun seçmeyip BIRAKTIĞI eşyalar: Umbra bunları alır.
 var umbra_items: Array[ItemData] = []
@@ -28,3 +38,9 @@ func umbra_has(item_id: String) -> bool:
 		if it.id == item_id:
 			return true
 	return false
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F4:
+		god_mode = not god_mode

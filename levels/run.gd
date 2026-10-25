@@ -248,12 +248,13 @@ func _on_player_died() -> void:
 	hud.set_summary(stats)
 
 
-## Geliştirici kısayolu: F4 = odadaki herkesi öldür ve odayı temizle (akışı hızlı denemek için).
+## Geliştirici kısayolu: F6 = odadaki herkesi öldür ve odayı temizle (akışı hızlı denemek için).
+## (F4 = deneme/god modu, F5 = eşya menüsü.)
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
-	if key.physical_keycode == KEY_F4:
+	if key.physical_keycode == KEY_F6:
 		skip_room()
 
 

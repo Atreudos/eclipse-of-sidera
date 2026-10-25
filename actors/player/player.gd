@@ -226,9 +226,9 @@ func _sync_enemy_collision() -> void:
 		collision_mask |= Layers.ENEMY
 
 
-## Dash yapılabilir mi? (şarj var ya da Soğukkanlı'nın serbest süresi sürüyor)
+## Dash yapılabilir mi? (şarj var, serbest dash süresi sürüyor ya da deneme modu açık)
 func can_dash() -> bool:
-	return dash_charges > 0 or free_dash_t > 0.0
+	return GameState.god_mode or dash_charges > 0 or free_dash_t > 0.0
 
 
 ## Hareketten sonra: düşman gövdesine çarpan dash erken biter; düşmanın başına konulursa yana kayılır.
@@ -319,6 +319,9 @@ func _tick_timers(delta: float) -> void:
 	else:
 		_coyote = maxf(_coyote - delta, 0.0)
 	var max_charges := stats.int_value("dash_charges")
+	if GameState.god_mode and dash_charges < max_charges:
+		dash_charges = max_charges
+		dash_charges_changed.emit(dash_charges, max_charges)
 	if dash_charges < max_charges:
 		_dash_recharge_t += delta
 		if _dash_recharge_t >= stats.value("dash_recharge"):
@@ -391,8 +394,8 @@ func _handle_actions() -> void:
 # ---------------------------------------------------------------- dash
 
 func _start_dash() -> void:
-	if free_dash_t <= 0.0:
-		dash_charges -= 1
+	if free_dash_t <= 0.0 and not GameState.god_mode:
+		dash_charges = maxi(dash_charges - 1, 0)
 		dash_charges_changed.emit(dash_charges, stats.int_value("dash_charges"))
 	if absf(intent.move_x) > 0.05:
 		_dash_dir = 1 if intent.move_x > 0.0 else -1
@@ -433,6 +436,11 @@ func _start_parry() -> void:
 	_try_parry_zone()  # tuşa bastığın karede zaten içerideki mermiler
 
 
+## Parry'yi kaçırınca toparlanma süresi. Deneme modunda neredeyse yok (parry'yi bedavaya spamleyebilirsin).
+func parry_recovery_time() -> float:
+	return 0.04 if GameState.god_mode else stats.value("parry_recovery")
+
+
 func _parry_window_open() -> bool:
 	return state == State.PARRY and not _parry_recovering and _parry_t <= stats.value("parry_window")
 
@@ -446,11 +454,11 @@ func _state_parry(delta: float) -> void:
 			_try_parry_zone()
 		else:
 			_parry_recovering = true
-			anim.trigger("parry_fail", stats.value("parry_recovery"))
+			anim.trigger("parry_fail", parry_recovery_time())
 			EventBus.parry_failed.emit(self)
 	else:
 		_apply_horizontal(delta, 0.4)
-		if _parry_t >= stats.value("parry_window") + stats.value("parry_recovery"):
+		if _parry_t >= stats.value("parry_window") + parry_recovery_time():
 			state = State.MOVE
 
 
@@ -565,6 +573,14 @@ func _on_melee_landed(_target: Hurtbox) -> void:
 
 
 # ---------------------------------------------------------------- hasar / ölüm
+
+## Gelen hasardan canı gerçekten götürecek kısım. Deneme modunda hiçbir şey gitmez
+## (vuruş tepkisi, flaş ve ritim kaybı yine olur: ne olduğunu görebilirsin).
+func _damage_after_defenses(amount: int, _source: Node) -> int:
+	if GameState.god_mode:
+		return 0
+	return amount
+
 
 func _enter_hurt(hitbox: Hitbox) -> void:
 	if dead:

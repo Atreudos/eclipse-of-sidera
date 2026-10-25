@@ -33,11 +33,23 @@ func _ready() -> void:
 	_build()
 	player = get_tree().get_first_node_in_group("player") as Player
 	EventBus.rhythm_tier_changed.connect(_on_rhythm_tier_changed)
+	GameState.god_mode_changed.connect(_on_god_mode_changed)
+	overlay.god_mode = GameState.god_mode
 
 
 func _exit_tree() -> void:
 	if EventBus.rhythm_tier_changed.is_connected(_on_rhythm_tier_changed):
 		EventBus.rhythm_tier_changed.disconnect(_on_rhythm_tier_changed)
+	if GameState.god_mode_changed.is_connected(_on_god_mode_changed):
+		GameState.god_mode_changed.disconnect(_on_god_mode_changed)
+
+
+func _on_god_mode_changed(enabled: bool) -> void:
+	overlay.god_mode = enabled
+	if enabled:
+		announcer.push_runs([["DENEME MODU ", GameFont.YELLOW], ["AÇIK", GameFont.WHITE]], 40, 1.4)
+	else:
+		announcer.push_runs([["DENEME MODU ", GameFont.WHITE], ["KAPALI", GameFont.YELLOW]], 40, 1.2)
 
 
 ## Kademe yükselince küçük bir duyuru (düşüşlerde sessiz).
@@ -76,7 +88,7 @@ func _build() -> void:
 		_pip_fills.append(fill)
 
 	_hint_label = _make_label(root, Vector2(24, 682), 14)
-	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  R yeniden  F3 debug"
+	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  R yeniden  F3 debug  F4 deneme modu"
 	_hint_label.modulate = Color(1, 1, 1, 0.55)
 	rhythm_bar = RhythmBar.new()
 	rhythm_bar.name = "RhythmBar"

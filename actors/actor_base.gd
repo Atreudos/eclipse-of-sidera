@@ -112,12 +112,24 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 func take_damage(amount: int, source: Node = null) -> void:
 	if dead:
 		return
-	health = maxi(health - amount, 0)
+	var dealt := _damage_after_defenses(amount, source)
+	health = maxi(health - dealt, 0)
 	damaged.emit(amount, source)
 	EventBus.damage_dealt.emit(self, amount, source)
 	_hit_feedback(source)
 	if health <= 0:
-		die()
+		_on_health_depleted()
+
+
+## Savunmalar (hasar azaltma, bağışıklık kalbi, deneme modu...) sonrası canı gerçekten götürecek hasar.
+## Alt sınıflar değiştirir; `amount` saldırının ham gücüdür.
+func _damage_after_defenses(amount: int, _source: Node) -> int:
+	return amount
+
+
+## Can sıfıra indi. Alt sınıflar ölümü engelleyebilir (Çatlak El Aynası); varsayılan: öl.
+func _on_health_depleted() -> void:
+	die()
 
 
 ## Can yeniler (en çok max_health'e kadar). Gerçekten kazanılan can miktarını döndürür.
