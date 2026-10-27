@@ -27,6 +27,8 @@ static func spawn(host: Node, feet: Vector2, enemy_scene: PackedScene, enemy_par
 
 
 func _process(delta: float) -> void:
+	if TimeStop.active:
+		return
 	_t += delta
 	if _t >= duration:
 		_emerge()

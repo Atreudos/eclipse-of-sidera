@@ -1,7 +1,7 @@
 extends ItemEffect
-## Don: parry'lediğin saldırıyı yapan düşman uzun süre donar (sersemler, her vuruş x1.5 hasar alır).
+## Hırsızın Zinciri: parry yaptığın düşman yere fazladan antika para (altın) düşürür.
 
-const FREEZE_TIME := 2.2
+const COINS := 1
 
 
 func on_acquire() -> void:
@@ -16,5 +16,4 @@ func _on_parry(actor: Node, hitbox: Node) -> void:
 		return
 	var enemy := hb.attacker() as EnemyBase
 	if enemy != null and is_instance_valid(enemy) and not enemy.dead:
-		enemy.stun(FREEZE_TIME)
-		RingFx.spawn(enemy.get_parent(), enemy.global_position, Color(0.6, 0.9, 1.0, 0.9), 12.0, 70.0, 0.4)
+		Coin.drop(enemy.get_parent(), enemy.global_position + Vector2(0.0, -14.0), COINS, true)

@@ -119,6 +119,7 @@ func make_waves(room_index: int) -> Array:
 
 func _ready() -> void:
 	Hitstop.reset()
+	TimeStop.reset()
 	run_seed = seed_value if seed_value != 0 else int(Time.get_ticks_usec() & 0x7fffffff)
 	player = get_tree().get_first_node_in_group("player") as Player
 	if player == null:
@@ -202,6 +203,7 @@ func _process(delta: float) -> void:
 
 func restart() -> void:
 	Hitstop.reset()
+	TimeStop.reset()
 	get_tree().reload_current_scene()
 
 

@@ -1,5 +1,5 @@
 extends ItemEffect
-## Üçüncü Şarj: +1 dash şarjı (stat modifier'ı ItemDB'de). Yeni şarj hemen dolu gelir.
+## Ayna Tabanlı Çizmeler: +1 dash şarjı (stat modifier'ı ItemDB'de). Yeni şarj hemen dolu gelir.
 
 
 func on_acquire() -> void:

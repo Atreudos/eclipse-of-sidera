@@ -14,7 +14,8 @@ func _init(base_values: Dictionary = {}) -> void:
 	base = base_values.duplicate()
 
 
-func value(stat: String) -> float:
+## `default_base`: bu stat taban değerlerde yoksa kullanılacak taban (örn. çarpan statları için 1.0).
+func value(stat: String, default_base: float = 0.0) -> float:
 	var add := 0.0
 	var mul := 1.0
 	for source in _mods:
@@ -22,7 +23,7 @@ func value(stat: String) -> float:
 			if m["stat"] == stat:
 				add += m["add"]
 				mul *= m["mul"]
-	return (float(base.get(stat, 0.0)) + add) * mul
+	return (float(base.get(stat, default_base)) + add) * mul
 
 
 func int_value(stat: String) -> int:

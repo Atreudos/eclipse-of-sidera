@@ -14,6 +14,8 @@ var health: int = 1
 var dead := false
 ## Ekstra dokunulmazlık süresi (parry sonrası, hasar sonrası vb.)
 var invulnerable_t := 0.0
+## `damage_taken` statının kesirli kalıntısı (bkz. `_scale_damage`).
+var _damage_carry := 0.0
 
 ## Görsel renk (modulate). Alt sınıflar bunu değiştirerek durum gösterir.
 var tint := Color.WHITE
@@ -124,12 +126,35 @@ func take_damage(amount: int, source: Node = null) -> void:
 ## Savunmalar (hasar azaltma, bağışıklık kalbi, deneme modu...) sonrası canı gerçekten götürecek hasar.
 ## Alt sınıflar değiştirir; `amount` saldırının ham gücüdür.
 func _damage_after_defenses(amount: int, _source: Node) -> int:
-	return amount
+	return _scale_damage(amount)
+
+
+## Alınan hasar çarpanı (`damage_taken` statı; Antika Muhafız Kaskı = 0.85). Hasar tam sayı olduğu için kesir
+## birikir: %15 azaltma yaklaşık her 7 hasar puanında bir puanı siler (çarpan 1'den büyükse tersi: puan ekler).
+func _scale_damage(amount: int) -> int:
+	if stats == null or amount <= 0:
+		return amount
+	var mult := stats.value("damage_taken", 1.0)
+	if is_equal_approx(mult, 1.0):
+		_damage_carry = 0.0
+		return amount
+	_damage_carry += float(amount) * (mult - 1.0)
+	var whole := int(_damage_carry)
+	_damage_carry -= float(whole)
+	return maxi(amount + whole, 0)
 
 
 ## Can sıfıra indi. Alt sınıflar ölümü engelleyebilir (Çatlak El Aynası); varsayılan: öl.
 func _on_health_depleted() -> void:
 	die()
+
+
+## Bir vuruşu yapan aktörün geri itme çarpanı (`knockback_mult` statı; yoksa 1.0).
+static func knockback_mult_of(source: Node) -> float:
+	var a := source as ActorBase
+	if a == null or a.stats == null:
+		return 1.0
+	return a.stats.value("knockback_mult", 1.0)
 
 
 ## Can yeniler (en çok max_health'e kadar). Gerçekten kazanılan can miktarını döndürür.

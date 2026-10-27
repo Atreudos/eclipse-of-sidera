@@ -106,9 +106,17 @@ func _run_all() -> void:
 		"god_modu": _test_god_mode,
 		"esya_db": _test_items_db,
 		"esya_envanter": _test_inventory,
-		"esya_etki_dash": _test_item_dash_effects,
-		"esya_etki_parry": _test_item_parry_effects,
-		"esya_etki_diger": _test_item_misc_effects,
+		"yemek_bagisiklik": _test_food_immunity,
+		"refleks_durum": _test_reflex_statuses,
+		"hasar_geri_itme": _test_damage_and_knockback,
+		"altin_para": _test_gold_coins,
+		"esya_ayak": _test_item_feet,
+		"esya_charm_bilek": _test_item_charms,
+		"esya_cat_ayna": _test_item_cracked_mirror,
+		"parry_zincir": _test_parry_chain,
+		"zaman_durdur": _test_time_stop,
+		"esya_kum_saati": _test_item_hourglass,
+		"hud_ek": _test_run_hud_extras,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -1981,269 +1989,1006 @@ func _test_god_mode() -> void:
 	run.queue_free()
 
 
-# ------------------------------------------------------------------ eşyalar (altyapı; içerik kullanıcının listesine göre gelecek)
+# ------------------------------------------------------------------ eşyalar, yemek, altın, zaman durdurma
 
 func _item(item_id: String) -> ItemData:
 	return ItemDB.get_item(item_id)
 
 
+## Slotu/kimliği elle verilen deneme eşyası (veritabanında olmayan).
+func _dummy_item(item_id: String, slot: ItemData.Slot = ItemData.Slot.CHARM) -> ItemData:
+	var it := ItemData.new()
+	it.id = item_id
+	it.display_name = item_id
+	it.description = "deneme"
+	it.slot = slot
+	return it
+
+
+## Çarpışma şekli olmayan sahte düşman saldırısı (parry_success sinyalini elle yollamak için).
 func _fake_parry_hitbox(src: Node = null) -> Hitbox:
 	var hb := Hitbox.new()
 	hb.faction = "enemy"
 	hb.source = src
+	hb.original_source = src
 	_world.add_child(hb)
 	return hb
 
 
+## Gerçek düşman saldırısı (çarpışma şekilli): parry bölgesine ve oyuncunun hurtbox'ına değer.
+## Parry'lenince kendini kapatır (gerçek düşmanların yaptığı gibi).
+func _enemy_strike(at: Vector2, src: Node = null, parryable: bool = true, dmg: int = 1) -> Hitbox:
+	var hb := Hitbox.new()
+	hb.faction = "enemy"
+	hb.parryable = parryable
+	hb.damage = dmg
+	hb.source = src
+	hb.original_source = src
+	var cs := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 12.0
+	cs.shape = circle
+	hb.add_child(cs)
+	hb.parried.connect(func(_by: Node) -> void: hb.active = false)
+	_world.add_child(hb)
+	hb.global_position = at
+	return hb
+
+
+## Hareketsiz, çok canlı, para düşürmeyen düşman (yapay zekâsı sersemletilerek susturulmuş).
+func _quiet_enemy(at: Vector2) -> Taurus:
+	var e := TAURUS.instantiate() as Taurus
+	e.max_hp = 99
+	e.gold_min = 0
+	e.gold_max = 0
+	_world.add_child(e)
+	e.global_position = at
+	e.stun(600.0)
+	return e
+
+
 func _test_items_db() -> void:
 	print("\nEşya veritabanı")
+	const S := ItemData.Slot
 	var all := ItemDB.all()
-	check(all.size() >= 10, "en az 10 yer tutucu eşya var (%d)" % all.size())
+	check(all.size() == 13, "10 donanım + 3 yemek = 13 eşya (%d)" % all.size())
 	var seen := {}
 	var fields_ok := true
+	var price_ok := true
 	var tags_ok := true
 	var fx_ok := true
-	var known := ["PARRY", "DASH", "MERMI", "ALEV", "BUZ", "ZEHIR", "CAN", "RITIM", "KARMA"]
+	var known := ["PARRY", "DASH", "MERMI", "ALEV", "BUZ", "ZEHIR", "CAN", "RITIM", "KARMA", "ZAMAN", "ALTIN", "HAREKET", "SAVUNMA"]
 	for it in all:
 		if seen.has(it.id) or it.id == "" or it.display_name == "" or it.description == "":
 			fields_ok = false
 		seen[it.id] = true
+		if it.price <= 0:
+			price_ok = false
 		for t in it.tags:
 			if not (t in known):
 				tags_ok = false
 		if it.effect_script != null and not (it.effect_script.new() is ItemEffect):
 			fx_ok = false
 	check(fields_ok, "kimlik/ad/açıklama dolu, kimlikler tekil")
+	check(price_ok, "her eşyanın mağaza fiyatı var")
 	check(tags_ok, "etiketler bilinen listeden")
 	check(fx_ok, "davranış betikleri ItemEffect'ten türüyor")
 	check(ItemDB.get_item("yok_boyle_esya") == null, "olmayan eşya null döner")
+	# Slotlar senin listene göre
+	var slots := {
+		"mirror_boots": S.FEET, "feather_boots": S.FEET,
+		"viper_fang": S.CHARM, "stardust_brooch": S.CHARM, "vampire_relic": S.CHARM,
+		"guardian_helm": S.HEAD, "watcher_band": S.HEAD,
+		"cracked_mirror": S.POCKET, "saturn_hourglass": S.POCKET,
+		"thief_chain": S.WRIST,
+		"tower_bread": S.FOOD, "baked_sweet_potato": S.FOOD, "cosmic_star_soup": S.FOOD,
+	}
+	var slots_ok := true
+	for item_id in slots:
+		var it := _item(item_id)
+		if it == null or it.slot != slots[item_id]:
+			slots_ok = false
+	check(slots_ok, "her eşya doğru slotta")
+	var cap := ItemData.SLOT_CAPACITY
+	check(cap[S.FEET] == 1 and cap[S.CHARM] == 3 and cap[S.HEAD] == 2 and cap[S.POCKET] == 1 and cap[S.WRIST] == 1 and cap[S.ARMOR] == 1, "slot sayıları: ayak 1, charm 3, kafa 2, cep 1, bilek 1, zırh 1")
+	var shadow_ok := true
+	for sid in ["mirror_boots", "feather_boots", "viper_fang", "stardust_brooch", "vampire_relic", "guardian_helm", "watcher_band", "cracked_mirror"]:
+		if _item(sid).shadow_text == "":
+			shadow_ok = false
+	check(shadow_ok, "8 eşyanın 'Gölge alırsa' metni var")
+	# Yemekler
+	var bread := _item("tower_bread")
+	var potato := _item("baked_sweet_potato")
+	var soup := _item("cosmic_star_soup")
+	check(bread.is_food() and potato.is_food() and soup.is_food() and not bread.is_equippable(), "yemekler takılmaz, yenir")
+	check(bread.heal_amount(4) == 1 and potato.heal_amount(4) == 2 and soup.heal_amount(4) == 4 and soup.heal_amount(6) == 6, "yemek miktarları: 1, 2, tam doldur")
+	check(not bread.umbra_allowed and not potato.umbra_allowed and not soup.umbra_allowed, "yemekler Umbra'ya gitmez")
+	var gear := ItemDB.equipment()
+	var no_food := true
+	for it in gear:
+		if it.is_food():
+			no_food = false
+	check(gear.size() == 10 and no_food, "donanım havuzu 10 eşya, yemek yok")
+	check(GameFont.upper("Kule Ekmeği") == "KULE EKMEĞİ" and GameFont.upper("Satürn'ün Kum Saati") == "SATÜRN'ÜN KUM SAATİ", "Türkçe büyük harf (i -> İ)")
+	# Ödül çifti
 	var r1 := RandomNumberGenerator.new()
 	r1.seed = 7
-	var pair := ItemDB.roll_pair(r1, ["golden_tooth"], ["frost"])
+	var pair := ItemDB.roll_pair(r1, ["viper_fang"], ["guardian_helm"])
 	check(pair.size() == 2 and pair[0].id != pair[1].id, "ödül çifti iki farklı eşya")
-	check(not (pair[0].id in ["golden_tooth", "frost"]) and not (pair[1].id in ["golden_tooth", "frost"]), "sahip olunan ve Umbra'ya giden eşya çıkmıyor")
+	check(not (pair[0].id in ["viper_fang", "guardian_helm"]) and not (pair[1].id in ["viper_fang", "guardian_helm"]), "sahip olunan ve Umbra'ya giden eşya çıkmıyor")
 	var r2 := RandomNumberGenerator.new()
 	r2.seed = 7
-	var pair2 := ItemDB.roll_pair(r2, ["golden_tooth"], ["frost"])
+	var pair2 := ItemDB.roll_pair(r2, ["viper_fang"], ["guardian_helm"])
 	check(pair2[0].id == pair[0].id and pair2[1].id == pair[1].id, "aynı tohum aynı çifti verir")
-	# Havuz boşalsa da iki eşya çıkar
-	var every: Array = ItemDB.ids()
-	var pair3 := ItemDB.roll_pair(r2, every, [])
+	var food_free := true
+	for sd in 40:
+		var rr := RandomNumberGenerator.new()
+		rr.seed = sd
+		for it in ItemDB.roll_pair(rr):
+			if it.is_food():
+				food_free = false
+	check(food_free, "ödül çiftinde hiç yemek çıkmıyor (40 tohum)")
+	var pair3 := ItemDB.roll_pair(r2, ItemDB.ids(), [])
 	check(pair3.size() == 2 and pair3[0].id != pair3[1].id, "havuz tükenince de iki farklı eşya (sahip olunanlar dahil)")
 	# Umbra'nın eşyaları
 	GameState.reset()
-	GameState.leave_behind(_item("frost"))
-	check(GameState.umbra_has("frost") and GameState.umbra_items.size() == 1, "bırakılan eşya Umbra'ya gitti")
+	GameState.leave_behind(_item("viper_fang"))
+	check(GameState.umbra_has("viper_fang") and GameState.umbra_items.size() == 1, "bırakılan eşya Umbra'ya gitti")
 	GameState.reset()
 	check(GameState.umbra_items.is_empty() and GameState.umbra_extra_carry == 0, "yeni koşuda sıfırlanır")
 
 
 func _test_inventory() -> void:
-	await _new_world("Envanter: modifier'lar, etiket sinerjisi, çıkarma")
+	await _new_world("Envanter: çanta, slotlar, takma/çıkarma, modifier'lar, sinerji")
+	const S := ItemData.Slot
 	var p := _spawn_player()
 	await _frames(2)
 	var inv := p.inventory
-	check(inv != null and inv.items.is_empty(), "oyuncuda boş envanter var")
+	check(inv != null and inv.items.is_empty() and inv.bag.is_empty(), "oyuncuda boş envanter var")
+	var counts := [0, 0, 0]  # alınan, takılan, çıkarılan
+	var on_acq := func(_a: Node, _i: ItemData) -> void: counts[0] += 1
+	var on_eq := func(_a: Node, _i: ItemData) -> void: counts[1] += 1
+	var on_un := func(_a: Node, _i: ItemData) -> void: counts[2] += 1
+	EventBus.item_acquired.connect(on_acq)
+	EventBus.item_equipped.connect(on_eq)
+	EventBus.item_unequipped.connect(on_un)
+	var band := _item("watcher_band")
+	var helm := _item("guardian_helm")
 	var w0 := p.stats.value("parry_window")
-	inv.add(_item("golden_tooth"))
-	check(is_equal_approx(p.stats.value("parry_window"), w0 + 0.04), "Altın Diş: parry penceresi +0.04")
-	check(inv.has("golden_tooth") and inv.count("golden_tooth") == 1 and inv.tag_count("PARRY") == 1, "envanter kaydı doğru")
-	inv.add(_item("golden_tooth"))
-	check(is_equal_approx(p.stats.value("parry_window"), w0 + 0.08), "aynı eşya ikinci kez: etkisi üst üste biner")
-	check(inv.remove("golden_tooth") and is_equal_approx(p.stats.value("parry_window"), w0 + 0.04), "çıkarınca bir kopyanın etkisi gider")
-	inv.remove("golden_tooth")
-	check(is_equal_approx(p.stats.value("parry_window"), w0), "hepsi çıkınca stat tabana döndü")
-	check(not inv.remove("golden_tooth"), "olmayan eşya çıkarılamaz")
-	var added := [0]
-	EventBus.item_acquired.connect(func(_a: Node, _i: ItemData) -> void: added[0] += 1)
+	# çanta -> slot -> çanta
+	check(inv.give(band) == "", "eşya çantaya girdi")
+	check(inv.bag.size() == 1 and inv.bag_count("watcher_band") == 1 and inv.items.is_empty(), "çantada duruyor, takılı değil")
+	check(is_equal_approx(p.stats.value("parry_window"), w0), "çantadaki eşya etki etmez")
+	check(inv.equip(band) == "", "takıldı")
+	check(inv.has("watcher_band") and inv.bag.is_empty() and inv.items.size() == 1, "takılı listede, çanta boşaldı")
+	check(is_equal_approx(p.stats.value("parry_window"), w0 + 0.1), "Gözcü Bandı: parry penceresi +0.1")
+	check(inv.slot_free(S.HEAD) == 1 and inv.equipped_in(S.HEAD).size() == 1, "kafa slotunda 1 boş yer kaldı")
+	check(inv.unequip(band) == "" and not inv.has("watcher_band") and inv.bag_count("watcher_band") == 1, "çıkarınca çantaya döndü")
+	check(is_equal_approx(p.stats.value("parry_window"), w0), "çıkarınca etkisi gitti")
+	check(inv.equip(band) == "", "tekrar takıldı")
+	check(inv.unequip(helm) == "TAKILI DEĞİL", "takılı olmayan çıkarılamaz")
+	check(inv.equip(helm) == "ÇANTADA YOK", "çantada olmayan eşya takılamaz")
+	# yemek takılmaz
+	var bread := _item("tower_bread")
+	inv.give(bread)
+	check(inv.equip(bread) == "BU TAKILMAZ", "yemek takılmaz")
+	inv.take_from_bag("tower_bread")
+	# kafa: 2 slot, aynı eşyadan ikisi takılabilir
+	inv.give(helm)
+	check(inv.equip(helm) == "" and inv.slot_free(S.HEAD) == 0, "ikinci kafa eşyası takıldı, slotlar doldu")
+	inv.give(helm)
+	check(inv.equip(helm) == "KAFA SLOTLARI DOLU" and inv.bag_count("guardian_helm") == 1, "3. kafa eşyası reddedildi, çantada kaldı")
+	# charm: 3 slot
+	var charms: Array[ItemData] = []
+	for i in 4:
+		charms.append(_dummy_item("test_charm_%d" % i))
+	var ok3 := true
+	for i in 3:
+		inv.give(charms[i])
+		if inv.equip(charms[i]) != "":
+			ok3 = false
+	check(ok3 and inv.slot_free(S.CHARM) == 0, "3 charm takıldı")
+	inv.give(charms[3])
+	check(inv.equip(charms[3]) == "CHARM SLOTLARI DOLU", "4. charm reddedildi")
+	# tek slotlular: ayak, cep
+	for pair in [["mirror_boots", "feather_boots", "AYAK"], ["cracked_mirror", "saturn_hourglass", "CEP"]]:
+		inv.give(_item(pair[0]))
+		inv.give(_item(pair[1]))
+		var first := inv.equip(_item(pair[0]))
+		var second := inv.equip(_item(pair[1]))
+		check(first == "" and second == "%s SLOTLARI DOLU" % pair[2], "%s: tek slot, ikinci eşya reddedildi" % pair[2])
+	# add() kısayolu: yer varsa takar, yoksa çantada bırakır
+	inv.clear_all()
+	check(inv.items.is_empty() and inv.bag.is_empty(), "clear_all her şeyi boşalttı")
+	check(is_equal_approx(p.stats.value("parry_window"), w0) and p.stats.int_value("dash_charges") == 2, "boşaltınca tüm etkiler gitti")
+	check(inv.add(_item("thief_chain")) == "" and inv.has("thief_chain"), "add: yer varsa hemen takar")
+	check(inv.add(_item("thief_chain")) == "" and inv.count("thief_chain") == 1 and inv.bag_count("thief_chain") == 1, "add: slot doluysa çantada bırakır")
+	check(inv.add(bread) == "" and inv.bag_count("tower_bread") == 1 and not inv.has("tower_bread"), "add: yemek çantada kalır")
+	# sinerji: 3 PARRY etiketli eşya
+	inv.clear_all()
 	var r0 := p.stats.value("parry_zone_radius")
-	inv.add(_item("echo_bullet"))
-	inv.add(_item("cold_blood"))
+	inv.add(_item("viper_fang"))
+	inv.add(_item("vampire_relic"))
 	check(inv.active_synergies().is_empty(), "2 PARRY eşyası: sinerji yok")
-	inv.add(_item("frost"))
+	inv.add(band)
 	check(inv.active_synergies().has("PARRY"), "3 PARRY eşyası: sinerji açıldı")
-	check(is_equal_approx(p.stats.value("parry_zone_radius"), r0 + 6.0), "sinerji parry bölgesini büyüttü")
-	check(added[0] == 3, "EventBus.item_acquired her eşyada yayıldı (%d)" % added[0])
-	inv.remove("frost")
-	check(inv.active_synergies().is_empty() and is_equal_approx(p.stats.value("parry_zone_radius"), r0), "eşya çıkınca sinerji de gider")
-	check(inv.items.size() == 2, "kalan eşya sayısı 2")
+	check(is_equal_approx(p.stats.value("parry_zone_radius"), r0 + 6.0) and is_equal_approx(p.stats.value("parry_window"), w0 + 0.12), "sinerji parry bölgesini ve penceresini büyüttü")
+	check(inv.remove("watcher_band") and inv.active_synergies().is_empty() and is_equal_approx(p.stats.value("parry_zone_radius"), r0), "eşya çıkınca sinerji de gider")
+	check(not inv.remove("yok_boyle_esya"), "olmayan eşya çıkarılamaz")
+	# davranış betiği: takılınca bağlanır, çıkınca kopar
+	inv.clear_all()
+	var base_links := EventBus.parry_success.get_connections().size()
+	inv.add(_item("viper_fang"))
+	check(EventBus.parry_success.get_connections().size() == base_links + 1, "takılı eşyanın betiği sinyale bağlandı")
+	inv.unequip(_item("viper_fang"))
+	check(EventBus.parry_success.get_connections().size() == base_links, "çıkarınca bağlantı koptu")
+	# çanta kapasitesi
+	inv.clear_all()
+	var fillers: Array[ItemData] = []
+	for i in Inventory.BAG_SIZE:
+		fillers.append(_dummy_item("dolgu_%d" % i))
+	var all_in := true
+	for f in fillers:
+		if inv.give(f) != "":
+			all_in = false
+	check(all_in and inv.bag.size() == Inventory.BAG_SIZE and inv.bag_free() == 0, "çanta %d hücreye kadar doldu" % Inventory.BAG_SIZE)
+	check(inv.give(_dummy_item("fazla")) == "ÇANTA DOLU", "dolu çantaya yeni eşya girmez")
+	check(inv.give(fillers[0]) == "" and inv.bag_count("dolgu_0") == 2 and inv.bag.size() == Inventory.BAG_SIZE, "aynı eşya dolu çantada bile yığılır")
+	# dolu çantada takılıyı çıkarmak
+	inv.clear_all()
+	var cuff := _dummy_item("bilek_deneme", S.WRIST)
+	inv.give(cuff)
+	inv.equip(cuff)
+	for f in fillers:
+		inv.give(f)
+	check(inv.unequip(cuff) == "ÇANTA DOLU" and inv.has("bilek_deneme"), "çanta doluyken takılı eşya çıkarılamaz, takılı kalır")
+	inv.take_from_bag("dolgu_3")
+	check(inv.unequip(cuff) == "" and inv.bag_count("bilek_deneme") == 1, "yer açılınca çıkarılabildi")
+	# olaylar
+	inv.clear_all()
+	counts[0] = 0
+	counts[1] = 0
+	counts[2] = 0
+	inv.give(band)
+	inv.equip(band)
+	inv.unequip(band)
+	check(counts[0] == 1 and counts[1] == 1 and counts[2] == 1, "alma/takma/çıkarma olayları yayıldı %s" % str(counts))
+	EventBus.item_acquired.disconnect(on_acq)
+	EventBus.item_equipped.disconnect(on_eq)
+	EventBus.item_unequipped.disconnect(on_un)
 
 
-func _test_item_dash_effects() -> void:
-	await _new_world("Eşya etkileri: Üçüncü Şarj, Hayalet Adım, Soğukkanlı")
-	var p := _spawn_player(500.0)
+func _test_food_immunity() -> void:
+	await _new_world("Yemek ve bağışıklık kalbi: taşan iyileşme mavi kalp olur, bağışıklık varken yemek yenmez")
+	var p := _spawn_player()
 	await _frames(2)
 	var inv := p.inventory
-	# Üçüncü Şarj
-	var speed0 := p.stats.value("dash_speed")
-	check(p.dash_charges == 2, "başlangıçta 2 şarj")
-	inv.add(_item("third_charge"))
-	check(p.stats.int_value("dash_charges") == 3 and p.dash_charges == 3, "Üçüncü Şarj: üst sınır 3, yeni şarj dolu geldi")
-	check(p.stats.value("dash_speed") < speed0, "bedeli: dash hızı düştü")
-	inv.remove("third_charge")
-	check(p.dash_charges == 2 and is_equal_approx(p.stats.value("dash_speed"), speed0), "çıkarınca şarj ve hız eski haline döndü")
-	# Soğukkanlı: parry'den sonra şarj harcanmaz
-	inv.add(_item("cold_blood"))
-	p.dash_charges = 0
-	check(not p.can_dash(), "şarj yokken dash yok")
-	var hb := _fake_parry_hitbox()
-	EventBus.parry_success.emit(p, hb)
-	check(is_equal_approx(p.free_dash_t, 1.0) and p.can_dash(), "Soğukkanlı: parry sonrası şarjsız dash açık")
-	p.intent.dash_pressed = true
+	var bread := _item("tower_bread")
+	var potato := _item("baked_sweet_potato")
+	var soup := _item("cosmic_star_soup")
+	var eaten_log := []
+	var on_eat := func(_a: Node, it: ItemData, healed: int, overflow: int) -> void: eaten_log.append([it.id, healed, overflow])
+	EventBus.food_eaten.connect(on_eat)
+	var imm_events := [0]
+	p.immunity_changed.connect(func(_v: int) -> void: imm_events[0] += 1)
+	inv.give(bread)
+	inv.give(potato)
+	inv.give(soup)
+	check(p.health == 4 and p.immunity == 0, "tam canla ve bağışıklıksız başlıyor")
+	check(inv.use(bread) == "CANIN ZATEN DOLU" and inv.bag_count("tower_bread") == 1, "can doluyken yemek yenmez, çantada kalır")
+	# Örnek: 3/4 can + 2 kalplik tatlı patates = can 4 + 1 bağışıklık kalbi
+	p.health = 3
+	check(inv.use(potato) == "", "tatlı patates yendi")
+	check(p.health == 4 and p.immunity == 1, "3/4 can + 2 kalp: can 4, bağışıklık +1 (%d, %d)" % [p.health, p.immunity])
+	check(inv.bag_count("baked_sweet_potato") == 0 and eaten_log.size() == 1 and eaten_log[0] == ["baked_sweet_potato", 1, 1], "yemek çantadan düştü, olay doğru bildirildi %s" % str(eaten_log))
+	check(imm_events[0] == 1, "bağışıklık sinyali yayıldı")
+	# Suistimal engeli: bağışıklık kalbi varken hiçbir yemek yenmez
+	p.health = 2
+	check(inv.use(bread) == "BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ", "bağışıklık kalbi varken ekmek yenmez")
+	check(inv.use(soup) == "BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ", "bağışıklık kalbi varken çorba da yenmez")
+	check(p.try_eat(bread) != "" and p.health == 2 and inv.bag_count("tower_bread") == 1 and inv.bag_count("cosmic_star_soup") == 1, "reddedilen yemek harcanmadı, can değişmedi")
+	# Hasar önce bağışıklık kalbini götürür
+	p.take_damage(1, null)
+	check(p.immunity == 0 and p.health == 2, "1 hasar: önce bağışıklık kalbi gitti, can aynı (%d / %d)" % [p.health, p.immunity])
+	p.set_immunity(1)
+	p.take_damage(2, null)
+	check(p.immunity == 0 and p.health == 1, "2 hasar: bağışıklık 1'ini karşıladı, kalan 1 can götürdü (%d)" % p.health)
+	# Bağışıklık bitince yemek yine yenir
+	check(inv.use(bread) == "" and p.health == 2 and p.immunity == 0, "bağışıklık bitince ekmek yenir (+1 can)")
+	check(eaten_log.back() == ["tower_bread", 1, 0], "ekmek: 1 can, taşma yok")
+	# Çorba: canı tamamen doldurur, kalan miktar bağışıklık olur
+	check(inv.use(soup) == "" and p.health == 4 and p.immunity == 2, "çorba 2/4'te: +2 can, taşan 2 bağışıklık (%d, %d)" % [p.health, p.immunity])
+	check(eaten_log.back() == ["cosmic_star_soup", 2, 2], "olay: çorba 2 can + 2 bağışıklık")
+	p.set_immunity(0)
+	p.health = 1
+	inv.give(soup)
+	check(inv.use(soup) == "" and p.health == 4 and p.immunity == 1, "çorba 1/4'te: +3 can, taşan 1 bağışıklık (%d, %d)" % [p.health, p.immunity])
+	# Ölümcül hasar bağışıklığı da aşar
+	p.take_damage(99, null)
+	check(p.dead and p.immunity == 0, "ölümcül hasar bağışıklığı da geçti")
+	check(p.try_eat(bread) == "ÖLÜSÜN", "ölü yemek yemez")
+	EventBus.food_eaten.disconnect(on_eat)
+	# Deneme modunda bağışıklık yine karşılar, can yine düşmez
+	await _new_world("Bağışıklık: deneme modu ve savunma çarpanı")
+	var q := _spawn_player()
 	await _frames(2)
-	check(p.state == Player.State.DASH and p.dash_charges == 0, "dash yapıldı, şarj harcanmadı")
-	await _frames(70)
-	check(p.free_dash_t <= 0.0, "1 sn dolunca serbest dash kapandı")
-	inv.remove("cold_blood")
-	# Hayalet Adım
-	p.dash_charges = p.stats.int_value("dash_charges")
-	p.global_position = Vector2(660.0, 612.0)
-	p.velocity = Vector2.ZERO
-	var e := TAURUS.instantiate() as Taurus
-	e.max_hp = 99
-	_world.add_child(e)
-	e.global_position = Vector2(740.0, 612.0)
-	e.set_physics_process(false)
-	await _frames(20)
-	inv.add(_item("ghost_step"))
-	check(p.dash_ghost, "Hayalet Adım açık")
-	check(p.collision_mask & Layers.ENEMY != 0, "dash dışında düşman gövdesi katı")
-	var bumps := [0]
-	p.dash_bumped.connect(func(_en: EnemyBase) -> void: bumps[0] += 1)
-	p.facing = 1
-	p.intent.move_x = 1.0
-	p.intent.dash_pressed = true
+	q.set_immunity(2)
+	GameState.god_mode = true
+	q.take_damage(1, null)
+	check(q.immunity == 1 and q.health == 4, "deneme modunda bağışıklık yine harcanır, can düşmez")
+	GameState.god_mode = false
+	q.inventory.add(_item("guardian_helm"))
+	q.set_immunity(0)
+	var before := q.health
+	q.take_damage(1, null)
+	check(q.health == before - 1, "kaskın %%15'i tek hasarı silmez (ilk vuruş: %d)" % q.health)
+	# Bağışıklık varken yemek yenmesin kuralı Inventory.use ve Player.try_eat ortak: şarj yemek de çıkmaz
+	q.set_immunity(3)
+	check(q.try_eat(soup) == "BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ", "3 bağışıklıkla çorba da yenmez")
+
+
+func _parry_open_frames(p: Player) -> int:
+	p.state = Player.State.MOVE
 	await _frames(3)
-	check(p.state == Player.State.DASH and p.collision_mask & Layers.ENEMY == 0, "dash sırasında düşman gövdesi geçilebilir")
-	await _frames(30)
-	p.intent.move_x = 0.0
-	check(bumps[0] == 0, "çarpma olmadı")
-	check(p.global_position.x > e.global_position.x + 20.0, "düşmanın öbür tarafına geçti (%.0f > %.0f)" % [p.global_position.x, e.global_position.x])
-	check(p.collision_mask & Layers.ENEMY != 0, "dash bitince düşman gövdesi yeniden katı")
-	# Dash düşmanın İÇİNDE biterse takılıp kalmaz, dışarı itilir
-	var gap_min := p.body_half_width() + e.body_half_width()
-	p.global_position = Vector2(e.global_position.x - 150.0, 612.0)
-	p.velocity = Vector2.ZERO
-	await _frames(10)
-	p.facing = 1
-	p.intent.move_x = 1.0
-	p.intent.dash_pressed = true
+	p.intent.parry_pressed = true
+	var n := 0
+	for i in 80:
+		await get_tree().physics_frame
+		if p.state == Player.State.PARRY and not p._parry_recovering:
+			n += 1
+		elif n > 0:
+			break
+	await _frames(45)
+	return n
+
+
+func _test_reflex_statuses() -> void:
+	await _new_world("Refleks (parry süresi çarpanı) ve durumlar (geçici stat değişiklikleri)")
+	var p := _spawn_player()
 	await _frames(2)
-	p.intent.move_x = 0.0
-	p.intent.dash_pressed = false
-	await _frames(60)
-	check(absf(p.global_position.x - e.global_position.x) >= gap_min - 2.0, "dash düşmanın içinde bitse de gövdeler ayrıldı (%.1f px)" % absf(p.global_position.x - e.global_position.x))
-	inv.remove("ghost_step")
-	check(not p.dash_ghost, "çıkarınca hayalet adım kapandı")
+	check(is_equal_approx(p.stats.value("reflex", 1.0), 1.0), "refleks varsayılan 1.0")
+	check(is_equal_approx(p.parry_window_time(), 0.12), "parry süresi 0.12 sn")
+	p.stats.add_modifier("t", "reflex", 0.0, 1.5)
+	check(is_equal_approx(p.parry_window_time(), 0.18), "refleks x1.5 -> parry 0.18 sn")
+	p.stats.remove_modifiers("t")
+	p.stats.add_modifier("t", "reflex", 0.0, 0.0)
+	check(is_equal_approx(p.parry_window_time(), 0.12 * 0.25), "refleks sıfır olsa da pencere kapanmaz (alt sınır x0.25)")
+	p.stats.remove_modifiers("t")
+	# Eşya penceresi toplanır, refleks çarpar
+	p.stats.add_modifier("band", "parry_window", 0.1, 1.0)
+	p.stats.add_modifier("t", "reflex", 0.0, 0.5)
+	check(is_equal_approx(p.parry_window_time(), 0.22 * 0.5), "pencere = (0.12 + 0.1) x refleks 0.5")
+	p.stats.remove_modifiers("band")
+	p.stats.remove_modifiers("t")
+	# Gerçek pencere: kaç kare açık kalıyor
+	var normal := await _parry_open_frames(p)
+	p.stats.add_modifier("t", "reflex", 0.0, 0.5)
+	var slow := await _parry_open_frames(p)
+	p.stats.remove_modifiers("t")
+	p.stats.add_modifier("t", "reflex", 0.0, 2.0)
+	var fast := await _parry_open_frames(p)
+	p.stats.remove_modifiers("t")
+	check(normal >= 7 and normal <= 9, "normal refleks: pencere ~8 kare (%d)" % normal)
+	check(slow >= 3 and slow <= 5, "refleks x0.5: pencere ~4 kare (%d)" % slow)
+	check(fast >= 14 and fast <= 16, "refleks x2: pencere ~15 kare (%d)" % fast)
+	# Durumlar
+	var changes := [0]
+	p.statuses_changed.connect(func() -> void: changes[0] += 1)
+	p.apply_status("yorgun", 2.0, [["reflex", 0.0, 0.5]], "YORGUN")
+	check(p.has_status("yorgun") and is_equal_approx(p.stats.value("reflex"), 0.5), "durum başladı, refleks yarıya indi")
+	check(p.status_lines().size() == 1 and p.status_lines()[0].begins_with("YORGUN"), "HUD satırı: %s" % str(p.status_lines()))
+	p.apply_status("yorgun", 2.0, [["reflex", 0.0, 0.5]], "YORGUN")
+	check(is_equal_approx(p.stats.value("reflex"), 0.5), "aynı durum tekrar gelince etki katlanmadı")
+	await _frames(70)
+	var left := float(p.statuses["yorgun"]["t"]) if p.has_status("yorgun") else -1.0
+	check(left > 0.7 and left < 1.0, "durum süresi akıyor (%.2f sn kaldı)" % left)
+	await _frames(70)
+	check(not p.has_status("yorgun") and is_equal_approx(p.stats.value("reflex"), 1.0), "süre bitince refleks eski haline döndü")
+	check(changes[0] == 3, "durum değişim sinyalleri: başla, yenile, bitir (%d)" % changes[0])
+	p.apply_status("coskulu", 5.0, [["reflex", 0.0, 1.5]], "COŞKULU")
+	p.apply_status("yorgun", 5.0, [["reflex", 0.0, 0.5]])
+	check(is_equal_approx(p.stats.value("reflex"), 0.75), "iki farklı durum çarpılır (1.5 x 0.5)")
+	check(p.status_lines().size() == 2, "iki durum satırı")
+	p.remove_status("yorgun")
+	check(is_equal_approx(p.stats.value("reflex"), 1.5) and p.status_lines().size() == 1, "durum elle kaldırılınca yalnız o gider")
+	p.apply_status("yok", 0.0, [["reflex", 0.0, 9.0]])
+	check(not p.has_status("yok"), "süresi 0 olan durum başlamaz")
+	p.take_damage(99, null)
+	p.apply_status("olu", 5.0, [["reflex", 0.0, 9.0]])
+	check(not p.has_status("olu"), "ölüyken durum başlamaz")
 
 
-func _test_item_parry_effects() -> void:
-	await _new_world("Eşya etkileri: Don, Yankılı Mermi, Faiz, Cam Kalp")
+func _test_damage_and_knockback() -> void:
+	await _new_world("Hasar çarpanı (Antika Muhafız Kaskı) ve geri itme çarpanı (Yıldız Tozu Broşu)")
 	var p := _spawn_player(300.0)
 	await _frames(2)
 	var inv := p.inventory
-	# Don: parry'lenen saldırıyı yapan düşman donar
-	var e := TAURUS.instantiate() as Taurus
-	e.max_hp = 99
-	_world.add_child(e)
-	e.global_position = Vector2(900.0, 612.0)
-	e.set_physics_process(false)
-	inv.add(_item("frost"))
-	var hb := _fake_parry_hitbox(e)
-	EventBus.parry_success.emit(p, hb)
-	check(e.is_stunned() and e.stun_t > 2.0, "Don: parry'lenen saldırganı dondurdu (%.1f sn)" % e.stun_t)
-	inv.remove("frost")
-	e.stun_t = 0.0
-	EventBus.parry_success.emit(p, hb)
-	check(not e.is_stunned(), "Don çıkarılınca etki yok")
-	# Faiz: dash biriktirir, parry'de çevredeki düşmanlara patlar
-	inv.add(_item("interest"))
-	for i in 3:
-		EventBus.dash_used.emit(p)
-	check(inv.status_lines().size() == 1 and inv.status_lines()[0] == "FAİZ 3", "Faiz HUD yazısı: %s" % str(inv.status_lines()))
-	e.global_position = Vector2(400.0, 612.0)
+	check(p._scale_damage(1) == 1 and p._scale_damage(2) == 2, "kasksız hasar aynen geçer")
+	inv.add(_item("guardian_helm"))
+	check(is_equal_approx(p.stats.value("damage_taken", 1.0), 0.85), "kask: alınan hasar x0.85")
+	var total := 0
+	for i in 7:
+		total += p._scale_damage(1)
+	check(total == 6, "7 tek hasar vuruşundan biri silindi (toplam %d)" % total)
+	total = 0
+	for i in 100:
+		total += p._scale_damage(1)
+	check(absi(total - 85) <= 1, "100 tek hasar -> yaklaşık 85 (%d)" % total)
+	check(p._scale_damage(0) == 0, "0 hasar 0 kalır")
+	# Gerçek hasar yolu
+	p.health = 50
+	p._damage_carry = 0.0
+	for i in 7:
+		p.take_damage(1, null)
+	check(p.health == 44, "take_damage ile 7 vuruşta 6 can gitti (%d)" % (50 - p.health))
+	# İki kask çarpılır
+	inv.give(_item("guardian_helm"))
+	inv.equip(_item("guardian_helm"))
+	check(is_equal_approx(p.stats.value("damage_taken", 1.0), 0.7225), "iki kask: x0.85 x0.85")
+	inv.clear_all()
+	check(p._scale_damage(3) == 3 and p._damage_carry == 0.0, "kasklar çıkınca hasar tam ve kalıntı sıfır")
+	# Düşman hasarı çarpandan etkilenmez (stats yok)
+	var e := _quiet_enemy(Vector2(900.0, 612.0))
 	var hp0 := e.health
-	EventBus.parry_success.emit(p, hb)
-	check(e.health == hp0 - 3, "Faiz: biriken 3 hasar yakındaki düşmana patladı (%d -> %d)" % [hp0, e.health])
-	check(inv.status_lines().is_empty(), "birikim sıfırlandı")
-	inv.remove("interest")
-	# Yankılı Mermi: parry'lenen mermi 3'e bölünür
-	inv.add(_item("echo_bullet"))
-	var src := _dummy_source(900.0)
-	var proj := _spawn_projectile(p.global_position + Vector2(30.0, 0.0), Vector2(-200.0, 0.0), true, src)
-	p.intent.parry_pressed = true
-	await _frames(3)
-	var mine := 0
-	for n in _world.get_children():
-		var pr := n as Projectile
-		if pr != null and pr.faction == "player":
-			mine += 1
-	check(is_instance_valid(proj) and mine == 3, "Yankılı Mermi: parry sonrası 3 oyuncu mermisi (%d)" % mine)
-	inv.remove("echo_bullet")
-	# Cam Kalp (lanetli): can 1, parry penceresi x2
+	e.take_damage(2, p)
+	check(e.health == hp0 - 2, "düşman hasarı etkilenmedi")
+	e.queue_free()
+	# Yıldız Tozu Broşu: geri itme x2
+	var speeds: Array[float] = []
+	for with_brooch in [false, true]:
+		inv.clear_all()
+		if with_brooch:
+			inv.add(_item("stardust_brooch"))
+		var t := TAURUS.instantiate() as Taurus
+		t.max_hp = 99
+		t.gold_min = 0
+		t.gold_max = 0
+		_world.add_child(t)
+		t.global_position = Vector2(900.0, 612.0)
+		t.set_physics_process(false)
+		await _frames(2)
+		var hb := _player_hitbox(p, Vector2(880.0, 612.0))
+		t.on_hit_by(hb)
+		speeds.append(absf(t.velocity.x))
+		hb.queue_free()
+		t.queue_free()
+	check(speeds[0] > 100.0 and is_equal_approx(speeds[1], speeds[0] * 2.0), "Yıldız Tozu Broşu: geri itme 2 kat (%.0f -> %.0f)" % [speeds[0], speeds[1]])
+	# Gölge/Umbra tarafı: düşman vuruşu oyuncuyu aynı mesafede iter (düşmanda çarpan yok)
+	check(ActorBase.knockback_mult_of(null) == 1.0 and ActorBase.knockback_mult_of(_dummy_source(0.0)) == 1.0, "kaynak yoksa/aktör değilse çarpan 1")
+	inv.clear_all()
+	inv.add(_item("stardust_brooch"))
+	check(is_equal_approx(ActorBase.knockback_mult_of(p), 2.0), "oyuncunun çarpanı 2")
+
+
+func _test_gold_coins() -> void:
+	await _new_world("Altın: toplama, harcama, saçılan paralar, mıknatıs, oda temizlenince çekim, düşman ödülü")
+	var p := _spawn_player(400.0)
+	await _frames(2)
+	var got := [0]
+	var on_gold := func(_a: Node, amount: int) -> void: got[0] += amount
+	EventBus.gold_collected.connect(on_gold)
+	var changes := [0]
+	p.gold_changed.connect(func(_t: int) -> void: changes[0] += 1)
+	check(p.gold == 0, "altın 0 ile başlar")
+	p.add_gold(5)
+	check(p.gold == 5 and got[0] == 5 and changes[0] == 1, "5 altın eklendi, olay ve sinyal geldi")
+	check(p.spend_gold(3) and p.gold == 2 and changes[0] == 2, "3 altın harcandı")
+	check(not p.spend_gold(10) and p.gold == 2, "yetmeyen altın harcanamaz")
+	check(not p.spend_gold(-1) and p.gold == 2, "negatif harcama olmaz")
+	p.gold = 0
+	got[0] = 0
+	# Saçılan paralar oyuncuya çekilir
+	Coin.drop(_world, p.global_position + Vector2(0.0, -10.0), 3)
+	for c in get_tree().get_nodes_in_group("coins"):
+		(c as Coin).velocity = Vector2.ZERO
+	check(get_tree().get_nodes_in_group("coins").size() == 3, "3 para saçıldı")
+	await _frames(12)
+	check(p.gold == 0, "doğar doğmaz toplanmaz (kısa gecikme)")
+	await _frames(110)
+	check(p.gold == 3 and got[0] == 3, "3 küçük para toplandı: +3 (%d)" % p.gold)
+	check(get_tree().get_nodes_in_group("coins").is_empty(), "paralar yok oldu")
+	# Antika para 3 değerinde
+	Coin.drop(_world, p.global_position + Vector2(0.0, -10.0), 2, true)
+	for c in get_tree().get_nodes_in_group("coins"):
+		(c as Coin).velocity = Vector2.ZERO
+		check((c as Coin).antique and (c as Coin).value == Coin.ANTIQUE_VALUE, "antika para değeri %d" % (c as Coin).value)
+	await _frames(120)
+	check(p.gold == 9, "2 antika para: +6 (%d)" % p.gold)
+	# Mıknatıs: yakındaki para çekilir, uzaktaki yerinde kalır
+	var near := p.global_position + Vector2(90.0, 26.0)
+	var far := p.global_position + Vector2(420.0, 26.0)
+	Coin.drop(_world, near, 1)
+	Coin.drop(_world, far, 1)
+	for c in get_tree().get_nodes_in_group("coins"):
+		(c as Coin).velocity = Vector2.ZERO
+	await _frames(100)
+	check(p.gold == 10, "yakın para mıknatısla çekildi, uzaktaki kaldı (%d)" % p.gold)
+	check(get_tree().get_nodes_in_group("coins").size() == 1, "uzaktaki para yerinde duruyor")
+	# Oda temizlenince yerde kalan paralar oyuncuya uçar
+	EventBus.room_cleared.emit(0)
+	await _frames(150)
+	check(p.gold == 11 and get_tree().get_nodes_in_group("coins").is_empty(), "oda temizlenince uzaktaki para da toplandı (%d)" % p.gold)
+	# Düşman ölünce para düşer
+	var e := TAURUS.instantiate() as Taurus
+	_world.add_child(e)
+	e.global_position = Vector2(1500.0, 612.0)
+	e.set_physics_process(false)
+	check(e.gold_min == 2 and e.gold_max == 4, "Taurus 2-4 altın düşürür")
+	var s := SAGITTA.instantiate() as Sagitta
+	var sc := SCORPIUS.instantiate() as Scorpius
+	check(s.gold_min == 2 and s.gold_max == 3 and sc.gold_min == 3 and sc.gold_max == 5, "Sagitta 2-3, Scorpius 3-5 altın düşürür")
+	s.free()
+	sc.free()
+	e.gold_min = 3
+	e.gold_max = 3
+	e.die()
+	check(get_tree().get_nodes_in_group("coins").size() == 3, "ölen düşman 3 para düşürdü")
+	var bag_total := 0
+	for c in get_tree().get_nodes_in_group("coins"):
+		bag_total += (c as Coin).value
+	check(bag_total == 3, "paralar küçük (değer 1)")
+	# Ölü oyuncu altın toplamaz
+	EventBus.room_cleared.emit(0)
+	p.take_damage(99, null)
+	var gold_dead := p.gold
+	await _frames(150)
+	check(p.gold == gold_dead, "ölü oyuncu altın toplamaz")
+	EventBus.gold_collected.disconnect(on_gold)
+
+
+func _test_item_feet() -> void:
+	await _new_world("Ayak eşyaları: Ayna Tabanlı Çizmeler (+1 dash), Hafif Tüy Botlar (yürüme %20 hızlı)")
+	var p := _spawn_player(300.0)
+	await _frames(30)
+	var inv := p.inventory
+	check(p.dash_charges == 2 and p.stats.int_value("dash_charges") == 2, "başlangıçta 2 dash")
+	inv.add(_item("mirror_boots"))
+	check(p.stats.int_value("dash_charges") == 3 and p.dash_charges == 3, "Ayna Tabanlı Çizmeler: 3 dash, yeni şarj dolu geldi")
+	inv.unequip(_item("mirror_boots"))
+	check(p.stats.int_value("dash_charges") == 2 and p.dash_charges == 2, "çıkarınca 2 dash'e döndü")
+	inv.equip(_item("mirror_boots"))
+	var made := 0
+	for i in 3:
+		p.state = Player.State.MOVE
+		p.intent.dash_pressed = true
+		await _frames(2)
+		if p.state == Player.State.DASH:
+			made += 1
+		await _frames(14)
+	check(made == 3 and p.dash_charges == 0, "art arda 3 dash yapıldı (%d), şarj bitti (%d)" % [made, p.dash_charges])
+	p.intent.dash_pressed = true
+	await _frames(2)
+	check(p.state != Player.State.DASH, "4. dash yapılamadı")
+	inv.clear_all()
+	# Hafif Tüy Botlar: yürüme hızı x1.2
+	await _frames(30)
+	p.global_position = Vector2(200.0, 612.0)
+	p.velocity = Vector2.ZERO
+	p.intent.move_x = 1.0
 	await _frames(40)
-	var w0 := p.stats.value("parry_window")
-	p.health = p.stats.int_value("max_health")
-	inv.add(_item("glass_heart"))
-	check(p.stats.int_value("max_health") == 1 and p.health == 1, "Cam Kalp: en çok can 1")
-	check(is_equal_approx(p.stats.value("parry_window"), w0 * 2.0), "parry penceresi iki katı (%.2f)" % p.stats.value("parry_window"))
-	inv.remove("glass_heart")
-	check(p.stats.int_value("max_health") == 4 and is_equal_approx(p.stats.value("parry_window"), w0), "çıkarınca değerler döndü")
+	var v0 := absf(p.velocity.x)
+	p.intent.move_x = 0.0
+	await _frames(40)
+	inv.add(_item("feather_boots"))
+	p.global_position = Vector2(200.0, 612.0)
+	p.velocity = Vector2.ZERO
+	p.intent.move_x = 1.0
+	await _frames(40)
+	var v1 := absf(p.velocity.x)
+	p.intent.move_x = 0.0
+	check(is_equal_approx(v0, 290.0) and is_equal_approx(v1, 348.0), "Hafif Tüy Botlar: yürüme hızı %.0f -> %.0f (+%%20)" % [v0, v1])
 
 
-func _test_item_misc_effects() -> void:
-	await _new_world("Eşya etkileri: Kıvılcım, Coşku, Kıpırdama, Aç Kapı")
-	var p := _spawn_player(200.0)
+func _test_item_charms() -> void:
+	await _new_world("Charm ve bilek: Engerek Dişi (zehir), Vampir Yadigarı (+3 can), Hırsızın Zinciri (antika para)")
+	var p := _spawn_player(300.0)
 	await _frames(2)
 	var inv := p.inventory
-	var r := p.rhythm
-	r.set_process(false)
-	# Kıvılcım: vuruş tutuşturur, yanma hasarı ritim/kombo doldurmaz
+	var e := _quiet_enemy(Vector2(1100.0, 612.0))
+	await _frames(2)
+	var hb := _fake_parry_hitbox(e)
+	# --- Engerek Dişi Kolyesi
+	EventBus.parry_success.emit(p, hb)
+	check(e.poison_t <= 0.0, "kolyesiz: zehir yok")
+	inv.add(_item("viper_fang"))
+	EventBus.parry_success.emit(p, hb)
+	check(e.poison_t > 1.4 and is_equal_approx(e.poison_dps, 2.0), "Engerek: parry'lenen düşman zehirlendi (%.1f sn, %.0f/sn)" % [e.poison_t, e.poison_dps])
+	var hp0 := e.health
+	var hits0 := p.combo.hits
+	await _frames(100)
+	check(hp0 - e.health == 3, "zehir 1.5 sn'de 3 hasar verdi (%d -> %d)" % [hp0, e.health])
+	check(e.poison_t <= 0.0, "zehir bitti")
+	check(p.combo.hits == hits0, "zehir hasarı kombo saymadı")
+	EventBus.parry_success.emit(p, hb)
+	await _frames(30)
+	EventBus.parry_success.emit(p, hb)
+	check(e.poison_t > 1.4 and is_equal_approx(e.poison_dps, 2.0), "tekrar parry zehri yeniledi, hasarı katlamadı (%.1f sn, %.0f/sn)" % [e.poison_t, e.poison_dps])
+	e.poison_t = 0.0
+	EventBus.parry_success.emit(e, hb)
+	check(e.poison_t <= 0.0, "başkasının parry'si zehirlemez")
+	inv.remove("viper_fang")
+	EventBus.parry_success.emit(p, hb)
+	check(e.poison_t <= 0.0, "kolye çıkınca zehir yok")
+	# --- Vampir Yadigarı
+	var healed := [0]
+	var on_heal := func(_a: Node, amount: int) -> void: healed[0] += amount
+	EventBus.healed.connect(on_heal)
+	p.health = 1
+	EventBus.parry_success.emit(p, hb)
+	check(p.health == 1, "yadigârsız: parry can vermez")
+	inv.add(_item("vampire_relic"))
+	EventBus.parry_success.emit(p, hb)
+	check(p.health == 4 and healed[0] == 3, "Vampir Yadigarı: parry +3 can (1 -> %d)" % p.health)
+	EventBus.parry_success.emit(p, hb)
+	check(p.health == 4 and healed[0] == 3, "tam canda fazladan can verilmez")
+	p.health = 2
+	EventBus.parry_success.emit(e, hb)
+	check(p.health == 2, "başkasının parry'si can vermez")
+	EventBus.healed.disconnect(on_heal)
+	# --- İkisi birden, GERÇEK parry ile
+	inv.add(_item("viper_fang"))
+	p.health = 1
+	e.poison_t = 0.0
+	p.intent.parry_pressed = true
+	await _frames(2)
+	var strike := _enemy_strike(p.global_position + Vector2(20.0, 0.0), e)
+	await _frames(4)
+	check(p.health == 4 and e.poison_t > 1.0, "gerçek parry: +3 can ve düşman zehirli (can %d, zehir %.1f)" % [p.health, e.poison_t])
+	check(not strike.active, "parry'lenen saldırı kapandı")
+	inv.clear_all()
+	# --- Hırsızın Zinciri (bilek)
+	await _frames(40)
+	var coins0 := get_tree().get_nodes_in_group("coins").size()
+	EventBus.parry_success.emit(p, hb)
+	check(get_tree().get_nodes_in_group("coins").size() == coins0, "zincirsiz: para düşmedi")
+	inv.add(_item("thief_chain"))
+	EventBus.parry_success.emit(p, hb)
+	var coins := get_tree().get_nodes_in_group("coins")
+	check(coins.size() == coins0 + 1, "Hırsızın Zinciri: parry'lenen düşman 1 antika para düşürdü")
+	var coin := coins.back() as Coin
+	check(coin != null and coin.antique and coin.value == 3, "düşen para antika (değer 3)")
+	EventBus.parry_success.emit(e, hb)
+	check(get_tree().get_nodes_in_group("coins").size() == coins0 + 1, "başkasının parry'si para düşürmez")
+	coin.global_position = p.global_position + Vector2(0.0, -10.0)
+	coin.velocity = Vector2.ZERO
+	var gold0 := p.gold
+	await _frames(120)
+	check(p.gold == gold0 + 3, "antika para toplandı: +3 altın (%d)" % (p.gold - gold0))
+
+
+func _test_item_cracked_mirror() -> void:
+	await _new_world("Çatlak El Aynası: ölümcül darbeyi engeller, 1 can + 2 sn ölümsüzlük, tek kullanımlık")
+	GameState.god_mode = false
+	var p := _spawn_player(300.0)
+	var src := _dummy_source(1100.0)
+	await _frames(2)
+	var inv := p.inventory
+	var consumed := [0]
+	var on_c := func(_a: Node, _i: ItemData) -> void: consumed[0] += 1
+	EventBus.item_consumed.connect(on_c)
+	inv.add(_item("cracked_mirror"))
+	check(inv.has("cracked_mirror") and p.death_savers.size() == 1, "ayna takılı ve devrede")
+	# Çıkarınca devre dışı
+	inv.unequip(_item("cracked_mirror"))
+	check(p.death_savers.is_empty(), "çıkarınca devre dışı")
+	inv.equip(_item("cracked_mirror"))
+	check(p.death_savers.size() == 1, "yeniden takınca devrede")
+	# Deneme modunda hasar zaten sıfır: ayna harcanmaz
+	GameState.god_mode = true
+	p.take_damage(99, null)
+	check(inv.has("cracked_mirror") and p.health == 4 and not p.dead, "deneme modunda ayna harcanmadı")
+	GameState.god_mode = false
+	# Ölümcül gerçek darbe
+	var big := _enemy_strike(p.global_position, src, false, 9)
+	await _frames(3)
+	check(not p.dead and p.health == 1, "ölümcül darbe engellendi, 1 canla kaldı (can %d)" % p.health)
+	check(p.invulnerable_t > 1.7, "2 sn dokunulmazlık (%.2f)" % p.invulnerable_t)
+	check(consumed[0] == 1 and not inv.has("cracked_mirror") and inv.owned_count("cracked_mirror") == 0, "ayna kırıldı: ne takılı ne çantada")
+	check(p.death_savers.is_empty(), "ayna işi bitince devreden çıktı")
+	# Dokunulmazken yeni darbe işlemez
+	var hb := _enemy_strike(p.global_position, src, false, 1)
+	await _frames(4)
+	check(p.health == 1 and not p.dead, "dokunulmazken darbe işlemedi")
+	hb.queue_free()
+	big.queue_free()
+	await _frames(130)
+	check(p.invulnerable_t <= 0.0, "dokunulmazlık bitti")
+	# İkinci ölümcül darbe artık öldürür
+	p.take_damage(1, null)
+	check(p.dead, "ayna yok: ikinci ölümcül darbe öldürdü")
+	EventBus.item_consumed.disconnect(on_c)
+	# Bağışıklık kalbi önce karşılar: ayna ancak can gerçekten sıfırlanınca devreye girer
+	await _new_world("Çatlak El Aynası + bağışıklık kalbi")
+	var q := _spawn_player(300.0)
+	await _frames(2)
+	q.inventory.add(_item("cracked_mirror"))
+	q.set_immunity(2)
+	q.take_damage(2, null)
+	check(q.health == 4 and q.inventory.has("cracked_mirror"), "bağışıklık hasarı karşıladı, ayna harcanmadı")
+	q.take_damage(6, null)
+	check(not q.dead and q.health == 1 and not q.inventory.has("cracked_mirror"), "can sıfırlanınca ayna devreye girdi")
+
+
+func _test_parry_chain() -> void:
+	await _new_world("Parry zinciri: parry'nin hemen ardından gelen altın saldırılar da parry'lenir")
+	GameState.god_mode = false
+	var p := _spawn_player(400.0)
+	var src := _dummy_source(1100.0)
+	await _frames(20)
+	var hp0 := p.health
+	# 1) Aynı karede iki altın saldırı
+	p.intent.parry_pressed = true
+	await _frames(2)
+	var a := _enemy_strike(p.global_position + Vector2(24.0, 0.0), src)
+	var b := _enemy_strike(p.global_position + Vector2(-24.0, 0.0), src)
+	await _frames(4)
+	check(_parry_ok == 2 and p.health == hp0, "iki altın saldırı aynı anda parry'lendi, can kaybı yok (%d parry)" % _parry_ok)
+	check(not a.active and not b.active, "ikisi de parry'lenince kapandı")
+	check(p.combo.parries == 2, "kombo iki parry saydı (%d)" % p.combo.parries)
+	# 2) Parry'den ~0.1 sn sonra gelen altın saldırı da zincirle parry'lenir
+	await _frames(2)
+	var c := _enemy_strike(p.global_position + Vector2(20.0, 0.0), src)
+	await _frames(4)
+	check(_parry_ok == 3 and not c.active and p.health == hp0, "0.1 sn sonra gelen altın saldırı da parry'lendi (%d)" % _parry_ok)
+	check(p.combo.parries == 3, "zincirdeki parry'ler kombo parry sayısına eklendi (%d)" % p.combo.parries)
+	# 3) Zincir bitince (0.3 sn) parry'siz altın saldırı hasar verir
+	await _frames(40)
+	var d := _enemy_strike(p.global_position + Vector2(20.0, 0.0), src)
+	await _frames(4)
+	check(_parry_ok == 3 and p.health == hp0 - 1, "zincir bitti: parry'siz altın saldırı vurdu (can %d)" % p.health)
+	d.queue_free()
+	# 4) Kırmızı saldırı zincirle de parry'lenmez
+	await _frames(90)
+	p.intent.parry_pressed = true
+	await _frames(2)
+	var f := _enemy_strike(p.global_position + Vector2(20.0, 0.0), src)
+	await _frames(3)
+	var parries_before := _parry_ok
+	var red := _enemy_strike(p.global_position + Vector2(-20.0, 0.0), src, false, 1)
+	await _frames(4)
+	check(_parry_ok == parries_before and red.active, "kırmızı saldırı zincirle parry'lenmedi")
+	f.queue_free()
+	red.queue_free()
+
+
+func _test_time_stop() -> void:
+	await _new_world("Zaman durdurma: düşmanlar, mermiler, saldırılar donar; oyuncu ve altın akar")
+	GameState.god_mode = false
+	TimeStop.reset()
+	var p := _spawn_player(300.0)
+	var src := _dummy_source(1200.0)
 	var e := TAURUS.instantiate() as Taurus
 	e.max_hp = 99
+	e.gold_min = 0
+	e.gold_max = 0
 	_world.add_child(e)
-	e.global_position = Vector2(1100.0, 612.0)
-	e.stun(30.0)
-	inv.add(_item("spark"))
-	e.take_damage(1, p)
-	check(e.burn_t > 1.0, "Kıvılcım: vurulan düşman tutuştu (%.1f sn)" % e.burn_t)
-	var hits0 := p.combo.hits
-	var rv0 := r.value
-	var hp0 := e.health
-	await _frames(45)
-	check(e.health == hp0 - 1, "yanma 0.6 sn'de 1 hasar verdi (%d -> %d)" % [hp0, e.health])
-	check(p.combo.hits == hits0 and is_equal_approx(r.value, rv0), "yanma hasarı kombo ve ritmi doldurmadı")
+	e.global_position = Vector2(1300.0, 612.0)
+	await _frames(5)
+	var fired := [0, 0]
+	var on_start := func(_d: float) -> void: fired[0] += 1
+	var on_end := func() -> void: fired[1] += 1
+	TimeStop.started.connect(on_start)
+	TimeStop.ended.connect(on_end)
+	check(not TimeStop.active and TimeStop.progress() == 0.0, "başlangıçta zaman akıyor")
+	var x0 := e.global_position.x
+	await _frames(10)
+	check(absf(e.global_position.x - x0) > 5.0, "önce düşman yürüyor (%.0f -> %.0f)" % [x0, e.global_position.x])
+	var pr := _spawn_projectile(Vector2(800.0, 560.0), Vector2(-80.0, 0.0), true, src)
+	await _frames(5)
+	var pr_x := pr.global_position.x
+	check(pr_x < 800.0, "önce mermi ilerliyor")
+	# --- durdur
+	TimeStop.start(1.0)
+	check(TimeStop.active and is_equal_approx(TimeStop.remaining, 1.0) and fired[0] == 1, "zaman durdu (sinyal geldi)")
+	check(is_equal_approx(TimeStop.progress(), 1.0), "ilerleme 1.0")
+	var ex := e.global_position.x
+	var px := p.global_position.x
+	p.intent.move_x = 1.0
+	await _frames(30)
+	check(is_equal_approx(e.global_position.x, ex), "düşman donuk (%.1f -> %.1f)" % [ex, e.global_position.x])
+	check(is_equal_approx(pr.global_position.x, pr_x), "mermi havada asılı")
+	check(p.global_position.x > px + 60.0, "oyuncu hareket ediyor (+%.0f px)" % (p.global_position.x - px))
+	check(TimeStop.progress() > 0.4 and TimeStop.progress() < 0.6, "yarısı geçti (%.2f)" % TimeStop.progress())
+	check(e.tint.b > e.tint.r, "düşman buz mavisi tonda (%s)" % str(e.tint))
+	p.intent.move_x = 0.0
+	# Düşman saldırıları vurmaz
+	var strike := _enemy_strike(p.global_position, src, false, 1)
+	var hp := p.health
+	await _frames(10)
+	check(p.health == hp, "zaman durmuşken düşman saldırısı vurmadı")
+	# Paralar akmaya devam eder
+	Coin.drop(_world, p.global_position + Vector2(0.0, -200.0), 1)
+	var coin := get_tree().get_nodes_in_group("coins").back() as Coin
+	coin.velocity = Vector2.ZERO
+	var cy := coin.global_position.y
+	await _frames(8)
+	check(coin.global_position.y > cy + 5.0, "para düşmeye devam etti")
+	coin.queue_free()
+	# --- süre doldu
+	await _frames(35)
+	check(not TimeStop.active and fired[1] == 1, "süre dolunca zaman aktı (sinyal geldi)")
+	check(TimeStop.progress() == 0.0 and TimeStop.remaining == 0.0, "ilerleme sıfırlandı")
+	await _frames(10)
+	check(absf(e.global_position.x - ex) > 3.0, "düşman yeniden yürüyor (%.1f -> %.1f)" % [ex, e.global_position.x])
+	check(pr.global_position.x < pr_x - 3.0, "mermi yeniden ilerliyor")
+	check(p.health < hp, "bekleyen saldırı zaman akınca vurdu")
+	strike.queue_free()
+	# --- yenileme, erken bitirme, sessiz sıfırlama
+	await _frames(70)
+	TimeStop.start(2.0)
+	await _frames(30)
+	TimeStop.start(2.0)
+	check(fired[0] == 2 and is_equal_approx(TimeStop.remaining, 2.0), "duruyorken tekrar başlatmak süreyi yeniler, 'started' yeniden yayılmaz")
+	TimeStop.stop()
+	check(not TimeStop.active and fired[1] == 2, "stop() zamanı erken akıttı")
+	TimeStop.start(2.0)
+	TimeStop.reset()
+	check(not TimeStop.active and fired[1] == 2, "reset() sessizce sıfırladı (ended yayılmadı)")
+	TimeStop.start(0.0)
+	check(not TimeStop.active, "0 saniyelik durdurma başlamaz")
+	TimeStop.started.disconnect(on_start)
+	TimeStop.ended.disconnect(on_end)
+	# --- donmuş düşmana vurulur, geri itme zaman akınca uygulanır
+	await _new_world("Zaman durdurma: donmuş düşmana vurulur, geri itme zaman akınca işler")
+	var q := _spawn_player(500.0)
+	await _frames(2)
+	var t := TAURUS.instantiate() as Taurus
+	t.max_hp = 99
+	t.gold_min = 0
+	t.gold_max = 0
+	_world.add_child(t)
+	t.global_position = Vector2(560.0, 612.0)
+	await _frames(2)
+	TimeStop.start(3.0)
+	q.facing = 1
+	var thp := t.health
+	var tx := t.global_position.x
+	q.intent.attack_pressed = true
+	await _frames(14)
+	check(t.health < thp, "donmuş düşman vuruldu (%d -> %d)" % [thp, t.health])
+	check(is_equal_approx(t.global_position.x, tx), "ama yerinden oynamadı")
+	check(absf(t.velocity.x) > 10.0, "geri itme bekliyor (%.0f)" % t.velocity.x)
+	TimeStop.stop()
+	await _frames(8)
+	check(t.global_position.x > tx + 2.0, "zaman akınca geri itildi (%.1f -> %.1f)" % [tx, t.global_position.x])
+	TimeStop.reset()
+	# --- oda: dalga başlamaz
+	await _new_world("Zaman durdurma: oda sayacı ve doğma işaretleri de donar")
+	var run := _start_run(88)
+	await _frames(3)
+	TimeStop.start(5.0)
 	await _frames(100)
-	check(e.burn_t <= 0.0, "yanma sona erdi")
-	inv.remove("spark")
-	# Coşku: Coşkulu'da hasar x1.5; hasar alınca ritim tamamen sıfırlanır
-	r.reset()
-	var dmg0 := p.stats.value("attack_damage")
-	inv.add(_item("euphoria"))
-	r.add(80.0)
-	check(r.tier == 3 and is_equal_approx(p.stats.value("attack_damage"), dmg0 * 2.0 * 1.5), "Coşku: Coşkulu'da hasar x2 (ritim) x1.5 (eşya) = %.1f" % p.stats.value("attack_damage"))
-	p.take_damage(1, null)
-	check(r.value == 0.0 and r.tier == 0, "hasar alınca ritim sıfırlandı (%.0f)" % r.value)
-	inv.remove("euphoria")
-	check(not r.drop_to_floor, "çıkarınca tek kademe düşme geri geldi")
-	# Kıpırdama: ritim daha yavaş dolar, daha yavaş düşer
-	r.reset()
-	inv.add(_item("restless"))
-	var hb := _fake_parry_hitbox()
-	EventBus.dodge_success.emit(p, hb)
-	check(is_equal_approx(r.value, r.gain_dodge * 0.8), "Kıpırdama: kazanım x0.8 (%.1f)" % r.value)
-	r.reset()
-	r.add(40.0)
-	r.tick(1.0)
-	r.tick(1.0)  # 2 sn dolunca düşüş başlar: son saniyede decay_rate x0.55
-	check(is_equal_approx(40.0 - r.value, r.decay_rate * 0.55), "Kıpırdama: düşüş x0.55 (%.1f düştü)" % (40.0 - r.value))
-	inv.remove("restless")
-	# Aç Kapı: hasar x2, Umbra fazladan taşır
-	GameState.reset()
-	inv.add(_item("open_door"))
-	check(GameState.umbra_extra_carry == 1, "Aç Kapı: Umbra fazladan 1 eşya taşıyor")
-	inv.remove("open_door")
-	check(GameState.umbra_extra_carry == 0, "çıkarınca bedeli de gider")
+	check(run.current_room().wave_number == 0 and run.current_room().alive_count() == 0, "zaman durmuşken dalga başlamadı")
+	TimeStop.stop()
+	check(await _wait_until(func() -> bool: return run.current_room().wave_number >= 1, 200), "zaman akınca dalga başladı")
+	# Doğma işareti donar
+	TimeStop.start(2.0)
+	var markers := get_tree().get_nodes_in_group("enemies").size()
+	await _frames(100)
+	check(get_tree().get_nodes_in_group("enemies").size() == markers, "zaman durmuşken yeni düşman doğmadı")
+	TimeStop.reset()
+	run.queue_free()
+
+
+func _test_item_hourglass() -> void:
+	await _new_world("Satürn'ün Kum Saati: iki saldırıyı aynı anda parry'le, zaman 1.5 sn dursun")
+	GameState.god_mode = false
+	TimeStop.reset()
+	var p := _spawn_player(400.0)
+	var src := _dummy_source(1100.0)
+	await _frames(20)
+	var inv := p.inventory
+	var hb := _fake_parry_hitbox(src)
+	# Kum saatsiz: iki parry zamanı durdurmaz
+	EventBus.parry_success.emit(p, hb)
+	EventBus.parry_success.emit(p, hb)
+	check(not TimeStop.active, "kum saatsiz: iki parry zamanı durdurmaz")
+	inv.add(_item("saturn_hourglass"))
+	check(inv.has("saturn_hourglass") and inv.status_lines().is_empty(), "kum saati takılı, zaman akıyor")
+	EventBus.parry_success.emit(p, hb)
+	check(not TimeStop.active, "tek parry zamanı durdurmaz")
+	await _frames(30)
+	EventBus.parry_success.emit(p, hb)
+	check(not TimeStop.active, "0.5 sn arayla iki parry zamanı durdurmaz")
+	await _frames(40)
+	EventBus.parry_success.emit(p, hb)
+	EventBus.parry_success.emit(p, hb)
+	check(TimeStop.active and is_equal_approx(TimeStop.remaining, 1.5), "aynı anda iki parry: zaman 1.5 sn durdu (%.2f)" % TimeStop.remaining)
+	check(inv.status_lines().size() == 1 and inv.status_lines()[0] == "ZAMAN DURDU", "HUD yazısı: ZAMAN DURDU")
+	await _frames(95)
+	check(not TimeStop.active, "1.5 sn sonra zaman aktı")
+	# Başkasının parry'si sayılmaz
+	var other := _dummy_source(0.0)
+	EventBus.parry_success.emit(other, hb)
+	EventBus.parry_success.emit(other, hb)
+	check(not TimeStop.active, "başkasının parry'si zamanı durdurmaz")
+	# Zamanı durduran parry'den sonra sayaç sıfırlanır: üçüncü parry tek başına durdurmaz
+	await _frames(30)
+	EventBus.parry_success.emit(p, hb)
+	EventBus.parry_success.emit(p, hb)
+	TimeStop.stop()
+	EventBus.parry_success.emit(p, hb)
+	check(not TimeStop.active, "üçüncü parry yeni bir çift sayılmaz")
+	# Çıkarınca etkisiz
+	await _frames(40)
+	inv.unequip(_item("saturn_hourglass"))
+	EventBus.parry_success.emit(p, hb)
+	EventBus.parry_success.emit(p, hb)
+	check(not TimeStop.active, "kum saati çıkarılınca etkisiz")
+	inv.equip(_item("saturn_hourglass"))
+	# --- GERÇEK: iki altın saldırı parry bölgesinde
+	await _frames(60)
+	TimeStop.reset()
+	var parries0 := _parry_ok
+	p.intent.parry_pressed = true
+	await _frames(2)
+	check(p.state == Player.State.PARRY, "parry açıldı")
+	var a := _enemy_strike(p.global_position + Vector2(24.0, 0.0), src)
+	var b := _enemy_strike(p.global_position + Vector2(-24.0, 0.0), src)
+	await _frames(4)
+	check(_parry_ok - parries0 == 2, "iki saldırı da parry'lendi (%d)" % (_parry_ok - parries0))
+	check(TimeStop.active, "gerçek çift parry: zaman durdu")
+	check(p.health == p.stats.int_value("max_health"), "can kaybı yok")
+	a.queue_free()
+	b.queue_free()
+	await _frames(100)
+	check(not TimeStop.active, "süre bitti")
+	# --- GERÇEK: tek saldırı = durdurmaz
+	await _frames(60)
+	p.intent.parry_pressed = true
+	await _frames(2)
+	var s := _enemy_strike(p.global_position + Vector2(24.0, 0.0), src)
+	await _frames(4)
+	check(not TimeStop.active and not s.active, "tek saldırıyı parry'lemek zamanı durdurmaz")
+	s.queue_free()
+	TimeStop.reset()
+
+
+func _test_run_hud_extras() -> void:
+	await _new_world("HUD: bağışıklık kalpleri, altın sayacı, zaman durdu çubuğu, durum satırları, eşya simgeleri")
+	GameState.god_mode = false
+	TimeStop.reset()
+	var run := _start_run(61)
+	await _frames(5)
+	var p := run.player
+	p.stats.set_base("max_health", 4.0)
+	p.health = 4
+	p.set_immunity(2)
+	await _frames(3)
+	var hearts := run.hud._hearts
+	check(hearts[3].visible and hearts[3].color.r > 0.8 and hearts[3].color.b < 0.4, "4 kırmızı kalp")
+	check(hearts[4].visible and hearts[5].visible and hearts[4].color.b > 0.9 and hearts[4].color.r < 0.5, "5. ve 6. kalp mavi (bağışıklık)")
+	check(not hearts[6].visible, "7. kalp yok")
+	p.set_immunity(0)
+	await _frames(3)
+	check(not hearts[4].visible, "bağışıklık bitince mavi kalpler kayboldu")
+	p.add_gold(7)
+	await _frames(3)
+	check(run.hud.overlay.gold == 7, "altın sayacı 7")
+	p.apply_status("yorgun", 3.0, [["reflex", 0.0, 0.8]], "YORGUN")
+	p.inventory.add(_item("watcher_band"))
+	await _frames(3)
+	check(run.hud.overlay.statuses.size() == 1 and run.hud.overlay.equipped.size() == 1, "durum satırı ve takılı eşya simgesi")
+	TimeStop.start(2.0)
+	await _frames(12)
+	check(run.hud.overlay.time_stop_k > 0.5, "zaman durdu çubuğu doldu (%.2f)" % run.hud.overlay.time_stop_k)
+	check(ScreenFx._stop_tint.color.a > 0.02 and ScreenFx._stop_vig.modulate.a > 0.1, "ekran mavi-gri tonlandı")
+	TimeStop.stop()
+	await _frames(40)
+	check(ScreenFx._stop_tint.color.a < 0.01, "zaman akınca ton gitti")
+	# Yemek duyurusu
+	p.health = 2
+	p.inventory.give(_item("baked_sweet_potato"))
+	var ann0 := run.hud.announcer.count()
+	p.inventory.use(_item("baked_sweet_potato"))
+	check(run.hud.announcer.count() == ann0 + 1, "yemek yenince duyuru çıktı")
+	p.inventory.add(_item("cracked_mirror"))
+	var ann1 := run.hud.announcer.count()
+	p.set_immunity(0)
+	p.take_damage(99, null)
+	check(run.hud.announcer.count() == ann1 + 1, "ayna kırılınca duyuru çıktı")
+	TimeStop.reset()
+	run.queue_free()
 
 
 # ------------------------------------------------------------------ sersemleme (vurulan düşman saldıramaz) ve parry oranı

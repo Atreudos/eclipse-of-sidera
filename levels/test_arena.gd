@@ -20,6 +20,7 @@ var _next_wave_t := 1.2
 
 func _ready() -> void:
 	Hitstop.reset()
+	TimeStop.reset()
 	# Zeminin altında da görünür alan var: kamera yukarı/aşağı azıcık oynayabilsin.
 	camera.set_bounds(Rect2(0.0, 0.0, 1280.0, RoomLayouts.CAMERA_HEIGHT), true)
 
@@ -27,6 +28,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("restart"):
 		Hitstop.reset()
+		TimeStop.reset()
 		get_tree().reload_current_scene()
 		return
 	if player.dead:

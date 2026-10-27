@@ -57,6 +57,8 @@ func clear_hit_targets() -> void:
 func _physics_process(_delta: float) -> void:
 	if not active:
 		return
+	if TimeStop.active and faction == "enemy":
+		return  # zaman durdu: düşman saldırıları vurmaz (oyuncunun vuruşları sürer)
 	for area in get_overlapping_areas():
 		var target := area as Hurtbox
 		if target == null or target in _hit_targets:

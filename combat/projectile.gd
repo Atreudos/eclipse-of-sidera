@@ -36,6 +36,8 @@ func launch(vel: Vector2, is_parryable: bool, shooter: Node, dmg: int = 1) -> vo
 
 
 func _physics_process(delta: float) -> void:
+	if TimeStop.active:
+		return  # zaman durdu: mermi havada asılı kalır
 	super._physics_process(delta)
 	position += velocity * delta
 	_age += delta

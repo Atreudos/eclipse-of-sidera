@@ -33,6 +33,8 @@ func _ready() -> void:
 	_build()
 	player = get_tree().get_first_node_in_group("player") as Player
 	EventBus.rhythm_tier_changed.connect(_on_rhythm_tier_changed)
+	EventBus.food_eaten.connect(_on_food_eaten)
+	EventBus.item_consumed.connect(_on_item_consumed)
 	GameState.god_mode_changed.connect(_on_god_mode_changed)
 	overlay.god_mode = GameState.god_mode
 
@@ -40,6 +42,10 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if EventBus.rhythm_tier_changed.is_connected(_on_rhythm_tier_changed):
 		EventBus.rhythm_tier_changed.disconnect(_on_rhythm_tier_changed)
+	if EventBus.food_eaten.is_connected(_on_food_eaten):
+		EventBus.food_eaten.disconnect(_on_food_eaten)
+	if EventBus.item_consumed.is_connected(_on_item_consumed):
+		EventBus.item_consumed.disconnect(_on_item_consumed)
 	if GameState.god_mode_changed.is_connected(_on_god_mode_changed):
 		GameState.god_mode_changed.disconnect(_on_god_mode_changed)
 
@@ -50,6 +56,23 @@ func _on_god_mode_changed(enabled: bool) -> void:
 		announcer.push_runs([["DENEME MODU ", GameFont.YELLOW], ["AÇIK", GameFont.WHITE]], 40, 1.4)
 	else:
 		announcer.push_runs([["DENEME MODU ", GameFont.WHITE], ["KAPALI", GameFont.YELLOW]], 40, 1.2)
+
+
+## Yemek yenince: ne kadar can doldu, ne kadar bağışıklık kalbi geldi.
+func _on_food_eaten(_actor: Node, item: ItemData, healed: int, overflow: int) -> void:
+	var runs: Array = [[item.upper_name() + "  ", GameFont.WHITE]]
+	if healed > 0:
+		runs.append(["+%d CAN" % healed, Color(1.0, 0.45, 0.5)])
+	if healed > 0 and overflow > 0:
+		runs.append(["  ", GameFont.WHITE])
+	if overflow > 0:
+		runs.append(["+%d BAĞIŞIKLIK" % overflow, Color(0.5, 0.78, 1.0)])
+	announcer.push_runs(runs, 34, 1.5)
+
+
+## Tek kullanımlık eşya kırılınca (Çatlak El Aynası).
+func _on_item_consumed(_actor: Node, item: ItemData) -> void:
+	announcer.push_runs([[item.upper_name(), GameFont.YELLOW], [" KIRILDI", GameFont.WHITE]], 42, 1.8)
 
 
 ## Kademe yükselince küçük bir duyuru (düşüşlerde sessiz).
@@ -64,7 +87,7 @@ func _build() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 
-	for i in 8:
+	for i in 12:
 		var h := ColorRect.new()
 		h.size = Vector2(26, 26)
 		h.position = Vector2(24 + i * 34, 22)
@@ -133,9 +156,16 @@ func _process(_delta: float) -> void:
 		player = get_tree().get_first_node_in_group("player") as Player
 		return
 	var max_hp := player.stats.int_value("max_health")
+	var imm := player.immunity
 	for i in _hearts.size():
-		_hearts[i].visible = i < max_hp
-		_hearts[i].color = Color(0.9, 0.18, 0.28) if i < player.health else Color(0.25, 0.12, 0.16)
+		if i < max_hp:
+			_hearts[i].visible = true
+			_hearts[i].color = Color(0.9, 0.18, 0.28) if i < player.health else Color(0.25, 0.12, 0.16)
+		elif i < max_hp + imm:
+			_hearts[i].visible = true  # bağışıklık kalbi: mavi
+			_hearts[i].color = Color(0.35, 0.68, 1.0)
+		else:
+			_hearts[i].visible = false
 	var max_dash := player.stats.int_value("dash_charges")
 	var recharge := player.stats.value("dash_recharge")
 	for i in _pips.size():
@@ -150,6 +180,10 @@ func _process(_delta: float) -> void:
 			_pip_fills[i].color = Color(0.85, 0.95, 1.0)
 		_pip_fills[i].size.x = fill_w
 	overlay.dead = player.dead
+	overlay.gold = player.gold
+	overlay.time_stop_k = TimeStop.progress()
+	overlay.statuses = player.status_lines()
+	overlay.equipped = player.inventory.items if player.inventory != null else []
 	if rhythm_bar.meter == null and player.rhythm != null:
 		rhythm_bar.bind(player.rhythm)
 	_debug_label.text = _debug_text()

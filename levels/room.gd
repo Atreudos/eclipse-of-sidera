@@ -183,7 +183,7 @@ func pending_count() -> int:
 
 
 func _process(delta: float) -> void:
-	if state != State.ACTIVE:
+	if state != State.ACTIVE or TimeStop.active:
 		return
 	_kill_stragglers()
 	if _pending > 0 or alive_count() > 0:

@@ -12,6 +12,7 @@ var current := ""
 ## Sprite'ı elle kaydırmak için (px). Varsayılan hizalama: karenin altı = çarpışma kutusunun altı.
 var art_offset := Vector2.ZERO
 
+var _paused := false
 var _spec: Dictionary = {}
 var _placeholder: CanvasItem
 var _frames: SpriteFrames
@@ -106,6 +107,17 @@ func _set_speed(anim_name: String, fit_duration: float) -> void:
 		return
 	var natural := float(_frames.get_frame_count(anim_name)) / maxf(_frames.get_animation_speed(anim_name), 0.01)
 	sprite.speed_scale = maxf(natural / fit_duration, 0.05)
+
+
+## Animasyonu dondurur / bırakır (zaman durunca düşmanlar donar).
+func set_paused(paused: bool) -> void:
+	if not has_art or paused == _paused:
+		return
+	_paused = paused
+	if paused:
+		sprite.pause()
+	else:
+		sprite.play()
 
 
 func is_finished() -> bool:

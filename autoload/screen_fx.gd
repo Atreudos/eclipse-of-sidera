@@ -4,6 +4,10 @@ extends CanvasLayer
 
 var _vignette: TextureRect
 var _tint: ColorRect
+## Zaman durdu (Satürn'ün Kum Saati): mavi-gri tonlama ve kenar karartması, yumuşakça girip çıkar.
+var _stop_vig: TextureRect
+var _stop_tint: ColorRect
+var _stop_k := 0.0
 var _color := Color.WHITE
 var _peak := 0.0
 var _duration := 0.2
@@ -37,6 +41,18 @@ func _ready() -> void:
 	add_child(_tint)
 	_vignette.modulate.a = 0.0
 	_tint.color.a = 0.0
+	_stop_tint = ColorRect.new()
+	_stop_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_stop_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stop_tint.color = Color(0.45, 0.6, 0.95, 0.0)
+	add_child(_stop_tint)
+	_stop_vig = TextureRect.new()
+	_stop_vig.texture = tex
+	_stop_vig.stretch_mode = TextureRect.STRETCH_SCALE
+	_stop_vig.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_stop_vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stop_vig.modulate = Color(0.3, 0.45, 1.0, 0.0)
+	add_child(_stop_vig)
 	EventBus.screen_flash.connect(_on_flash)
 
 
@@ -47,7 +63,7 @@ func _on_flash(color: Color, alpha: float, duration: float) -> void:
 	_age = 0.0
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var now := Time.get_ticks_usec()
 	var dt := 0.0
 	if _last_usec != 0:
@@ -58,3 +74,6 @@ func _process(_delta: float) -> void:
 	var a := _peak * pow(1.0 - k, 2.0)
 	_vignette.modulate = Color(_color, a)
 	_tint.color = Color(_color, a * 0.1)
+	_stop_k = move_toward(_stop_k, 1.0 if TimeStop.active else 0.0, delta * 6.0)  # oyun zamanıyla: hitstop'ta durur
+	_stop_tint.color = Color(0.45, 0.6, 0.95, 0.16 * _stop_k)
+	_stop_vig.modulate = Color(0.3, 0.45, 1.0, 0.55 * _stop_k)

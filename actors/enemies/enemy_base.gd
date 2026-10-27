@@ -38,6 +38,9 @@ const ANIM_SPEC := {
 }
 
 @export var max_hp: int = 3
+## Ölünce düşen altın (min..max, rastgele).
+@export var gold_min := 1
+@export var gold_max := 3
 @export var gravity := 1900.0
 @export var knockback_force := 240.0
 ## > 0 ise platformlara zıplayabilir (piksel/sn). Zıplama yüksekliği = v² / (2 * gravity).
@@ -58,12 +61,17 @@ var _tell := Tell.NONE
 var _tell_age := 0.0
 ## Görünürlük çarpanı (0 = görünmez). Scorpius'un gölge adımı kullanır.
 var visual_alpha := 1.0
-## Yanma (Kıvılcım eşyası): kalan süre ve bir sonraki hasar tiki.
+## Yanma: kalan süre ve bir sonraki hasar tiki.
 var burn_t := 0.0
 var _burn_tick := 0.0
+## Zehir (Engerek Dişi Kolyesi): kalan süre, saniyedeki hasar ve biriken kesir.
+var poison_t := 0.0
+var poison_dps := 0.0
+var _poison_acc := 0.0
 
 const BURN_INTERVAL := 0.6
 const BURN_COLOR := Color(1.0, 0.55, 0.15)
+const POISON_COLOR := Color(0.55, 1.0, 0.4)
 
 @onready var tell_glow: ColorRect = get_node_or_null("Visual/Glow")
 @onready var hurtbox: Hurtbox = get_node_or_null("Hurtbox")
@@ -88,10 +96,11 @@ func max_jump_height() -> float:
 
 
 func _physics_process(delta: float) -> void:
-	if dead:
-		return
+	if dead or TimeStop.active:
+		return  # zaman durduysa düşman donar (Satürn'ün Kum Saati)
 	_find_target()
 	_tick_burn(delta)
+	_tick_poison(delta)
 	if dead:
 		return
 	velocity.y = minf(velocity.y + gravity * delta, 1200.0)
@@ -136,7 +145,12 @@ func _process(delta: float) -> void:
 	tint = Color(0.6, 0.8, 1.0) if stun_t > 0.0 else Color.WHITE
 	if burn_t > 0.0 and stun_t <= 0.0:
 		tint = Color(1.0, 0.72, 0.5).lerp(Color.WHITE, 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0))
+	elif poison_t > 0.0 and stun_t <= 0.0:
+		tint = POISON_COLOR.lerp(Color.WHITE, 0.45 + 0.35 * sin(Time.get_ticks_msec() / 110.0))
+	if TimeStop.active and not dead:
+		tint = Color(0.62, 0.78, 1.0)  # zaman durdu: buz mavisi, animasyon donuk
 	tint.a = visual_alpha
+	anim.set_paused(TimeStop.active and not dead)
 	anim.play(pick_animation())
 	super._process(delta)
 
@@ -180,6 +194,35 @@ func _tick_burn(delta: float) -> void:
 		if n != null:
 			n.color = BURN_COLOR
 		take_damage(1, null)
+
+
+## Zehirler: `duration` sn boyunca saniyede `dps` hasar (tam sayı tikler halinde). Yenilenir, üst üste binmez.
+## Zehir hasarı kaynaksızdır: ritim/kombo doldurmaz, başka eşyaları tetiklemez.
+func poison(dps: float, duration: float) -> void:
+	if dead:
+		return
+	if poison_t <= 0.0:
+		_poison_acc = 0.0
+		poison_dps = dps
+	else:
+		poison_dps = maxf(poison_dps, dps)
+	poison_t = maxf(poison_t, duration)
+
+
+func _tick_poison(delta: float) -> void:
+	if poison_t <= 0.0 or dead:
+		return
+	var dt := minf(delta, poison_t)
+	poison_t -= dt
+	_poison_acc += poison_dps * dt
+	while _poison_acc >= 0.999 and not dead:
+		_poison_acc -= 1.0
+		var n := DamageNumber.spawn(get_parent(), global_position + Vector2(randf_range(-10.0, 10.0), -30.0), 1, randf_range(-0.6, 0.6))
+		if n != null:
+			n.color = POISON_COLOR
+		take_damage(1, null)
+	if poison_t <= 0.0:
+		_poison_acc = 0.0
 
 
 func is_stunned() -> bool:
@@ -264,7 +307,7 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 	if not dead and not armored:
 		var dir := signf(global_position.x - hitbox.global_position.x)
 		var heavy := hitbox.damage >= 2
-		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force * (1.6 if heavy else 1.0)
+		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force * (1.6 if heavy else 1.0) * ActorBase.knockback_mult_of(hitbox.source)
 		velocity.y = -110.0
 		stagger(STAGGER_HEAVY if heavy else STAGGER_LIGHT)
 		anim.trigger("hurt", 0.2)
@@ -292,6 +335,7 @@ func die() -> void:
 	set_deferred("collision_layer", 0)
 	if hurtbox != null:
 		hurtbox.set_deferred("monitorable", false)
+	_drop_gold()
 	_on_death()
 	if anim.has_anim("death"):
 		# Ölüm animasyonu varsa bitmesini bekle, sonra sön.
@@ -306,6 +350,13 @@ func die() -> void:
 		tw.tween_property(self, "scale", Vector2(1.25, 0.1), 0.3)
 		tw.chain().tween_callback(queue_free)
 	RingFx.spawn(get_parent(), global_position, Color(1, 1, 1, 0.8), 10.0, 60.0, 0.3)
+
+
+## Ölünce altın saçar (oyuncu toplar; kat başlarındaki mağazada harcanacak).
+func _drop_gold() -> void:
+	var n := randi_range(gold_min, maxi(gold_max, gold_min))
+	if n > 0:
+		Coin.drop(get_parent(), global_position + Vector2(0.0, -8.0), n)
 
 
 func _on_death() -> void:

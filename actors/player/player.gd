@@ -12,8 +12,18 @@ signal landed(speed: float)
 signal dash_bumped(enemy: EnemyBase)
 ## Etkileşim tuşuna (E) basıldı (ödül sehpası vb. dinler).
 signal interacted
+## Bağışıklık kalbi sayısı değişti.
+signal immunity_changed(value: int)
+## Bir durum (geçici stat değişikliği) başladı ya da bitti.
+signal statuses_changed
+## Altın miktarı değişti (toplam).
+signal gold_changed(total: int)
 
 enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
+
+## Başarılı bir parry'den sonra bu süre (sn) içinde gelen altın saldırılar da parry'lenir (zincir).
+## Aynı anda gelen iki saldırıyı yakalamayı mümkün kılar; Satürn'ün Kum Saati bunu kullanır.
+const PARRY_CHAIN_TIME := 0.3
 
 ## Düşmanın başına konulunca kayma hızı (px/sn).
 const SLIDE_OFF_SPEED := 220.0
@@ -43,6 +53,7 @@ const BASE_STATS := {
 	"dash_recharge": 1.2,    # saniye / şarj
 	# --- parry ---
 	"parry_window": 0.12,    # parry'nin etkili olduğu süre (sn)
+	"reflex": 1.0,           # refleks: parry penceresini çarpar (1.0 normal; eşya/durumlar artırır ya da düşürür)
 	"parry_recovery": 0.35,  # kaçırırsan toparlanma süresi
 	"parry_zone_radius": 48.0,
 	"parry_iframes": 0.25,   # başarılı parry sonrası dokunulmazlık
@@ -51,6 +62,8 @@ const BASE_STATS := {
 	# --- saldırı / hasar ---
 	"attack_damage": 1.0,
 	"hurt_iframes": 1.0,
+	"damage_taken": 1.0,     # alınan hasar çarpanı (Antika Muhafız Kaskı 0.85)
+	"knockback_mult": 1.0,   # vuruşlarının geri itme çarpanı (Yıldız Tozu Broşu)
 	# --- kombo ---
 	"combo_window": 1.0,     # her vuruş/parry bu kadar saniye daha kombo süresi verir
 	# --- ritim (eşyalar bu çarpanları değiştirir) ---
@@ -99,6 +112,17 @@ var inventory: Inventory
 var dash_ghost := false
 ## Soğukkanlı eşyası: bu süre (sn) kaldıkça dash şarj harcamaz.
 var free_dash_t := 0.0
+## Bağışıklık kalbi (mavi kalkan): fazla yemekten gelir, hasarı önce o karşılar. Varken yemek yenmez.
+var immunity := 0
+## Ölümcül darbeyi engelleyebilen eşyalar (Çatlak El Aynası) buraya bir Callable ekler:
+## `func() -> bool`; true dönerse oyuncu kurtuldu (canı o ayarlar), diğerlerine bakılmaz.
+var death_savers: Array[Callable] = []
+## Etkin durumlar: kimlik -> {"t": kalan sn, "total": toplam sn, "label": ekranda görünen ad}.
+var statuses := {}
+## Altın (mağazada harcanacak). Koşu bitince sıfırlanır.
+var gold := 0
+
+var _last_absorbed := 0
 
 var _coyote := 0.0
 var _jump_buffer := 0.0
@@ -109,6 +133,7 @@ var _dash_recharge_t := 0.0
 var _dash_t := 0.0
 var _dash_dir := 1
 
+var _parry_chain_t := 0.0
 var _parry_t := 0.0
 var _parry_succeeded := false
 var _parry_recovering := false
@@ -196,6 +221,8 @@ func _physics_process(delta: float) -> void:
 			_state_hurt(delta)
 		State.DEAD:
 			_state_dead(delta)
+	if _parry_chain_t > 0.0 and state != State.PARRY and not dead:
+		_try_parry_zone()  # başarılı parry'nin hemen ardından gelen altın saldırılar da parry'lenir
 	_sync_enemy_collision()
 	var fall_speed := velocity.y
 	var was_on_floor := is_on_floor()
@@ -308,6 +335,8 @@ func pick_animation() -> String:
 func _tick_timers(delta: float) -> void:
 	invulnerable_t = maxf(invulnerable_t - delta, 0.0)
 	free_dash_t = maxf(free_dash_t - delta, 0.0)
+	_tick_statuses(delta)
+	_parry_chain_t = maxf(_parry_chain_t - delta, 0.0)
 	_empower_t = maxf(_empower_t - delta, 0.0)
 	_combo_window_t = maxf(_combo_window_t - delta, 0.0)
 	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
@@ -432,8 +461,14 @@ func _start_parry() -> void:
 	_parry_succeeded = false
 	_parry_recovering = false
 	melee.active = false
-	anim.trigger("parry", stats.value("parry_window"))
+	anim.trigger("parry", parry_window_time())
 	_try_parry_zone()  # tuşa bastığın karede zaten içerideki mermiler
+
+
+## Parry penceresinin gerçek süresi (sn): `parry_window` (sn, eşyalar ekler) x `reflex` (çarpan).
+## Refleks 1.0 normaldir; 1.25 = pencere %25 uzun, 0.8 = %20 kısa. Çok düşük refleks bile pencereyi sıfırlamaz.
+func parry_window_time() -> float:
+	return stats.value("parry_window") * maxf(stats.value("reflex", 1.0), 0.25)
 
 
 ## Parry'yi kaçırınca toparlanma süresi. Deneme modunda neredeyse yok (parry'yi bedavaya spamleyebilirsin).
@@ -442,7 +477,7 @@ func parry_recovery_time() -> float:
 
 
 func _parry_window_open() -> bool:
-	return state == State.PARRY and not _parry_recovering and _parry_t <= stats.value("parry_window")
+	return state == State.PARRY and not _parry_recovering and _parry_t <= parry_window_time()
 
 
 func _state_parry(delta: float) -> void:
@@ -450,7 +485,7 @@ func _state_parry(delta: float) -> void:
 	_apply_gravity(delta)
 	if not _parry_recovering:
 		_apply_horizontal(delta, 0.6)
-		if _parry_t <= stats.value("parry_window"):
+		if _parry_t <= parry_window_time():
 			_try_parry_zone()
 		else:
 			_parry_recovering = true
@@ -458,7 +493,7 @@ func _state_parry(delta: float) -> void:
 			EventBus.parry_failed.emit(self)
 	else:
 		_apply_horizontal(delta, 0.4)
-		if _parry_t >= stats.value("parry_window") + parry_recovery_time():
+		if _parry_t >= parry_window_time() + parry_recovery_time():
 			state = State.MOVE
 
 
@@ -475,8 +510,15 @@ func _try_parry_zone() -> bool:
 
 func _do_parry(hb: Hitbox) -> void:
 	hb.on_parried(self)
+	_parry_chain_t = PARRY_CHAIN_TIME
 	if _parry_succeeded:
-		return  # aynı pencerede ikinci mermi: sadece yönü değişsin
+		# Aynı parry'nin (ya da hemen ardından gelen) fazladan saldırısı: tam gösteri yok ama parry SAYILIR
+		# (kombo, ritim ve eşyalar görür; Satürn'ün Kum Saati bunu "aynı anda iki parry" sayar).
+		EventBus.parry_success.emit(self, hb)
+		RingFx.spawn(get_parent(), hb.global_position, Color(1.0, 0.95, 0.7, 0.9), 8.0, 38.0, 0.18)
+		HitSpark.spawn(get_parent(), hb.global_position, Vector2(-facing, -0.2), Color(1.0, 0.85, 0.3), 1.1)
+		Sfx.play_parry(combo.parries)
+		return
 	_parry_succeeded = true
 	_empower_t = stats.value("empower_time")
 	invulnerable_t = maxf(invulnerable_t, stats.value("parry_iframes"))
@@ -497,7 +539,7 @@ func _do_parry(hb: Hitbox) -> void:
 func on_hit_by(hitbox: Hitbox) -> bool:
 	if dead:
 		return false
-	if _parry_window_open() and hitbox.parryable:
+	if hitbox.parryable and (_parry_window_open() or _parry_chain_t > 0.0):
 		_do_parry(hitbox)
 		return false
 	if is_invulnerable():
@@ -574,24 +616,152 @@ func _on_melee_landed(_target: Hurtbox) -> void:
 
 # ---------------------------------------------------------------- hasar / ölüm
 
-## Gelen hasardan canı gerçekten götürecek kısım. Deneme modunda hiçbir şey gitmez
-## (vuruş tepkisi, flaş ve ritim kaybı yine olur: ne olduğunu görebilirsin).
+## Gelen hasardan canı gerçekten götürecek kısım: önce hasar azaltma (`damage_taken`), sonra bağışıklık kalbi
+## karşılar, kalan can götürür. Deneme modunda hiçbir şey gitmez (vuruş tepkisi, flaş ve ritim kaybı yine olur).
 func _damage_after_defenses(amount: int, _source: Node) -> int:
+	_last_absorbed = 0
+	var dmg := _scale_damage(amount)
+	if immunity > 0 and dmg > 0:
+		_last_absorbed = mini(immunity, dmg)
+		dmg -= _last_absorbed
+		set_immunity(immunity - _last_absorbed)
+		Sfx.play("shield_break", -2.0, 1.0, 0.05)
 	if GameState.god_mode:
 		return 0
-	return amount
+	return dmg
+
+
+## Can sıfıra indi: önce ölümü engelleyen eşyalara (Çatlak El Aynası) sorulur.
+func _on_health_depleted() -> void:
+	for saver in death_savers.duplicate():
+		if saver.is_valid() and saver.call():
+			return
+	die()
+
+
+## Bağışıklık kalbi sayısını ayarlar.
+func set_immunity(value: int) -> void:
+	value = maxi(value, 0)
+	if value == immunity:
+		return
+	immunity = value
+	immunity_changed.emit(immunity)
+
+
+## `seconds` sn boyunca hasar almaz (daha uzun bir dokunulmazlık varsa onu kısaltmaz); yanıp söner.
+func grant_invulnerability(seconds: float) -> void:
+	invulnerable_t = maxf(invulnerable_t, seconds)
+	_blink_t = maxf(_blink_t, seconds)
+
+
+# ---------------------------------------------------------------- altın
+
+func add_gold(amount: int) -> void:
+	if amount == 0:
+		return
+	gold = maxi(gold + amount, 0)
+	gold_changed.emit(gold)
+	if amount > 0:
+		EventBus.gold_collected.emit(self, amount)
+
+
+## Altın yeterliyse harcar ve true döner (mağaza için).
+func spend_gold(amount: int) -> bool:
+	if amount < 0 or gold < amount:
+		return false
+	gold -= amount
+	gold_changed.emit(gold)
+	return true
+
+
+# ---------------------------------------------------------------- yemek
+
+## true olsa can doluyken de yemek yenir (tamamı bağışıklığa dönüşür). Tasarım: can tamken yenmez.
+const ALLOW_EAT_AT_FULL := false
+
+
+## Yemeği yemeyi dener. Yenirse "" döner, yenmezse nedenini (ekrana yazılacak kısa metin).
+##  - Canda boşluk varsa önce can dolar; yemeğin kalan kısmı bağışıklık kalbine dönüşür.
+##  - Bağışıklık kalbi varken HİÇBİR yemek yenmez (sınırsız bağışıklık biriktirilemesin).
+func try_eat(item: ItemData) -> String:
+	if dead:
+		return "ÖLÜSÜN"
+	if item == null or not item.is_food():
+		return "BU YENMEZ"
+	if immunity > 0:
+		return "BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ"
+	var max_hp := stats.int_value("max_health")
+	var missing := max_hp - health
+	if missing <= 0 and not ALLOW_EAT_AT_FULL:
+		return "CANIN ZATEN DOLU"
+	var amount := item.heal_amount(max_hp)
+	var healed := heal(mini(amount, maxi(missing, 0)))
+	var overflow := maxi(amount - healed, 0)
+	if overflow > 0:
+		set_immunity(overflow)
+	Sfx.play("eat", -2.0, 1.0, 0.04)
+	EventBus.food_eaten.emit(self, item, healed, overflow)
+	return ""
+
+
+# ---------------------------------------------------------------- durumlar (geçici stat değişiklikleri)
+
+## Geçici bir durum başlatır: `mods` = [[stat, ekleme, çarpım], ...]. Aynı kimlikle tekrar çağrılırsa süre yenilenir
+## (etki üst üste binmez). Örn. yorgunluk: apply_status("yorgun", 6.0, [["reflex", 0.0, 0.8]], "YORGUN")
+func apply_status(status_id: String, duration: float, mods: Array, label: String = "") -> void:
+	if dead or duration <= 0.0:
+		return
+	var source := "durum:" + status_id
+	if not statuses.has(status_id):
+		for m: Array in mods:
+			stats.add_modifier(source, m[0], m[1], m[2])
+	statuses[status_id] = {"t": duration, "total": duration, "label": label if label != "" else status_id.to_upper()}
+	statuses_changed.emit()
+
+
+func remove_status(status_id: String) -> void:
+	if not statuses.has(status_id):
+		return
+	stats.remove_modifiers("durum:" + status_id)
+	statuses.erase(status_id)
+	statuses_changed.emit()
+
+
+func has_status(status_id: String) -> bool:
+	return statuses.has(status_id)
+
+
+## HUD için: "YORGUN 4.2" gibi satırlar.
+func status_lines() -> Array[String]:
+	var out: Array[String] = []
+	for k in statuses:
+		var st: Dictionary = statuses[k]
+		out.append("%s %.1f" % [st["label"], float(st["t"])])
+	return out
+
+
+func _tick_statuses(delta: float) -> void:
+	if statuses.is_empty():
+		return
+	var ended: Array[String] = []
+	for k in statuses:
+		var st: Dictionary = statuses[k]
+		st["t"] = float(st["t"]) - delta
+		if float(st["t"]) <= 0.0:
+			ended.append(k)
+	for k in ended:
+		remove_status(k)
 
 
 func _enter_hurt(hitbox: Hitbox) -> void:
 	if dead:
 		return
 	var dir := 1 if global_position.x >= hitbox.global_position.x else -1
-	velocity = Vector2(dir * 260.0, -220.0)
+	velocity = Vector2(dir * 260.0 * ActorBase.knockback_mult_of(hitbox.source), -220.0)
 	state = State.HURT
 	_hurt_t = 0.0
 	melee.active = false
-	invulnerable_t = stats.value("hurt_iframes")
-	_blink_t = stats.value("hurt_iframes")
+	grant_invulnerability(stats.value("hurt_iframes"))
 	# Hasar alınca zaman YAVAŞLAMAZ (slow-mo sadece vurma/parry hissi içindir): sarsıntı + flash yeter.
 	anim.trigger("hurt", 0.22)
 	EventBus.screen_shake.emit(10.0, 0.3)
@@ -607,9 +777,12 @@ func _state_hurt(delta: float) -> void:
 		state = State.MOVE
 
 
-## Hasar flaşı: oyuncuda beyaz yerine kırmızımsı, biraz daha uzun.
+## Hasar flaşı: oyuncuda beyaz yerine kırmızımsı, biraz daha uzun. Bağışıklık kalbi karşıladıysa mavi.
 func _hit_flash() -> void:
-	flash(Color(1.0, 0.5, 0.5), 0.24)
+	if _last_absorbed > 0:
+		flash(Color(0.55, 0.8, 1.0), 0.26)
+	else:
+		flash(Color(1.0, 0.5, 0.5), 0.24)
 
 
 func die() -> void:
@@ -638,6 +811,10 @@ func _on_enemy_died(_enemy: Node) -> void:
 # ---------------------------------------------------------------- çizim (yer tutucu efektler)
 
 func _draw() -> void:
+	if TimeStop.active:
+		# Kalan süreyi gösteren ince halka.
+		draw_arc(Vector2.ZERO, 40.0, 0.0, TAU, 40, Color(0.7, 0.88, 1.0, 0.18), 2.0)
+		draw_arc(Vector2.ZERO, 40.0, -PI * 0.5, -PI * 0.5 + TAU * TimeStop.progress(), 40, Color(0.75, 0.92, 1.0, 0.95), 3.0)
 	if state == State.PARRY:
 		var r := stats.value("parry_zone_radius")
 		if not _parry_recovering:

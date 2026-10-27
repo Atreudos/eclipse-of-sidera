@@ -57,3 +57,17 @@ signal item_left_behind(item: ItemData)
 ## Oyuncu parry tuşuna bastı (pencere şimdi açıldı). Sahte saldırıya kanan "erken parry"yi düşman buradan anlar.
 @warning_ignore("unused_signal")
 signal parry_started(actor: Node)
+## Oyuncu yemek yedi: `healed` kadar can doldu, `overflow` kadar bağışıklık kalbi kazandı.
+@warning_ignore("unused_signal")
+signal food_eaten(actor: Node, item: ItemData, healed: int, overflow: int)
+## Bir eşya takıldı / çıkarıldı (çantadan slota ve geri).
+@warning_ignore("unused_signal")
+signal item_equipped(actor: Node, item: ItemData)
+@warning_ignore("unused_signal")
+signal item_unequipped(actor: Node, item: ItemData)
+## Tek kullanımlık eşya (Çatlak El Aynası) kullanıldı ve kırıldı.
+@warning_ignore("unused_signal")
+signal item_consumed(actor: Node, item: ItemData)
+## Oyuncu altın topladı (amount kadar).
+@warning_ignore("unused_signal")
+signal gold_collected(actor: Node, amount: int)

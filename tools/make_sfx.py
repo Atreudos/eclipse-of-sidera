@@ -477,6 +477,175 @@ def vanish():
     return render(dur, f)
 
 
+def eat():
+    """Yemek yeme: iki kısa çıtır (süzülmüş gürültü) + yutkunma."""
+    rnd = random.Random(21)
+    dur = 0.34
+    lp = Lowpass()
+
+    def f(t, _i):
+        x = rnd.uniform(-1.0, 1.0)
+        crunch = 0.0
+        for start in (0.0, 0.1):
+            tt = t - start
+            if tt >= 0.0:
+                crunch += lp(x, 0.45) * attack(tt, 0.001) * decay(tt, 0.022) * 1.5
+        gulp = 0.0
+        tg = t - 0.2
+        if tg >= 0.0:
+            freq = 170.0 * math.exp(-tg * 7.0) + 70.0
+            gulp = sine(freq, tg) * attack(tg, 0.004) * decay(tg, 0.06) * 0.7
+        return crunch + gulp
+
+    return render(dur, f)
+
+
+def shield_break():
+    """Bağışıklık kalbi kırıldı: cam parçalanması (parlak gürültü) + düşen cam tınıları."""
+    rnd = random.Random(22)
+    dur = 0.45
+    prev = [0.0]
+    pings = [(2400.0, 0.0), (3100.0, 0.03), (3900.0, 0.06), (2700.0, 0.11), (4400.0, 0.16)]
+
+    def f(t, _i):
+        x = rnd.uniform(-1.0, 1.0)
+        hp = x - prev[0]
+        prev[0] = x
+        shatter = hp * attack(t, 0.0006) * decay(t, 0.05) * 0.9
+        s = shatter
+        for freq, st in pings:
+            tt = t - st
+            if tt >= 0.0:
+                s += sine(freq, tt) * attack(tt, 0.0008) * decay(tt, 0.07) * 0.28
+        s += sine(300.0 * math.exp(-t * 4.0) + 120.0, t) * decay(t, 0.09) * 0.5
+        return s
+
+    return render(dur, f)
+
+
+def coin():
+    """Altın toplama: iki tonlu parlak 'ting'."""
+    dur = 0.3
+
+    def f(t, _i):
+        s = 0.0
+        for freq, st in ((1318.5, 0.0), (1760.0, 0.055)):
+            tt = t - st
+            if tt >= 0.0:
+                env = attack(tt, 0.0008) * decay(tt, 0.09)
+                s += (sine(freq, tt) + 0.4 * sine(freq * 2.01, tt) + 0.2 * sine(freq * 3.03, tt)) * env * 0.5
+        return s
+
+    return render(dur, f)
+
+
+def mirror_crack():
+    """Çatlak El Aynası kırıldı: keskin çatırtı + cam parçaları + alçalan tını."""
+    rnd = random.Random(23)
+    dur = 0.8
+    prev = [0.0]
+    lp = Lowpass()
+
+    def f(t, _i):
+        x = rnd.uniform(-1.0, 1.0)
+        hp = x - prev[0]
+        prev[0] = x
+        crack = hp * attack(t, 0.0004) * decay(t, 0.03) * 1.1
+        glass = hp * decay(max(t - 0.02, 0.0), 0.12) * 0.35 * (1.0 if t > 0.02 else 0.0)
+        ring = (sine(880.0, t) + 0.5 * sine(1320.0, t) + 0.3 * sine(2217.0, t)) * attack(t, 0.001) * decay(t, 0.22) * 0.45
+        thump = lp(sine(95.0 * math.exp(-t * 3.0) + 55.0, t), 0.6) * attack(t, 0.002) * decay(t, 0.12) * 0.9
+        return crack + glass + ring + thump
+
+    return render(dur, f)
+
+
+def timestop():
+    """Zaman durdu: alçalan süpürme + derin gong + parıltı."""
+    rnd = random.Random(24)
+    dur = 1.1
+    ph = [0.0]
+    lp = Lowpass()
+
+    def f(t, _i):
+        # alçalan ton (zamanın yavaşlaması)
+        freq = 1500.0 * math.exp(-t * 5.5) + 160.0
+        ph[0] += 2.0 * math.pi * freq / SR
+        sweep = math.sin(ph[0]) * attack(t, 0.004) * decay(t, 0.28) * 0.5
+        # derin gong
+        gong = 0.0
+        for mult, amp, tau in ((1.0, 0.8, 0.55), (2.01, 0.35, 0.4), (3.02, 0.2, 0.3), (4.1, 0.12, 0.2)):
+            gong += amp * sine(58.0 * mult, t) * attack(t, 0.003) * decay(t, tau)
+        # tok vuruş
+        thump = sine(46.0, t) * decay(t, 0.12) * 0.9
+        # parıltı
+        shim = lp(rnd.uniform(-1.0, 1.0), 0.9) * decay(t, 0.18) * 0.12
+        return sweep + gong * 0.9 + thump + shim
+
+    return render(dur, f)
+
+
+def timestop_end():
+    """Zaman yeniden akıyor: yükselen süpürme + hafif tık."""
+    dur = 0.5
+    ph = [0.0]
+
+    def f(t, _i):
+        freq = 180.0 + 1300.0 * (1.0 - math.exp(-t * 7.0))
+        ph[0] += 2.0 * math.pi * freq / SR
+        sweep = math.sin(ph[0]) * attack(t, 0.01) * decay(t, 0.2) * 0.45
+        click = sine(2600.0, t) * attack(t, 0.0005) * decay(t, 0.008) * 0.5
+        return sweep + click
+
+    return render(dur, f)
+
+
+def ui_move():
+    """Menüde gezinme: çok kısa tık."""
+    return render(0.05, lambda t, _i: sine(1250.0, t) * attack(t, 0.0004) * decay(t, 0.012) * 0.8)
+
+
+def ui_select():
+    """Menüde onay: kısa, yükselen iki ton."""
+    def f(t, _i):
+        s = 0.0
+        for freq, st in ((660.0, 0.0), (990.0, 0.045)):
+            tt = t - st
+            if tt >= 0.0:
+                s += (sine(freq, tt) + 0.3 * sine(freq * 2.0, tt)) * attack(tt, 0.001) * decay(tt, 0.05) * 0.6
+        return s
+
+    return render(0.18, f)
+
+
+def ui_deny():
+    """Menüde olmaz: iki kısa kalın vızıltı."""
+    def f(t, _i):
+        s = 0.0
+        for st in (0.0, 0.08):
+            tt = t - st
+            if tt >= 0.0:
+                sq = 1.0 if sine(150.0, tt) >= 0.0 else -1.0
+                s += sq * attack(tt, 0.001) * decay(tt, 0.03) * 0.35
+        return s
+
+    return render(0.22, f)
+
+
+def equip():
+    """Eşya takma: metal tık + tok vuruş + ince tını."""
+    rnd = random.Random(25)
+    lp = Lowpass()
+
+    def f(t, _i):
+        x = rnd.uniform(-1.0, 1.0)
+        click = (x - lp(x, 0.2)) * attack(t, 0.0004) * decay(t, 0.012) * 1.0
+        thud = sine(230.0 * math.exp(-t * 10.0) + 110.0, t) * attack(t, 0.002) * decay(t, 0.05) * 0.8
+        ping = (sine(1850.0, t) + 0.4 * sine(2790.0, t)) * attack(t, 0.0008) * decay(t, 0.05) * 0.35
+        return click + thud + ping
+
+    return render(0.22, f)
+
+
 if __name__ == "__main__":
     # (ad, üretici, tepe seviyesi)
     for name, gen, peak in [
@@ -490,6 +659,10 @@ if __name__ == "__main__":
         ("tier_up", tier_up, 0.8), ("tier_down", tier_down, 0.7), ("heal", heal, 0.75),
         # --- Scorpius
         ("thrust", thrust, 0.8), ("vanish", vanish, 0.75),
+        # --- eşyalar, altın, envanter, zaman durdurma
+        ("eat", eat, 0.8), ("shield_break", shield_break, 0.8), ("coin", coin, 0.75),
+        ("mirror_crack", mirror_crack, 0.85), ("timestop", timestop, 0.9), ("timestop_end", timestop_end, 0.7),
+        ("ui_move", ui_move, 0.6), ("ui_select", ui_select, 0.7), ("ui_deny", ui_deny, 0.7), ("equip", equip, 0.8),
     ]:
         write(name, gen(), peak)
         print("yazıldı:", name + ".wav")

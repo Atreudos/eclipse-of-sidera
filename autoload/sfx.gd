@@ -8,6 +8,8 @@ const NAMES := [
 	"parry", "hit", "hurt", "dash", "whiff", "shoot", "kill", "tell_gold", "tell_red", "slash",
 	"door_open", "door_slam", "spawn", "room_clear", "land", "pickup", "left_behind",
 	"tier_up", "tier_down", "heal", "thrust", "vanish",
+	"eat", "shield_break", "coin", "mirror_crack", "timestop", "timestop_end",
+	"ui_move", "ui_select", "ui_deny", "equip",
 ]
 const VOICES := 12
 

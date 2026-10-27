@@ -256,7 +256,7 @@ func _on_player_parry_started(actor: Node) -> void:
 		return
 	var window := 0.12
 	if target != null and target.stats != null:
-		window = target.stats.value("parry_window")
+		window = target.parry_window_time()
 	if _phase_t < _tell_total - window:
 		_bait = true
 

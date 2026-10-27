@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 EventBus="*res://autoload/event_bus.gd"
 Hitstop="*res://autoload/hitstop.gd"
 Sfx="*res://autoload/sfx.gd"
+TimeStop="*res://autoload/time_stop.gd"
 ScreenFx="*res://autoload/screen_fx.gd"
 GameState="*res://autoload/game_state.gd"
 

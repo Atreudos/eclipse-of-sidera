@@ -23,6 +23,11 @@ static func get_font() -> Font:
 	return _font
 
 
+## Türkçe büyük harf ("i" -> "İ", "ı" -> "I"); Godot'un to_upper'ı bunu bilmez.
+static func upper(text: String) -> String:
+	return text.replace("i", "İ").replace("ı", "I").replace("ğ", "Ğ").replace("ş", "Ş").replace("ç", "Ç").replace("ö", "Ö").replace("ü", "Ü").to_upper()
+
+
 ## Yazının piksel genişliği.
 static func width(text: String, size: int) -> float:
 	return get_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x

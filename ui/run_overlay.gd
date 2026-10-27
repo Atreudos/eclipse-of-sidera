@@ -18,6 +18,14 @@ var cleared := false
 var dead := false
 ## Deneme (god) modu açık: üstte rozet gösterilir.
 var god_mode := false
+## Altın miktarı (sağ üstte).
+var gold := 0
+## Zaman durdu: kalan oran (0 = durmuyor). Üstte ince bir çubuk çizilir.
+var time_stop_k := 0.0
+## Etkin durumların kısa satırları ("YORGUN 4.2"), sol üstte.
+var statuses: Array[String] = []
+## Takılı eşyalar (sol altta küçük simgeler).
+var equipped: Array = []
 ## Ölüm özeti: kills, rooms_cleared, best_combo, time
 var summary := {}
 
@@ -68,10 +76,42 @@ func _draw() -> void:
 	if god_mode and not dead:
 		var pulse := 0.7 + 0.3 * sin(_t * 3.0)
 		GameFont.draw_runs_centered(self, [["DENEME MODU", GameFont.YELLOW]], Vector2(w * 0.5, 28.0), 24, pulse)
+	if not dead:
+		_draw_hud_extras(w, h)
 	if cleared and not dead:
 		_draw_go_hint(w, h)
 	if dead:
 		_draw_death(w, h)
+
+
+## Altın, zaman durdu çubuğu, durumlar ve takılı eşya simgeleri.
+func _draw_hud_extras(w: float, h: float) -> void:
+	if room_number > 0 or arena_wave > 0:
+		var gy := 126.0 if room_number > 0 and wave_total > 1 and not cleared else 96.0
+		var gx := w - MARGIN_RIGHT
+		draw_circle(Vector2(gx - 62.0, gy), 9.0, Color(0.55, 0.36, 0.05))
+		draw_circle(Vector2(gx - 62.0, gy), 7.5, Color(1.0, 0.82, 0.2))
+		GameFont.draw_runs_centered(self, [[str(gold), GameFont.YELLOW]], Vector2(gx + 6.0, gy), 26)
+	if time_stop_k > 0.0:
+		var bw := 260.0
+		var bx := w * 0.5 - bw * 0.5
+		GameFont.draw_runs_centered(self, [["ZAMAN DURDU", Color(0.75, 0.92, 1.0)]], Vector2(w * 0.5, 62.0), 24)
+		draw_rect(Rect2(bx, 80.0, bw, 6.0), Color(0.05, 0.08, 0.2, 0.7))
+		draw_rect(Rect2(bx, 80.0, bw * time_stop_k, 6.0), Color(0.75, 0.92, 1.0))
+	var sy := 150.0
+	for line in statuses:
+		GameFont.draw_left(self, line, Vector2(24.0, sy), 18, GameFont.WHITE)
+		sy += 22.0
+	var ex := 24.0
+	for it in equipped:
+		var item := it as ItemData
+		if item == null:
+			continue
+		var r := Rect2(ex, h - 76.0, 30.0, 30.0)
+		draw_rect(r, Color(0.05, 0.03, 0.09, 0.75))
+		draw_rect(r, item.color(), false, 2.0)
+		GameFont.draw_centered(self, item.glyph(), r.get_center(), 20, item.color(), false)
+		ex += 36.0
 
 
 ## Sağ kenarda nabız gibi atan oklar ve "İLERLE": kapı açık, sağa git.
