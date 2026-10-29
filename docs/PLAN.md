@@ -16,7 +16,7 @@
 | 3. düşman | **Scorpius** (Akrep) | İki rapier'li vur-kaç dövüşçüsü, mesafe oyunu |
 
 Düşman adları burçlardan gelir; yeni düşmanlar da bu çizgide adlandırılır. Kod ve sprite klasörleri bu adları kullanır (`taurus`, `sagitta`, `scorpius`, `sidera`).
-Eşya listesini oyun tasarımcısı kendisi hazırlayacak; eşya içeriği ondan gelene kadar sadece altyapı var (`items/`).
+Eşya listesini oyun tasarımcısı kendisi yazdı: 10 donanım + 3 yemek (bölüm 7.3). Yeni eşyalar da ondan gelir; koda eklemek `items/item_db.gd` içinde tek bir `_add({...})` bloğudur.
 
 ---
 
@@ -84,6 +84,7 @@ Oda gir → Düşmanları temizle (dash/parry/saldır) → 2 eşya çıkar
   - Yakın saldırıysa: düşman sersemler (~0.6 sn).
   - Sonraki vuruş x2 hasar (kısa süreli).
   - Agresiflik metresi dolar.
+  - **Parry zinciri:** başarılı bir parry'den sonraki 0.3 sn içinde değen diğer altın saldırılar da parry'lenir (aynı anda gelen iki saldırıyı tek tuşla karşılarsın). Satürn'ün Kum Saati bunu tetikler (bkz. 7.3).
   - Umbra'nın eşya saldırısıysa: **eşya çalma ilerlemesi** kazanılır (bkz. 5.4).
 - **Parry'lenemez (kırmızı) saldırılar:** kaçman (dash) gerekir. Bu denge Cuphead pembe/normal ayrımı gibi çalışır.
 
@@ -100,8 +101,35 @@ Ultrakill'in stil sistemi ilhamlı, kan yok.
 - Hasar alınca bir kademe düşer (can kaybı yanında ek ceza).
 
 ### 4.6 Can sistemi
-- Kalp tabanlı (Isaac gibi, 3-5 kalp başlangıç). Yarım kalp yok, sade.
-- Can toparlama: sadece agresiflik kademesi "Ateşli" ve üstü iken parry'den küçük şans + mağaza.
+- Kalp tabanlı (Isaac gibi). Başlangıç **4 kalp**; üst sınır eşyalarla artar, HUD en çok 12 kalp gösterir. Yarım kalp yok, sade.
+- Can toparlama: agresiflik kademesi "Ateşli" ve üstü iken parry'den küçük şans, yemekler, Vampir Yadigarı (parry = +3 can) ve mağaza.
+- Ölünce özet ekranı çıkar, `R` ile yeniden başlanır.
+- **Deneme modu (`F4`):** can düşmez, dash ve parry bekleme yok; HUD'da rozet çıkar. Oyunu geçemeden bir şeyi denemek için.
+
+### 4.7 Bağışıklık kalbi ve yemek
+Tasarımcının kuralları (kod: `Player.try_eat`, `Player.set_immunity`):
+1. **Fazla iyileşme bağışıklık kalbine döner.** Canına sığmayan kısım mavi **bağışıklık kalbi** olur.
+2. **Bağışıklık kalbi hasarı önce kendine alır;** artan hasar canı götürür.
+3. **Suistimal engeli:** bağışıklık kalbi varken (dükkândan da, envanterden de) **kesinlikle yemek yenmez** ("BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ").
+4. Can zaten doluysa da yemek yenmez ("CANIN ZATEN DOLU"; `Player.ALLOW_EAT_AT_FULL` ile değişir). Ölüyken ya da yemek olmayan eşya için de ret mesajı çıkar.
+
+Yemekler slotsuzdur: çantada durur, envanter ekranında yenir. Umbra'ya gitmez, ödül çiftinde çıkmaz (mağazada satılır).
+
+| Yemek | Etki | Fiyat |
+|---|---|---|
+| Kule Ekmeği | +1 kalp | 6 |
+| Fırınlanmış Tatlı Patates | +2 kalp; canına sığmayan kısım bağışıklık kalbi olur | 12 |
+| Kozmik Yıldız Çorbası | Canı tamamen doldurur (iyileşme miktarı = en çok can); sığmayan kısım bağışıklık kalbi olur | 24 |
+
+### 4.8 Refleks (tepki hızı)
+`reflex` statı parry penceresini çarpar: **etkin pencere = parry_window x refleks** (taban 0.12 sn, refleks 1.0 = normal, en az 0.25'e iner). Refleksi artıran/azaltan eşyalar ve geçici durumlar için hazır altyapı: durumlar (`Player.apply_status`) süreli stat değişikliği verir (ör. "Yorgun": refleks x0.8) ve HUD'da satır olarak görünür. Envanter ekranında REFLEKS ve etkin PARRY süresi yazar.
+
+### 4.9 Altın
+- Düşmanlar ölünce para saçar: **küçük para = 1 altın**, **antika para = 3 altın** (Hırsızın Zinciri antika para düşürtür).
+- Düşman başına miktar: Taurus 2-4, Sagitta 2-3, Scorpius 3-5 (düşman sahnesinde `gold_min` / `gold_max`).
+- Para zıplar, 110 px'e yaklaşınca sana çekilir, 26 px'te toplanır. Oda temizlenince kalan paralar yarım saniye sonra sana uçar.
+- Sayaç HUD'da ve envanter ekranında görünür.
+- Harcama yeri: **mağaza** (bölüm 8). Her eşyanın `price` alanı hazır.
 
 ---
 
@@ -168,12 +196,62 @@ Her ailenin **kendine özgü parry biçimi** var; böylece oyun tekrar etmiyor.
 ## 7. Eşya Sistemi
 
 ### 7.1 Eşya mimarisi
-- **Etiket (tag) sistemi:** her eşyanın 1-3 etiketi var: `PARRY`, `DASH`, `MERMI`, `ALEV`, `BUZ`, `ZEHIR`, `CAN`, `RITIM`, `KARMA`.
-- **Sinerji:** aynı etiketten 3 eşya = küçük bonus (Isaac'taki set mantığı).
+- **Etiket (tag) sistemi:** her eşyanın 1-3 etiketi var: `PARRY`, `DASH`, `MERMI`, `ALEV`, `BUZ`, `ZEHIR`, `CAN`, `RITIM`, `KARMA`, `ZAMAN`, `ALTIN`, `HAREKET`, `SAVUNMA`.
+- **Sinerji:** aynı etiketten 3 eşya = küçük bonus (Isaac'taki set mantığı). Şimdilik PARRY, DASH, RITIM, CAN, ALEV, BUZ için tanımlı (`ItemDB.SYNERGIES`); ekranda envanterin altında görünür.
 - **Nadirlik:** Yaygın / Nadir / Efsanevi / **Lanetli** (güçlü ama bedeli var).
 - **Umbra etiketi:** `Sadece Oyuncu` / `Umbra Dahil`.
 
-### 7.2 Örnek eşyalar (başlangıç seti)
+### 7.2 Slotlar, çanta ve envanter ekranı
+
+Eşyalar slotlara takılır; sayılar tek yerden okunur (`ItemData.SLOT_CAPACITY`), değiştirince ekran kendiliğinden uyar.
+
+| Slot | Kapasite | Not |
+|---|---|---|
+| Ayak | 1 | ayakkabı, bot |
+| Charm (kolye) | 3 | |
+| Kafa | 2 | bandana, şapka, kask |
+| Cep | 1 | |
+| Bilek | 1 | sayı sonra değişebilir |
+| Zırh | 1 | henüz eşya yok |
+| Yemek | - | takılmaz; çantada durur, yenir |
+
+- **Çanta:** 24 hücre. Takılmamış eşyalar ve yemekler burada durur; aynı eşyanın kopyaları tek hücrede yığılır.
+- **Envanter ekranı (`I` ya da `Tab`)**: oyunu durdurur. Ortada karakter, çevresinde slotlar, sağda çanta, en sağda seçili eşyanın ayrıntısı (ad, nadirlik, slot, açıklama, **GÖLGE ALIRSA** metni, etiket, fiyat). Çantanın altında can/bağışıklık, altın, refleks, parry süresi, dash, hız ve aktif sinerjiler. Yön tuşları / WASD / fare ile gezilir; `Enter`, `E`, `J` ya da tıklama: çantadaki eşyayı tak, takılıyı çıkar, yemeği ye. `Esc`, `I`, `Tab` ya da panel dışına tıklama kapatır.
+- Tek kapasiteli slot doluysa yeni eşya takılırken **eskisiyle yer değiştirir** (eski çantaya döner). Çok kapasiteli slot doluysa önce biri elle çıkarılır. Çanta doluysa "ÇANTA DOLU" der.
+- Görünüm geçici: çizimler gelince yenilenecek, mantık aynı kalır. Eşya simgeleri `assets/items/<eşya_id>.png` olarak konunca otomatik kullanılır (yoksa harf yer tutucu).
+- **Eşya menüsü (`F5`, deneme için):** tüm eşyaları slot sırasıyla listeler; `Enter`/`E`/`J`/tıklama envantere ekler (slotta yer varsa hemen takar), `T` yalnız çantaya koyar, `G` +50 altın, `H` canı doldurur, `B` +1 bağışıklık kalbi, `C` her şeyi siler. Ödül seçme mekaniği sonra gelecek; bu menü o zamana kadar test içindir ve her zaman açılabilir.
+
+### 7.3 Güncel eşya listesi (tasarımcının listesi)
+
+| Slot | Eşya | Etki | Gölge alırsa | Nadirlik | Fiyat |
+|---|---|---|---|---|---|
+| Ayak | **Ayna Tabanlı Çizmeler** | +1 ekstra dash hakkı | Gölge de son savaşta sana karşı fazladan 1 dash atabilir | Nadir | 55 |
+| Ayak | **Hafif Tüy Botlar** | Yürüme hızı %20 artar | Gölge de seninle birebir aynı hızda yürür | Yaygın | 30 |
+| Charm | **Engerek Dişi Kolyesi** | Parry'lediğin düşmana zehir verir (saniyede 2 hasar, 1.5 sn) | O da seni parrylerse saniyede 2 hasar veren zehir bırakır | Nadir | 50 |
+| Charm | **Yıldız Tozu Broşu** | Saldırıların düşmanı geri iter (geri itme 2 kat) | Gölge de sana vurduğunda seni aynı mesafede geri iter | Yaygın | 30 |
+| Charm | **Vampir Yadigarı** | Başarılı her parry +3 can yeniler | Gölge parryleyince kendine +1 can çeker | Efsanevi | 95 |
+| Kafa | **Antika Muhafız Kaskı** | Aldığın hasar %15 azalır | Gölge de senden %15 daha az hasar alır | Yaygın | 35 |
+| Kafa | **Gözcü Bandı** | Parry penceresi +0.1 sn | Gölgenin de parry penceresi +0.1 sn genişler | Yaygın | 35 |
+| Cep | **Çatlak El Aynası** | Can sıfıra inince ölümcül darbeyi engeller, 1 canla kurtarır, 2 sn ölümsüz yapar; tek kullanımlık, kırılır | Gölge son savaşta canı sıfırlanınca 2. evresine geçer, tam canla dirilir | Nadir | 60 |
+| Cep | **Satürn'ün Kum Saati** | İki saldırıyı aynı anda parry'lersen zaman 1.5 sn durur; yalnız sen hareket edersin | (yazılacak) | Efsanevi | 120 |
+| Bilek | **Hırsızın Zinciri** | Parry'lediğin düşman fazladan antika para düşürür | (yazılacak) | Nadir | 50 |
+| Yemek | Kule Ekmeği, Fırınlanmış Tatlı Patates, Kozmik Yıldız Çorbası | bkz. 4.7 | - | - | 6 / 12 / 24 |
+
+**Satürn'ün Kum Saati:** zaman duran 1.5 sn boyunca düşmanlar, mermiler, doğuş işaretleri ve oda sayaçları donar (düşmanlar buz mavisi görünür); sen, paralar ve efektler akmaya devam edersin. Donmuş düşmana vurabilirsin: hasar işlenir, geri itme ve sersemlik zaman akınca uygulanır. İki parry'nin 0.35 sn içinde gelmesi yeter (parry zinciri sayesinde aynı anda gelen iki saldırı bunu tetikler).
+
+**"Gölge alırsa" metinleri** Umbra dövüşü (Aşama 4) yazılırken uygulanacak; şimdilik envanterde ve F5 menüsünde okunur. Eski yer tutucu eşyalar koddan kaldırıldı, yerine bu liste geldi.
+
+### 7.4 Kodlanırken yapılan varsayımlar (değiştirmek istersen söyle)
+- Bilek ve zırh kapasitesi 1 (listede sayı yoktu).
+- Can doluyken yemek yenmez; bağışıklık kalbi varken zaten yenmez.
+- Vampir Yadigarı +3 can yeniler (en çok max cana kadar); Engerek Dişi zehri 1.5 sn sürer.
+- Kum Saati cep slotunda; Çatlak El Aynası ile aynı slotu paylaşır (ikisinden biri).
+- Antika Muhafız Kaskı %15'i tam sayı hasarda kesir biriktirerek uygular (yaklaşık her 7 hasar puanında 1 puan silinir).
+- Çatlak El Aynası kullanılınca kırılır ve envanterden silinir (yeniden takılamaz).
+- Düşman altın miktarları ve küçük/antika para değerleri (1 / 3) ilk denge tahminidir.
+- `F5` menüsü ve `F4` deneme modu her zaman açık; sürüm çıkarken kapatılacak.
+
+### 7.5 Fikir havuzu (eski öneriler, kodda yok)
 
 **Parry:**
 1. **Yankılı Mermi:** Parry'lediğin mermi 3'e bölünür.
@@ -206,7 +284,7 @@ Her ailenin **kendine özgü parry biçimi** var; böylece oyun tekrar etmiyor.
 
 **Hedef:** MVP 20 eşya, 1.0'da 60+.
 
-### 7.3 İlginç sinerji örnekleri
+### 7.6 İlginç sinerji örnekleri (fikir)
 - *Yankılı Mermi + Faiz* = parry'de ekranı dolduran mermi yağmuru.
 - *Cam Kalp + Altın Diş* = tek vuruşta ölüm riskiyle "ritim ustası" build'i.
 - *Hırsız Eldiveni + Aç Kapı* = Umbra çok güçlü ama sen onu hızla soyuyorsun.
@@ -216,12 +294,14 @@ Her ailenin **kendine özgü parry biçimi** var; böylece oyun tekrar etmiyor.
 ## 8. Run Yapısı
 
 ### 8.1 Kat yapısı (5 kat)
-Her kat: 4-5 savaş odası + 1 ödül/mağaza + 1 Umbra pusu + 1 boss odası (kat sonu mini-boss, 5. katta final).
+Her kat **bir mağaza ile başlar**, sonra 4-5 savaş odası + 1 ödül odası + 1 Umbra pusu + 1 boss odası (kat sonu mini-boss, 5. katta final).
+
+> **UNUTMA: Mağaza her katın BAŞINDA olacak** (tasarımcı notu: "katların başında market/dükkan sistemi olacak"). Altın sistemi (düşmanlar para düşürür, HUD sayacı) ve her eşyanın `price` alanı hazır; mağaza odası ve ekranı henüz yapılmadı. Satacakları: eşyalar, yemekler (Ekmek 6, Tatlı Patates 12, Çorba 24), sonra can yenileme ve eşya silme.
 
 ### 8.2 Oda tipleri
 - **Savaş:** düşman dalgaları, bitince ödül.
 - **Mezat (ödül):** 2 eşya, seç.
-- **Mağaza:** altınla eşya satın alma, can yenileme, eşya silme (Umbra'ya giden havuzdan).
+- **Mağaza (her katın başında):** altınla eşya ve yemek satın alma, can yenileme, eşya silme (Umbra'ya giden havuzdan). Bağışıklık kalbi varken dükkândan da yemek yenmez (bkz. 4.7).
 - **Pusu:** Umbra dövüşü (parry ile eşya çalma fırsatı).
 - **Gizli oda:** riskli ödül (lanetli eşya).
 - **Dinlenme:** küçük can yenileme.
@@ -279,8 +359,12 @@ res://
 │   ├── room_generator.gd
 │   └── templates/
 ├── ui/
-│   ├── hud/ (can, dash, ritim metresi)
-│   ├── auction_screen.tscn   # 2 eşya seçim ekranı
+│   ├── hud.gd, run_overlay.gd   # kalpler (+bağışıklık), altın, ritim, durum satırları
+│   ├── game_menu.gd             # oyunu durduran menülerin ortak tabanı
+│   ├── inventory_screen.gd      # envanter ekranı (I / Tab)
+│   ├── dev_menu.gd              # F5 eşya (deneme) menüsü
+│   ├── item_view.gd             # ortak çizimler: eşya kutusu, ayrıntı paneli
+│   ├── auction_screen.tscn      # (yapılacak) 2 eşya seçim ekranı
 │   └── menus/
 └── assets/ (sprites, sfx, music, fonts)
 ```
@@ -339,16 +423,19 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 **Çıkış kriteri:** Sadece bu arenada parry yapmak bile eğlenceli mi? Değilse Aşama 2'ye geçme.
 
 ### Aşama 2: Çekirdek döngü (hafta 2)
-- [ ] Agresiflik (ritim) metresi
+- [x] Agresiflik (ritim) metresi
 - [x] Oda sistemi (5 yerleşim, sağa doğru odalar, kapı, dalgalar, doğuş işareti, ölüm özeti)
-- [ ] Can sistemi + ölüm/yeniden başlama
-- [ ] 3 düşman ailesi
+- [x] Can sistemi + ölüm/yeniden başlama (+ bağışıklık kalbi)
+- [x] 3 düşman (Taurus, Sagitta, Scorpius)
+- [x] Altın: düşmanlar para düşürür, sayaç HUD'da
 
 ### Aşama 3: Eşya sistemi (hafta 3)
-- [ ] ItemData + modifier + EventBus
-- [ ] Mezat ekranı (2 eşya seç)
-- [ ] 10 eşya
-- [ ] Etiket sinerji bonusu
+- [x] ItemData + modifier + EventBus
+- [x] Slotlar + çanta + envanter ekranı (I / Tab) + F5 eşya menüsü
+- [x] 10 eşya + 3 yemek (tasarımcının listesi), refleks statı, zaman durdurma
+- [x] Etiket sinerji bonusu
+- [ ] Mezat ekranı (2 eşya seç; `ItemDB.roll_pair` hazır, seçme mekaniği sonra)
+- [ ] **Mağaza: her katın başında** (altın + `price` hazır; oda/ekran yapılacak)
 
 ### Aşama 4: UMBRA (hafta 4)  ← oyunu farklı kılan
 - [ ] Seçilmeyen eşya Umbra envanterine gider
@@ -358,7 +445,7 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 - [ ] "Sadece Oyuncu" etiketi
 
 ### Aşama 5: İçerik (hafta 5-6)
-- [ ] 5 kat, boss'lar, mağaza, gizli odalar
+- [ ] 5 kat, boss'lar, gizli odalar (mağaza Aşama 3'te: her katın başı)
 - [ ] 20+ eşya, 6-8 düşman
 - [ ] Lanetli eşyalar
 

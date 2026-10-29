@@ -73,6 +73,28 @@ Yukarıdaki düşman tablosundaki isimlerin hepsi geçerlidir (`idle`, `run` = y
 
 `attack` karesi **uzun bir rapier uzanışı** olmalı: dürtüş çizgisi karakterin önünde yaklaşık 112 piksel uzar. Karenin 96x96 veya daha geniş olması iyi olur.
 
+## Eşya simgeleri: `assets/items/`
+
+Her eşyanın simgesi `assets/items/<eşya_id>.png` olarak konur (tek kare, kare olması önerilir; envanter kutusuna sığdırılır, ~64x64 uygun). Dosya varsa envanter ekranı ve F5 menüsü onu kendiliğinden kullanır, yoksa eşyanın baş harfi (yer tutucu) görünür. Kod değişmez.
+
+| Dosya adı | Eşya |
+|---|---|
+| `mirror_boots.png` | Ayna Tabanlı Çizmeler |
+| `feather_boots.png` | Hafif Tüy Botlar |
+| `viper_fang.png` | Engerek Dişi Kolyesi |
+| `stardust_brooch.png` | Yıldız Tozu Broşu |
+| `vampire_relic.png` | Vampir Yadigarı |
+| `guardian_helm.png` | Antika Muhafız Kaskı |
+| `watcher_band.png` | Gözcü Bandı |
+| `cracked_mirror.png` | Çatlak El Aynası |
+| `saturn_hourglass.png` | Satürn'ün Kum Saati |
+| `thief_chain.png` | Hırsızın Zinciri |
+| `tower_bread.png` | Kule Ekmeği |
+| `baked_sweet_potato.png` | Fırınlanmış Tatlı Patates |
+| `cosmic_star_soup.png` | Kozmik Yıldız Çorbası |
+
+Envanter ekranındaki karakter (ortadaki figür) `assets/sprites/sidera/idle` karesini 3 kat büyütüp gösterir; PNG yoksa yer tutucu kutu çizilir.
+
 ## Koddan çizilenler (şimdilik)
 
 Altın elmas uyarısı (sadece parry'lenebilir saldırılarda; kırmızı saldırıda sembol yok, sadece kırmızı parıltı), mermiler, parry halkası, vuruş kıvılcımları, dürtüş izi ve kılıç izi koddan çiziliyor. İstersen bunları da sonra PNG'ye çeviririz.

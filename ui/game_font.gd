@@ -28,9 +28,32 @@ static func upper(text: String) -> String:
 	return text.replace("i", "İ").replace("ı", "I").replace("ğ", "Ğ").replace("ş", "Ş").replace("ç", "Ç").replace("ö", "Ö").replace("ü", "Ü").to_upper()
 
 
+## Yazıyı `max_width` pikseli aşmayacak şekilde kelime sınırlarında satırlara böler.
+## (Tek başına sığmayan uzun kelime kendi satırında taşar.)
+static func wrap(text: String, size: int, max_width: float) -> Array[String]:
+	var lines: Array[String] = []
+	var cur := ""
+	for word in text.split(" ", false):
+		var trial: String = word if cur == "" else cur + " " + word
+		if cur == "" or width(trial, size) <= max_width:
+			cur = trial
+		else:
+			lines.append(cur)
+			cur = word
+	if cur != "":
+		lines.append(cur)
+	return lines
+
+
+## Fontun '%' işareti boş çiziliyor. Türkçede "%15" zaten "yüzde 15" diye okunur: çizmeden önce yazıya çevrilir
+## (ölçme de aynı yazıyı kullanır, hizalar şaşmaz).
+static func _prep(text: String) -> String:
+	return text.replace("%", "yüzde ") if text.contains("%") else text
+
+
 ## Yazının piksel genişliği.
 static func width(text: String, size: int) -> float:
-	return get_font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	return get_font().get_string_size(_prep(text), HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
 
 ## Yazıyı `center` noktasına ortalayarak çizer (önce koyu hale, sonra renkli yazı).
@@ -64,7 +87,20 @@ static func draw_runs_centered(ci: CanvasItem, runs: Array, center: Vector2, siz
 		x += width(r[0], size)
 
 
-static func _draw_at(ci: CanvasItem, f: Font, text: String, pos: Vector2, size: int, color: Color, halo: bool) -> void:
+## Renkli parçalardan oluşan tek satır, SOLDAN hizalı: `left_center` satırın sol-orta noktasıdır.
+static func draw_runs_left(ci: CanvasItem, runs: Array, left_center: Vector2, size: int, alpha: float = 1.0, halo: bool = true) -> void:
+	var f := get_font()
+	var x := left_center.x
+	var y := left_center.y + (f.get_ascent(size) - f.get_descent(size)) * 0.5
+	for r: Array in runs:
+		var c: Color = r[1]
+		c.a *= alpha
+		_draw_at(ci, f, r[0], Vector2(x, y), size, c, halo)
+		x += width(r[0], size)
+
+
+static func _draw_at(ci: CanvasItem, f: Font, raw_text: String, pos: Vector2, size: int, color: Color, halo: bool) -> void:
+	var text := _prep(raw_text)
 	if halo:
 		var h := HALO
 		h.a *= color.a

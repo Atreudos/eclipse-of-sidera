@@ -20,6 +20,9 @@ var overlay: RunOverlay
 var announcer: Announcer
 ## Ritim (agresiflik) çubuğu.
 var rhythm_bar: RhythmBar
+## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
+var inventory_screen: InventoryScreen
+var dev_menu: DevMenu
 
 var _hearts: Array[ColorRect] = []
 var _pips: Array[ColorRect] = []
@@ -111,7 +114,7 @@ func _build() -> void:
 		_pip_fills.append(fill)
 
 	_hint_label = _make_label(root, Vector2(24, 682), 14)
-	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  R yeniden  F3 debug  F4 deneme modu"
+	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  I envanter  R yeniden  F3 debug  F4 deneme modu  F5 eşya menüsü"
 	_hint_label.modulate = Color(1, 1, 1, 0.55)
 	rhythm_bar = RhythmBar.new()
 	rhythm_bar.name = "RhythmBar"
@@ -127,6 +130,12 @@ func _build() -> void:
 	announcer = Announcer.new()
 	announcer.name = "Announcer"
 	root.add_child(announcer)
+	inventory_screen = InventoryScreen.new()
+	inventory_screen.name = "InventoryScreen"
+	root.add_child(inventory_screen)
+	dev_menu = DevMenu.new()
+	dev_menu.name = "DevMenu"
+	root.add_child(dev_menu)
 
 
 ## Oda sistemi bilgisi: görünen oda no (1'den), mevcut dalga, toplam dalga, oda temizlendi mi.

@@ -23,6 +23,9 @@ var _start_msec := 0
 
 
 func _ready() -> void:
+	# Menüler oyunu duraklatır (get_tree().paused). Bekçi zamanlayıcısı ve test düzeneği bundan etkilenmesin;
+	# oyun dünyası (_new_world) ise normal duraklatılabilir kalır.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_start_msec = Time.get_ticks_msec()
 	_run_all()
 
@@ -117,6 +120,9 @@ func _run_all() -> void:
 		"zaman_durdur": _test_time_stop,
 		"esya_kum_saati": _test_item_hourglass,
 		"hud_ek": _test_run_hud_extras,
+		"envanter_degisim": _test_inventory_swap,
+		"envanter_ekrani": _test_inventory_screen,
+		"gelistirici_menu": _test_dev_menu,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -154,7 +160,9 @@ func _new_world(title: String) -> void:
 		_world.queue_free()
 		await get_tree().physics_frame
 		await get_tree().physics_frame
+	get_tree().paused = false
 	_world = Node2D.new()
+	_world.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(_world)
 	var ground := StaticBody2D.new()
 	ground.collision_layer = 1
@@ -730,8 +738,8 @@ func _test_camera_fx() -> void:
 ## Kamerayı test için kurar: kendi kendine akmaz (süreyi biz veriyoruz), oyuncuyu hedef alır.
 func _make_camera(p: Player, cam_bounds: Rect2) -> ShakeCamera:
 	var cam := ShakeCamera.new()
-	cam.set_process(false)
 	_world.add_child(cam)
+	cam.set_process(false)  # ağaca girince _process yeniden açılıyor; gerçek saatle akmasın diye ağaçtayken kapatılır
 	cam.target = p
 	cam.set_bounds(cam_bounds, true)
 	return cam
@@ -993,9 +1001,9 @@ func _start_run(seed_value: int) -> RunController:
 	run.seed_value = seed_value
 	var p := run.get_node("Player") as Player
 	p.scripted = true
-	# Kamera gerçek saatle akar; testte süreyi biz veririz (_cam_run).
-	(run.get_node("Camera") as ShakeCamera).set_process(false)
 	_world.add_child(run)
+	# Kamera gerçek saatle akar; testte süreyi biz veririz (_cam_run). (set_process, ağaca girdikten sonra kapatılır.)
+	(run.get_node("Camera") as ShakeCamera).set_process(false)
 	p.stats.set_base("max_health", 99.0)
 	p.health = 99
 	return run
@@ -2035,6 +2043,11 @@ func _enemy_strike(at: Vector2, src: Node = null, parryable: bool = true, dmg: i
 	return hb
 
 
+## Ritim metresinin parry'de rastgele can yenileme şansını kapatır (parry'li eşya testleri deterministik kalsın).
+func _no_rhythm_heal(p: Player) -> void:
+	p.rhythm.heal_chances = [0.0, 0.0, 0.0, 0.0] as Array[float]
+
+
 ## Hareketsiz, çok canlı, para düşürmeyen düşman (yapay zekâsı sersemletilerek susturulmuş).
 func _quiet_enemy(at: Vector2) -> Taurus:
 	var e := TAURUS.instantiate() as Taurus
@@ -2582,6 +2595,7 @@ func _test_item_feet() -> void:
 func _test_item_charms() -> void:
 	await _new_world("Charm ve bilek: Engerek Dişi (zehir), Vampir Yadigarı (+3 can), Hırsızın Zinciri (antika para)")
 	var p := _spawn_player(300.0)
+	_no_rhythm_heal(p)
 	await _frames(2)
 	var inv := p.inventory
 	var e := _quiet_enemy(Vector2(1100.0, 612.0))
@@ -2713,6 +2727,7 @@ func _test_parry_chain() -> void:
 	await _new_world("Parry zinciri: parry'nin hemen ardından gelen altın saldırılar da parry'lenir")
 	GameState.god_mode = false
 	var p := _spawn_player(400.0)
+	_no_rhythm_heal(p)
 	var src := _dummy_source(1100.0)
 	await _frames(20)
 	var hp0 := p.health
@@ -2875,6 +2890,7 @@ func _test_item_hourglass() -> void:
 	GameState.god_mode = false
 	TimeStop.reset()
 	var p := _spawn_player(400.0)
+	_no_rhythm_heal(p)
 	var src := _dummy_source(1100.0)
 	await _frames(20)
 	var inv := p.inventory
@@ -3535,3 +3551,406 @@ func _test_scorpius_platform() -> void:
 			break
 	check(not attacked_below, "altındayken boşuna dürtüş başlatmadı")
 	check(jumped and reached, "platforma zıplayıp çıktı (ayak y=%.0f)" % sc.feet_y())
+
+
+# ------------------------------------------------------------------ envanter ekranı ve F5 menüsü
+
+## Koddan gönderilen klavye olayı: keycode ve physical_keycode ikisi de dolu (ui_* eylemleri keycode ile eşleşir).
+func _ui_key(code: Key) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.keycode = code
+	e.physical_keycode = code
+	e.pressed = true
+	return e
+
+
+func _mouse_click(pos: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT) -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	e.position = pos
+	e.pressed = true
+	return e
+
+
+func _mouse_move(pos: Vector2) -> InputEventMouseMotion:
+	var e := InputEventMouseMotion.new()
+	e.position = pos
+	return e
+
+
+func _test_inventory_swap() -> void:
+	await _new_world("Envanter: swap_in (tek kapasiteli slotta yer değiştirme), dolu slot, dolu çanta")
+	var p := _spawn_player()
+	await _frames(2)
+	var inv := p.inventory
+	var boots := _item("mirror_boots")
+	var feather := _item("feather_boots")
+	var base_speed := p.stats.value("move_speed")
+	var base_dash := p.stats.int_value("dash_charges")
+	var events: Array[String] = []
+	var on_eq := func(_a: Node, i: ItemData) -> void: events.append("+" + i.id)
+	var on_un := func(_a: Node, i: ItemData) -> void: events.append("-" + i.id)
+	EventBus.item_equipped.connect(on_eq)
+	EventBus.item_unequipped.connect(on_un)
+	var changed := [0]
+	var on_changed := func() -> void: changed[0] += 1
+	inv.changed.connect(on_changed)
+	# Reddedilenler
+	check(inv.swap_in(_item("tower_bread")) == "BU TAKILMAZ", "yemek takılmaz")
+	check(inv.swap_in(boots) == "ÇANTADA YOK", "çantada olmayan eşya takılmaz")
+	# Boş slot: sıradan takma
+	inv.give(boots)
+	check(inv.swap_in(boots) == "" and inv.count("mirror_boots") == 1 and inv.bag.is_empty(), "boş slota takıldı, çanta boşaldı")
+	check(p.stats.int_value("dash_charges") == base_dash + 1, "ayna çizmeler +1 dash verdi")
+	# Dolu tek kapasiteli slot: yer değiştirme
+	inv.give(feather)
+	events.clear()
+	changed[0] = 0
+	check(inv.swap_in(feather) == "", "dolu ayak slotunda yer değiştirdi")
+	check(inv.count("feather_boots") == 1 and inv.count("mirror_boots") == 0, "tüy botlar takılı, ayna çizmeler çıktı")
+	check(inv.bag.size() == 1 and inv.bag_count("mirror_boots") == 1, "eski eşya çantaya döndü")
+	check(p.stats.int_value("dash_charges") == base_dash, "eski eşyanın dash'i gitti")
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed * 1.2), "yeni eşyanın hız etkisi geldi")
+	check(",".join(events) == "-mirror_boots,+feather_boots", "olaylar: önce çıkar sonra tak (%s)" % ",".join(events))
+	check(changed[0] == 1, "tek 'changed' sinyali (%d)" % changed[0])
+	# Geri
+	check(inv.swap_in(boots) == "" and inv.count("mirror_boots") == 1 and inv.bag_count("feather_boots") == 1, "geri değişti")
+	check(is_equal_approx(p.stats.value("move_speed"), base_speed) and p.stats.int_value("dash_charges") == base_dash + 1, "etkiler de geri döndü")
+	# Çantada eşyanın başka kopyası varsa yığılır
+	inv.give(feather)
+	check(inv.bag_count("feather_boots") == 2, "çantada 2 tüy bot")
+	check(inv.swap_in(feather) == "" and inv.bag_count("feather_boots") == 1 and inv.bag_count("mirror_boots") == 1 and inv.bag.size() == 2, "yer değiştirme: çanta hücreleri doğru")
+	inv.give(boots)
+	check(inv.swap_in(boots) == "" and inv.bag_count("feather_boots") == 2 and inv.bag_count("mirror_boots") == 1 and inv.bag.size() == 2, "eski eşya çantadaki yığına eklendi")
+	# Çok kapasiteli slot doluysa reddedilir (önce biri elle çıkarılır)
+	inv.clear_all()
+	for cid in ["viper_fang", "stardust_brooch", "vampire_relic"]:
+		inv.add(_item(cid))
+	var spare := _dummy_item("yedek_charm")
+	inv.give(spare)
+	events.clear()
+	check(inv.swap_in(spare) == "CHARM SLOTLARI DOLU", "3 charm doluyken 4.sü reddedildi")
+	check(inv.equipped_in(ItemData.Slot.CHARM).size() == 3 and inv.bag_count("yedek_charm") == 1 and events.is_empty(), "hiçbir şey değişmedi")
+	check(inv.unequip(_item("stardust_brooch")) == "" and inv.swap_in(spare) == "", "bir charm çıkarılınca yenisi takıldı")
+	# Dolu çanta: yer değiştirmek için yer yoksa reddedilir
+	inv.clear_all()
+	inv.add(feather)
+	inv.give(boots)
+	inv.give(boots)
+	for i in Inventory.BAG_SIZE - 1:
+		inv.give(_dummy_item("dolgu_%d" % i))
+	check(inv.bag.size() == Inventory.BAG_SIZE and inv.bag_free() == 0, "çanta tam dolu (24 hücre)")
+	events.clear()
+	check(inv.swap_in(boots) == "ÇANTA DOLU", "çanta dolu ve hücre boşalmıyorken yer değiştirme reddedildi")
+	check(inv.count("feather_boots") == 1 and inv.bag_count("mirror_boots") == 2 and events.is_empty(), "hiçbir şey değişmedi")
+	check(inv.unequip(feather) == "ÇANTA DOLU", "çanta doluyken çıkarma da reddedildi")
+	inv.take_from_bag("mirror_boots")
+	check(inv.bag_count("mirror_boots") == 1 and inv.bag.size() == Inventory.BAG_SIZE, "tek kopya kaldı, çanta hâlâ dolu")
+	check(inv.swap_in(boots) == "" and inv.bag_count("feather_boots") == 1 and inv.bag.size() == Inventory.BAG_SIZE, "tek kopyanın hücresi boşalacağı için yer değiştirildi")
+	EventBus.item_equipped.disconnect(on_eq)
+	EventBus.item_unequipped.disconnect(on_un)
+	inv.changed.disconnect(on_changed)
+	inv.clear_all()
+
+
+func _test_inventory_screen() -> void:
+	await _new_world("Envanter ekranı (I / Tab): duraklatma, kutu düzeni, gezinme, tak / çıkar / ye, reddedilenler, fare")
+	const S := ItemData.Slot
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	var run := _start_run(71)
+	await _frames(5)
+	var p := run.player
+	var inv := p.inventory
+	var scr := run.hud.inventory_screen
+	check(scr != null and not scr.is_open and not scr.visible and not get_tree().paused, "ekran HUD'da var, kapalı, oyun akıyor")
+	check(InputMap.has_action("inventory"), "'inventory' eylemi tanımlı")
+	check(run.hud._hint_label.text.contains("I envanter") and run.hud._hint_label.text.contains("F5"), "ipucu satırında I ve F5 yazıyor")
+	inv.give(_item("watcher_band"))
+	inv.give(_item("viper_fang"))
+	inv.give(_item("tower_bread"))
+	# Açılış: oyun durur
+	var x0 := p.global_position.x
+	p.intent.move_x = 1.0
+	scr._unhandled_input(_ui_key(KEY_I))
+	check(scr.is_open and scr.visible and scr.player == p and get_tree().paused and ItemView.active_menu == scr, "I açtı: oyun durdu, menü aktif")
+	await _frames(10)
+	check(is_equal_approx(p.global_position.x, x0), "açıkken oyuncu yürümüyor (x %.1f -> %.1f)" % [x0, p.global_position.x])
+	# Kutu düzeni
+	var slot_total := 0
+	for slot in [S.FEET, S.CHARM, S.HEAD, S.POCKET, S.WRIST, S.ARMOR]:
+		slot_total += int(ItemData.SLOT_CAPACITY[slot])
+	check(scr.cell_count() == slot_total + Inventory.BAG_SIZE and scr.cell_count() == 33, "33 kutu: 9 slot + 24 çanta (%d)" % scr.cell_count())
+	var inside := true
+	var overlap := false
+	for i in scr.cell_count():
+		var r := scr.cell_rect(i)
+		if not InventoryScreen.PANEL.encloses(r) or r.intersects(InventoryScreen.DETAIL):
+			inside = false
+		for j in range(i + 1, scr.cell_count()):
+			if r.intersects(scr.cell_rect(j)):
+				overlap = true
+	check(inside, "bütün kutular panelin içinde, ayrıntı paneline taşmıyor")
+	check(not overlap, "kutular birbirine binmiyor")
+	# Sayılar iki sütunda: en uzun yazılar bile komşu sütuna / ayrıntı paneline taşmamalı
+	var col1_w := maxf(GameFont.width("YÜRÜME  9999", InventoryScreen.STATS_SIZE), GameFont.width("ALTIN  99999", InventoryScreen.STATS_SIZE))
+	var col2_w := maxf(GameFont.width("REFLEKS  x0.25", InventoryScreen.STATS_SIZE), maxf(GameFont.width("PARRY  0.99 SN", InventoryScreen.STATS_SIZE), GameFont.width("GERİ İTME  x2.0", InventoryScreen.STATS_SIZE)))
+	check(col1_w < InventoryScreen.STATS_X2 - 6.0, "1. sütun yazıları 2. sütuna binmiyor (%.0f < %.0f)" % [col1_w, InventoryScreen.STATS_X2])
+	check(InventoryScreen.BAG_ORIGIN.x + InventoryScreen.STATS_X2 + col2_w < InventoryScreen.DETAIL.position.x - 6.0, "2. sütun yazıları ayrıntı paneline taşmıyor (sağ kenar %.0f < %.0f)" % [InventoryScreen.BAG_ORIGIN.x + InventoryScreen.STATS_X2 + col2_w, InventoryScreen.DETAIL.position.x])
+	var msg_w := GameFont.width("BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ", 24)
+	for it in ItemDB.all():
+		msg_w = maxf(msg_w, GameFont.width("TAKILDI  " + it.upper_name(), 24))
+		msg_w = maxf(msg_w, GameFont.width("ÇANTAYA  " + it.upper_name(), 24))
+	check(msg_w < InventoryScreen.MESSAGE_MAX_W, "en uzun işlem mesajı bile alt şeride tam boyda sığıyor (%.0f < %.0f)" % [msg_w, InventoryScreen.MESSAGE_MAX_W])
+	check(GameFont.width("Yürüme hızın %20 artar.", 17) > GameFont.width("Yürüme hızın 20 artar.", 17), "'%' yazıya çevriliyor (yüzde), boş çizilmiyor")
+	# İlk imleç: çantadaki ilk eşya
+	var bag0 := scr.cursor_index()
+	check(scr.cursor_item() != null and scr.cursor_item().id == "watcher_band" and scr._cells[bag0]["kind"] == "bag" and scr._cells[bag0]["idx"] == 0, "imleç çantadaki ilk eşyada")
+	# Enter: tak
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.count("watcher_band") == 1 and inv.bag_count("watcher_band") == 0, "Enter: Gözcü Bandı takıldı")
+	check(scr._msg == "TAKILDI  " + _item("watcher_band").upper_name() and scr._msg_good, "mesaj: " + scr._msg)
+	check(scr.cursor_item() != null and scr.cursor_item().id == "viper_fang", "çanta kaydı: imleç sıradaki eşyada")
+	scr._unhandled_input(_ui_key(KEY_E))
+	check(inv.count("viper_fang") == 1, "E tuşu da işlem yapar: Engerek Dişi takıldı")
+	# Yemek: reddedilenler ve yenmesi
+	check(scr.cursor_item() != null and scr.cursor_item().id == "tower_bread", "imleç ekmekte")
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.bag_count("tower_bread") == 1 and scr._msg == "CANIN ZATEN DOLU" and not scr._msg_good, "can doluyken yemek reddedildi: " + scr._msg)
+	p.stats.set_base("max_health", 4.0)
+	p.health = 2
+	p.set_immunity(1)
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.bag_count("tower_bread") == 1 and scr._msg == "BAĞIŞIKLIK KALBİ VARKEN YEMEK YENMEZ" and p.health == 2, "bağışıklık kalbi varken yemek reddedildi")
+	p.set_immunity(0)
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(p.health == 3 and inv.bag.is_empty(), "yemek yendi: can 3, çanta boş")
+	check(scr._msg == "YENDİ  " + _item("tower_bread").upper_name() and scr._msg_good, "mesaj: " + scr._msg)
+	check(scr.cursor_item() == null, "boşalan kutuda imleç")
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(scr._msg == "BOŞ" and not scr._msg_good, "boş kutu: BOŞ")
+	# Gezinme: her hamle seçilen yönde ilerler; bütün kutulara ulaşılır
+	var reach := {0: true}
+	var queue := [0]
+	var strict := true
+	while not queue.is_empty():
+		var from: int = queue.pop_back()
+		for d: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			scr._cursor = from
+			scr._move_cursor(d)
+			var to := scr.cursor_index()
+			if to == from:
+				continue
+			if (scr.cell_rect(to).get_center() - scr.cell_rect(from).get_center()).dot(d) <= 0.0:
+				strict = false
+			if not reach.has(to):
+				reach[to] = true
+				queue.append(to)
+	check(strict, "her hamle seçilen yönde ilerliyor")
+	check(reach.size() == scr.cell_count(), "bütün kutulara yön tuşlarıyla ulaşılıyor (%d/%d)" % [reach.size(), scr.cell_count()])
+	scr._cursor = bag0
+	scr._unhandled_input(_ui_key(KEY_DOWN))
+	check(scr.cursor_index() == bag0 + InventoryScreen.BAG_COLUMNS, "aşağı: bir alt çanta satırı")
+	scr._unhandled_input(_ui_key(KEY_UP))
+	check(scr.cursor_index() == bag0, "yukarı: geri")
+	scr._unhandled_input(_ui_key(KEY_D))
+	check(scr.cursor_index() == bag0 + 1, "D: sağdaki kutu")
+	scr._unhandled_input(_ui_key(KEY_A))
+	check(scr.cursor_index() == bag0, "A: soldaki kutu")
+	scr._unhandled_input(_ui_key(KEY_LEFT))
+	check(scr._cells[scr.cursor_index()]["kind"] == "slot", "çantanın solunda slotlar var: sola gidince slota geçti")
+	var right_edge := bag0 + InventoryScreen.BAG_COLUMNS - 1
+	scr._cursor = right_edge
+	scr._unhandled_input(_ui_key(KEY_RIGHT))
+	check(scr.cursor_index() == right_edge, "çantanın sağ kenarında sağa gidilmez")
+	# Fare: üstüne gelince imleç gider, tıklayınca işlem yapılır
+	var head0 := -1
+	for i in scr.cell_count():
+		if scr._cells[i]["kind"] == "slot" and scr._cells[i]["slot"] == S.HEAD and scr._cells[i]["idx"] == 0:
+			head0 = i
+	check(head0 >= 0, "1. kafa slotu bulundu")
+	var pos := scr.cell_rect(head0).get_center()
+	scr._gui_input(_mouse_move(pos))
+	check(scr.cursor_index() == head0 and scr.cursor_item() != null and scr.cursor_item().id == "watcher_band", "fare üstüne gelince imleç slota gitti")
+	scr._gui_input(_mouse_click(pos))
+	check(inv.count("watcher_band") == 0 and inv.bag_count("watcher_band") == 1, "tıklama: Gözcü Bandı çıkarıldı")
+	check(scr._msg == "ÇIKARILDI  " + _item("watcher_band").upper_name() and scr._msg_good, "mesaj: " + scr._msg)
+	scr._gui_input(_mouse_click(scr.cell_rect(bag0).get_center()))
+	check(inv.count("watcher_band") == 1 and inv.bag.is_empty(), "çanta kutusuna tıklayınca takıldı")
+	scr._gui_input(_mouse_click(pos + Vector2(InventoryScreen.CELL + InventoryScreen.GAP, 0.0)))
+	check(scr._msg == "BOŞ" and not scr._msg_good, "boş slota tıklama: BOŞ")
+	# Yer değiştirme (ayak: tek slot) ve dolu charm slotu
+	inv.give(_item("mirror_boots"))
+	inv.give(_item("feather_boots"))
+	scr._cursor = bag0
+	scr.activate()
+	check(inv.count("mirror_boots") == 1 and inv.bag_count("feather_boots") == 1, "boş ayak slotuna Ayna Çizmeler takıldı")
+	scr.activate()
+	check(inv.count("feather_boots") == 1 and inv.bag_count("mirror_boots") == 1, "dolu ayak slotunda yer değiştirildi")
+	check(scr._msg == "TAKILDI  " + _item("feather_boots").upper_name(), "mesaj: " + scr._msg)
+	inv.take_from_bag("mirror_boots")
+	inv.give(_item("stardust_brooch"))
+	inv.give(_item("vampire_relic"))
+	inv.give(_dummy_item("yedek_charm"))
+	scr.activate()
+	scr.activate()
+	check(inv.equipped_in(S.CHARM).size() == 3, "3 charm takıldı")
+	scr.activate()
+	check(scr._msg == "CHARM SLOTLARI DOLU" and not scr._msg_good and inv.bag_count("yedek_charm") == 1, "4. charm reddedildi: " + scr._msg)
+	# Kapatma
+	scr._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not scr.is_open and not scr.visible and not get_tree().paused and ItemView.active_menu == null, "Esc kapattı: oyun devam ediyor")
+	await _frames(12)
+	check(p.global_position.x > x0 + 3.0, "kapanınca oyuncu yürümeye devam etti (x %.1f -> %.1f)" % [x0, p.global_position.x])
+	p.intent.move_x = 0.0
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(scr.is_open, "Tab açtı")
+	scr._unhandled_input(_ui_key(KEY_I))
+	check(not scr.is_open and not get_tree().paused, "I kapattı")
+	check(scr.open(p), "open() doğrudan çağrılabiliyor")
+	scr._gui_input(_mouse_click(Vector2(8.0, 8.0)))
+	check(not scr.is_open and not get_tree().paused, "panelin dışına tıklayınca kapandı")
+	# Açılmaması gereken durumlar
+	p.dead = true
+	check(not scr.open(p) and not scr.is_open, "ölüyken açılmaz")
+	scr._unhandled_input(_ui_key(KEY_I))
+	check(not scr.is_open and not get_tree().paused, "ölüyken I tuşu da açmaz")
+	p.dead = false
+	var dm := run.hud.dev_menu
+	check(dm.open(p) and ItemView.active_menu == dm, "F5 menüsü açıldı")
+	check(not scr.open(p), "başka menü açıkken envanter açılmaz")
+	scr._unhandled_input(_ui_key(KEY_I))
+	check(not scr.is_open, "başka menü açıkken I tuşu bir şey yapmaz")
+	dm.close()
+	check(not get_tree().paused and ItemView.active_menu == null, "F5 menüsü kapanınca oyun devam ediyor")
+	# Menü açıkken sahne kapanırsa oyun kilitli kalmamalı
+	check(scr.open(p) and get_tree().paused, "yeniden açıldı")
+	run.queue_free()
+	await _frames(4)
+	check(not get_tree().paused and ItemView.active_menu == null, "sahne kapanınca duraklatma kalktı")
+
+
+func _test_dev_menu() -> void:
+	await _new_world("F5 deneme menüsü: aç / kapa, gezinme, ekle (tak / çantaya), G H B C, fare")
+	const S := ItemData.Slot
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	var run := _start_run(72)
+	await _frames(5)
+	var p := run.player
+	var inv := p.inventory
+	var dm := run.hud.dev_menu
+	check(dm != null and not dm.is_open and not dm.visible, "F5 menüsü HUD'da var, kapalı")
+	dm._unhandled_input(_f_key(KEY_F5))
+	check(dm.is_open and dm.visible and get_tree().paused and ItemView.active_menu == dm, "F5 açtı ve oyunu durdurdu")
+	check(dm._entries.size() == ItemDB.all().size(), "menüde bütün eşyalar var (%d)" % dm._entries.size())
+	check(dm._rows.size() == dm._entries.size() + 6, "6 slot grubu başlığı (zırhta eşya yok): %d satır" % dm._rows.size())
+	check(dm.selected_item() != null and dm.selected_item().slot == S.FEET, "imleç ilk gruptaki (ayak) eşyada")
+	# Gezinme
+	dm._unhandled_input(_ui_key(KEY_DOWN))
+	check(dm._sel == 1, "aşağı: 2. eşya")
+	dm._unhandled_input(_ui_key(KEY_S))
+	check(dm._sel == 2, "S: 3. eşya")
+	dm._unhandled_input(_ui_key(KEY_W))
+	dm._unhandled_input(_ui_key(KEY_UP))
+	check(dm._sel == 0, "yukarı: başa döndü")
+	dm._unhandled_input(_ui_key(KEY_UP))
+	check(dm._sel == 0, "en üstte yukarı: sabit")
+	dm._unhandled_input(_ui_key(KEY_END))
+	check(dm._sel == dm._entries.size() - 1 and dm.selected_item().is_food(), "End: son eşya (yemek)")
+	var row := dm._row_of_entry(dm._sel)
+	check(row >= dm._scroll and row < dm._scroll + dm._visible_rows(), "seçili satır görünür alanda (satır %d, kaydırma %d)" % [row, dm._scroll])
+	dm._unhandled_input(_ui_key(KEY_HOME))
+	check(dm._sel == 0 and dm._scroll == 0, "Home: başa dön, kaydırma sıfır")
+	# Kaydırma: liste kısalınca (eşya sayısı artınca olacağı gibi) imleç görünür kalır
+	dm._list_h = DevMenu.ROW_H * 6.0
+	dm._unhandled_input(_ui_key(KEY_END))
+	row = dm._row_of_entry(dm._sel)
+	check(dm._scroll > 0 and row >= dm._scroll and row < dm._scroll + dm._visible_rows(), "kısa listede End: kaydı, seçili satır görünür (satır %d, kaydırma %d)" % [row, dm._scroll])
+	dm._unhandled_input(_ui_key(KEY_HOME))
+	check(dm._sel == 0 and dm._scroll == 0, "kısa listede Home: başa döndü, kaydırma sıfır")
+	dm._list_h = DevMenu.LIST.size.y
+	# Ekle: Enter = ekle, boşsa tak
+	var first := dm.selected_item()
+	dm._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.count(first.id) == 1 and inv.bag.is_empty(), "Enter: ilk eşya eklendi ve takıldı")
+	check(dm._msg == "TAKILDI  " + first.upper_name() and dm._msg_good, "mesaj: " + dm._msg)
+	dm._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.count(first.id) == 1 and inv.bag_count(first.id) == 1, "ikinci Enter: slot dolu, kopya çantaya girdi")
+	check(dm._msg == "ÇANTAYA  " + first.upper_name(), "mesaj: " + dm._msg)
+	# T: yalnız çantaya
+	check(dm.select_item("viper_fang"), "Engerek Dişi menüde")
+	dm._unhandled_input(_ui_key(KEY_T))
+	check(inv.count("viper_fang") == 0 and inv.bag_count("viper_fang") == 1, "T: takılmadan çantaya girdi")
+	# Yemek: çantaya
+	check(dm.select_item("tower_bread"), "Kule Ekmeği menüde")
+	dm._unhandled_input(_ui_key(KEY_E))
+	check(inv.bag_count("tower_bread") == 1 and inv.count("tower_bread") == 0, "yemek çantaya girdi (takılmaz)")
+	# G, H, B
+	var gold0 := p.gold
+	dm._unhandled_input(_ui_key(KEY_G))
+	check(p.gold == gold0 + DevMenu.GOLD_STEP, "G: +%d altın (%d)" % [DevMenu.GOLD_STEP, p.gold])
+	p.stats.set_base("max_health", 4.0)
+	p.health = 1
+	dm._unhandled_input(_ui_key(KEY_H))
+	check(p.health == 4 and dm._msg == "CAN DOLDU" and dm._msg_good, "H: can doldu")
+	dm._unhandled_input(_ui_key(KEY_H))
+	check(p.health == 4 and dm._msg == "CAN ZATEN DOLU" and not dm._msg_good, "H: zaten doluysa uyarı")
+	dm._unhandled_input(_ui_key(KEY_B))
+	check(p.immunity == 1, "B: +1 bağışıklık kalbi")
+	dm._unhandled_input(_ui_key(KEY_B))
+	check(p.immunity == 2, "B tekrar: 2 bağışıklık")
+	p.set_immunity(0)
+	# Dolu çanta
+	inv.clear_all()
+	for i in Inventory.BAG_SIZE:
+		inv.give(_dummy_item("dolgu_%d" % i))
+	check(dm.select_item("stardust_brooch"), "Yıldız Tozu Broşu menüde")
+	dm._unhandled_input(_ui_key(KEY_ENTER))
+	check(inv.owned_count("stardust_brooch") == 0 and dm._msg == "ÇANTA DOLU" and not dm._msg_good, "çanta doluyken ekleme reddedildi: " + dm._msg)
+	# C: hepsini sil
+	dm._unhandled_input(_ui_key(KEY_C))
+	check(inv.items.is_empty() and inv.bag.is_empty(), "C: çanta ve slotlar boşaldı")
+	# Fare
+	dm._unhandled_input(_ui_key(KEY_HOME))
+	var entry_row := dm._row_of_entry(2)
+	var pos := Vector2(DevMenu.LIST.position.x + 120.0, DevMenu.LIST.position.y + float(entry_row - dm._scroll) * DevMenu.ROW_H + DevMenu.ROW_H * 0.5)
+	dm._gui_input(_mouse_move(pos))
+	check(dm._sel == 2, "fare üstüne gelince satır seçildi")
+	dm._gui_input(_mouse_click(pos))
+	check(inv.owned_count(dm._entries[2].id) == 1, "tıklama: eşya eklendi (%s)" % dm._entries[2].id)
+	dm._gui_input(_mouse_click(Vector2(DevMenu.LIST.position.x + 60.0, DevMenu.LIST.position.y + 10.0)))
+	check(dm.is_open, "başlık satırına tıklamak kapatmaz")
+	dm._list_h = DevMenu.ROW_H * 16.0  # 19 satır 16'lık pencerede: en çok 3 satır kayar
+	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))
+	check(dm._scroll == 2, "tekerlek aşağı: 2 satır kaydı (%d)" % dm._scroll)
+	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))
+	check(dm._scroll == dm._rows.size() - dm._visible_rows(), "kaydırma en alt sınırda durdu (%d)" % dm._scroll)
+	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_UP))
+	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_UP))
+	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_UP))
+	check(dm._scroll == 0, "tekerlek yukarı: en üste döndü")
+	# Karşılıklı dışlama
+	var scr := run.hud.inventory_screen
+	check(not scr.open(p), "F5 menüsü açıkken envanter ekranı açılmaz")
+	dm._unhandled_input(_ui_key(KEY_I))
+	check(not scr.is_open and dm.is_open, "F5 menüsünde I tuşu bir şey yapmaz")
+	# Kapatma
+	dm._unhandled_input(_f_key(KEY_F5))
+	check(not dm.is_open and not dm.visible and not get_tree().paused and ItemView.active_menu == null, "F5 kapattı: oyun devam ediyor")
+	dm._unhandled_input(_f_key(KEY_F5))
+	check(dm.is_open, "F5 yeniden açtı")
+	dm._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not dm.is_open and not get_tree().paused, "Esc kapattı")
+	check(dm.open(p), "yeniden açıldı")
+	dm._gui_input(_mouse_click(Vector2(6.0, 6.0)))
+	check(not dm.is_open and not get_tree().paused, "panelin dışına tıklayınca kapandı")
+	# F5 ölüyken açılmaz
+	p.dead = true
+	dm._unhandled_input(_f_key(KEY_F5))
+	check(not dm.is_open and not get_tree().paused, "ölüyken F5 açmaz")
+	p.dead = false
+	run.queue_free()
+	await _frames(3)

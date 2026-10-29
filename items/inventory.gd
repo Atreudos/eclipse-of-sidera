@@ -123,6 +123,38 @@ func equip(item: ItemData) -> String:
 	return ""
 
 
+## Çantadaki eşyayı takar; tek kapasiteli slot doluysa oradaki eşyayla YER DEĞİŞTİRİR (envanter ekranı bunu kullanır).
+## Çok kapasiteli slot doluysa reddeder (önce biri elle çıkarılır). Başarılıysa "".
+func swap_in(item: ItemData) -> String:
+	if not item.is_equippable():
+		return "BU TAKILMAZ"
+	if _bag_index(item.id) < 0:
+		return "ÇANTADA YOK"
+	if slot_free(item.slot) > 0:
+		return equip(item)
+	var occupants := equipped_in(item.slot)
+	if occupants.size() != 1:
+		return "%s SLOTLARI DOLU" % item.slot_name()
+	var old: ItemData = occupants[0]
+	# Eski eşya çantaya dönecek: yeni eşya çantadaki son kopyaysa onun hücresi boşalır, yoksa yer gerekir.
+	var frees_cell := bag_count(item.id) == 1
+	if _bag_index(old.id) < 0 and not frees_cell and bag.size() >= BAG_SIZE:
+		return "ÇANTA DOLU"
+	_deactivate(_entry_index(old.id))
+	take_from_bag(item.id)
+	_activate(item)
+	var existing := _bag_index(old.id)
+	if existing >= 0:
+		bag[existing]["count"] = int(bag[existing]["count"]) + 1
+	else:
+		bag.append({"item": old, "count": 1})
+	changed.emit()
+	if player != null:
+		EventBus.item_unequipped.emit(player, old)
+		EventBus.item_equipped.emit(player, item)
+	return ""
+
+
 ## Takılı eşyayı çıkarıp çantaya koyar. Başarılıysa "".
 func unequip(item: ItemData) -> String:
 	var idx := _entry_index(item.id)

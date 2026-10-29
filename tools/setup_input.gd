@@ -14,6 +14,7 @@ func _init() -> void:
 		"parry": [_key(KEY_K), _mouse(MOUSE_BUTTON_RIGHT), _joy_btn(JOY_BUTTON_B)],
 		"interact": [_key(KEY_E), _joy_btn(JOY_BUTTON_Y)],
 		"restart": [_key(KEY_R)],
+		"inventory": [_key(KEY_I), _key(KEY_TAB), _joy_btn(JOY_BUTTON_BACK)],
 		"debug_toggle": [_key(KEY_F3)],
 	}
 	for action_name in actions:

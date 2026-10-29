@@ -40,7 +40,7 @@ var display_name := ""
 var description := ""
 ## "Gölge alırsa": Umbra bu eşyayı alırsa sana karşı ne yapar (Umbra dövüşünde uygulanacak). Boşsa gösterilmez.
 var shadow_text := ""
-## Etiketler: PARRY, DASH, MERMI, ALEV, BUZ, ZEHIR, CAN, RITIM, KARMA. Aynı etiketten 3 eşya = sinerji bonusu.
+## Etiketler: PARRY, DASH, MERMI, ALEV, BUZ, ZEHIR, CAN, RITIM, KARMA, ZAMAN, ALTIN, HAREKET, SAVUNMA. Aynı etiketten 3 eşya = sinerji bonusu.
 var tags: Array[String] = []
 var rarity: Rarity = Rarity.COMMON
 var slot: Slot = Slot.CHARM
@@ -55,6 +55,22 @@ var heal_all := false
 var mods: Array = []
 ## Davranış betiği (ItemEffect'ten türer). Boşsa sadece `mods` uygulanır.
 var effect_script: Script = null
+
+
+static var _icon_cache := {}
+
+
+## Eşya simgesi: assets/items/<id>.png varsa o (kendi çizimlerin gelince otomatik kullanılır), yoksa null.
+## null ise ekranlarda yer tutucu olarak adın ilk harfi çizilir.
+func icon() -> Texture2D:
+	if _icon_cache.has(id):
+		return _icon_cache[id]
+	var path := "res://assets/items/%s.png" % id
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path) as Texture2D
+	_icon_cache[id] = tex
+	return tex
 
 
 func color() -> Color:
