@@ -151,6 +151,12 @@ static func _build() -> void:
 		"desc": "Parry yaptığın düşmanlar yere fazladan antika para (altın) düşürür.",
 		"fx": "thief_chain.gd",
 	})
+	_add({
+		"id": "resin_gloves", "name": "Reçineli Eldivenler", "slot": S.WRIST, "tags": ["HAREKET"], "rarity": R.RARE, "price": 55,
+		"desc": "Havada duvara yaslanırsan tutunup yavaş kayarsın; zıplarsan duvardan karşı yöne sekersin.",
+		"shadow": "Gölge de duvarlardan sekebilir. Onu köşeye sıkıştırıp kurtulamazsın.",
+		"mods": [["wall_jump", 1.0, 1.0]],
+	})
 	# ------------------------------------------------------------ YEMEK (çantada durur, yenir)
 	# Fazla iyileşme bağışıklık kalbine (mavi) dönüşür; bağışıklık kalbi varken yemek yenmez (bkz. Player.try_eat).
 	_add({

@@ -2064,7 +2064,7 @@ func _test_items_db() -> void:
 	print("\nEşya veritabanı")
 	const S := ItemData.Slot
 	var all := ItemDB.all()
-	check(all.size() == 13, "10 donanım + 3 yemek = 13 eşya (%d)" % all.size())
+	check(all.size() == 14, "11 donanım + 3 yemek = 14 eşya (%d)" % all.size())
 	var seen := {}
 	var fields_ok := true
 	var price_ok := true
@@ -2093,7 +2093,7 @@ func _test_items_db() -> void:
 		"viper_fang": S.CHARM, "stardust_brooch": S.CHARM, "vampire_relic": S.CHARM,
 		"guardian_helm": S.HEAD, "watcher_band": S.HEAD,
 		"cracked_mirror": S.POCKET, "saturn_hourglass": S.POCKET,
-		"thief_chain": S.WRIST,
+		"thief_chain": S.WRIST, "resin_gloves": S.WRIST,
 		"tower_bread": S.FOOD, "baked_sweet_potato": S.FOOD, "cosmic_star_soup": S.FOOD,
 	}
 	var slots_ok := true
@@ -2121,7 +2121,7 @@ func _test_items_db() -> void:
 	for it in gear:
 		if it.is_food():
 			no_food = false
-	check(gear.size() == 10 and no_food, "donanım havuzu 10 eşya, yemek yok")
+	check(gear.size() == 11 and no_food, "donanım havuzu 11 eşya, yemek yok")
 	check(GameFont.upper("Kule Ekmeği") == "KULE EKMEĞİ" and GameFont.upper("Satürn'ün Kum Saati") == "SATÜRN'ÜN KUM SAATİ", "Türkçe büyük harf (i -> İ)")
 	# Ödül çifti
 	var r1 := RandomNumberGenerator.new()
@@ -3847,6 +3847,7 @@ func _test_dev_menu() -> void:
 	check(dm.is_open and dm.visible and get_tree().paused and ItemView.active_menu == dm, "F5 açtı ve oyunu durdurdu")
 	check(dm._entries.size() == ItemDB.all().size(), "menüde bütün eşyalar var (%d)" % dm._entries.size())
 	check(dm._rows.size() == dm._entries.size() + 6, "6 slot grubu başlığı (zırhta eşya yok): %d satır" % dm._rows.size())
+	check(dm._rows.size() <= dm._visible_rows(), "bütün satırlar kaydırmadan sığıyor (%d satır, %d görünür)" % [dm._rows.size(), dm._visible_rows()])
 	check(dm.selected_item() != null and dm.selected_item().slot == S.FEET, "imleç ilk gruptaki (ayak) eşyada")
 	# Gezinme
 	dm._unhandled_input(_ui_key(KEY_DOWN))
@@ -3923,7 +3924,7 @@ func _test_dev_menu() -> void:
 	check(inv.owned_count(dm._entries[2].id) == 1, "tıklama: eşya eklendi (%s)" % dm._entries[2].id)
 	dm._gui_input(_mouse_click(Vector2(DevMenu.LIST.position.x + 60.0, DevMenu.LIST.position.y + 10.0)))
 	check(dm.is_open, "başlık satırına tıklamak kapatmaz")
-	dm._list_h = DevMenu.ROW_H * 16.0  # 19 satır 16'lık pencerede: en çok 3 satır kayar
+	dm._list_h = DevMenu.ROW_H * 16.0  # 20 satır 16'lık pencerede: en çok 4 satır kayar
 	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))
 	check(dm._scroll == 2, "tekerlek aşağı: 2 satır kaydı (%d)" % dm._scroll)
 	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))

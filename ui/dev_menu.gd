@@ -8,10 +8,10 @@ extends GameMenu
 const S := ItemData.Slot
 const ORDER := [S.FEET, S.CHARM, S.HEAD, S.POCKET, S.WRIST, S.ARMOR, S.FOOD]
 const PANEL := Rect2(40.0, 30.0, 1200.0, 660.0)
-## Liste 19 satır alır: şimdiki 13 eşya + 6 slot başlığı kaydırmadan sığar. Eşya artınca kaydırma devreye girer.
+## Liste 20 satır alır: şimdiki 14 eşya + 6 slot başlığı kaydırmadan sığar. Eşya artınca kaydırma devreye girer.
 const LIST := Rect2(72.0, 100.0, 596.0, 494.0)
 const DETAIL := Rect2(706.0, 100.0, 502.0, 494.0)
-const ROW_H := 26.0
+const ROW_H := 24.0
 const GOLD_STEP := 50
 
 ## Satırlar: {"header": slot} ya da {"item": ItemData, "entry": int}
