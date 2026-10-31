@@ -18,9 +18,23 @@ var _phase := Phase.CHASE
 var _timer := 0.0
 var _cooldown := 0.0
 var _red := false
+## Bu uyarıda bekletme yapıldı mı (bir saldırıda en çok bir kez).
+var _delayed := false
+## Sıradaki uyarı kısaltılmış mı (oyuncu parry'yi ıskaladı, fırsat kolluyor).
+var _quick := false
 
 ## Saldırıya geçmek için hedefle ayak seviyesi farkı en fazla bu kadar olabilir (px).
 const ATTACK_LEVEL_TOLERANCE := 72.0
+## Zorluk/tur ayarının inemeyeceği alt sınırlar (sn): uyarı insan tepkisinin altına düşmesin, saldırı sonrası hep bir açık kalsın.
+const TELEGRAPH_FLOOR := 0.3
+const RECOVER_FLOOR := 0.4
+const PARRY_STUN_FLOOR := 0.45
+## Oyuncunun parry'sini ıskalamasını kolluyor (zekâ): atılma, parry'den toparlanırken yetişsin diye bu oranda kısa uyarı.
+const PUNISH_QUICK := 0.65
+## Parry'yi bekleten atılmanın hedefe varışı, toparlanma süresinin bu oranına denk gelir.
+const PATIENCE_ARRIVAL := 0.75
+## Atılmanın gövdeden hasar alanına, parry bölgesine varana kadar kat ettiği ön mesafe (px): hasar alanı 28 px önde, parry bölgesi 48 px yarıçaplı.
+const LUNGE_LEAD_IN := 28.0 + 48.0
 
 @onready var attack_hitbox: Hitbox = $AttackHitbox
 
@@ -35,7 +49,25 @@ func _ready() -> void:
 	attack_hitbox.set_faction("enemy")
 	attack_hitbox.active = false
 	attack_hitbox.parried.connect(_on_attack_parried)
-	_cooldown = randf_range(0.6, 1.2)
+	EventBus.parry_started.connect(_on_player_parry_started)
+	EventBus.parry_failed.connect(_on_player_parry_failed)
+	_cooldown = tuning.wait(randf_range(0.6, 1.2))
+
+
+func _exit_tree() -> void:
+	if EventBus.parry_started.is_connected(_on_player_parry_started):
+		EventBus.parry_started.disconnect(_on_player_parry_started)
+	if EventBus.parry_failed.is_connected(_on_player_parry_failed):
+		EventBus.parry_failed.disconnect(_on_player_parry_failed)
+
+
+func _apply_tuning() -> void:
+	walk_speed *= tuning.speed
+	lunge_speed *= tuning.speed
+	lunge_range *= tuning.reach
+	telegraph_time = tuning.warn(telegraph_time, TELEGRAPH_FLOOR)
+	recover_time = tuning.open_time(recover_time, RECOVER_FLOOR)
+	red_chance = clampf(red_chance + tuning.red, 0.0, EnemyScaling.MAX_RED_SHARE)
 
 
 func _ai(delta: float) -> void:
@@ -74,16 +106,18 @@ func _ai(delta: float) -> void:
 			_timer -= delta
 			if _timer <= 0.0:
 				_phase = Phase.CHASE
-				_cooldown = randf_range(0.5, 1.1)
+				_cooldown = tuning.wait(randf_range(0.5, 1.1))
 
 
 func _begin_telegraph() -> void:
 	_red = randf() < red_chance
 	_phase = Phase.TELEGRAPH
-	_timer = telegraph_time
+	_timer = telegraph_time * (PUNISH_QUICK if _quick else 1.0)
+	_quick = false
+	_delayed = false
 	facing = 1 if target.global_position.x > global_position.x else -1
 	set_tell(Tell.RED if _red else Tell.GOLD)
-	anim.trigger("telegraph", telegraph_time)
+	anim.trigger("telegraph", _timer)
 
 
 func _begin_lunge() -> void:
@@ -91,7 +125,7 @@ func _begin_lunge() -> void:
 	_timer = lunge_time
 	attack_hitbox.position = Vector2(facing * 28.0, 0.0)
 	attack_hitbox.parryable = not _red
-	attack_hitbox.damage = 2 if _red else 1
+	attack_hitbox.damage = tuning.scale_damage(2 if _red else 1)
 	attack_hitbox.active = true
 	anim.trigger("attack", lunge_time)
 
@@ -118,7 +152,7 @@ func pick_animation() -> String:
 
 func _on_attack_parried(_by: Node) -> void:
 	attack_hitbox.active = false
-	stun(0.9)
+	stun(tuning.stun_time(0.9, PARRY_STUN_FLOOR))
 	velocity.x = 0.0
 	_phase = Phase.RECOVER
 	_timer = 0.4
@@ -133,8 +167,37 @@ func _on_interrupted() -> void:
 	if _phase == Phase.TELEGRAPH or _phase == Phase.LUNGE:
 		attack_hitbox.active = false
 		_phase = Phase.CHASE
-		_cooldown = maxf(_cooldown, randf_range(0.7, 1.1))
+		_cooldown = maxf(_cooldown, tuning.wait(randf_range(0.7, 1.1)))
 
 
 func _on_death() -> void:
 	attack_hitbox.active = false
+
+
+# ---------------------------------------------------------------- zekâ (zorluk seviyesi açar; NORMAL'de kapalıdır)
+
+## SABIR: oyuncu uyarı sürerken parry'ye bastı. Taurus atılmasını bekletir, öyle ki hasar alanı oyuncuya parry'den
+## toparlanırken ulaşsın (oyuncu dash'le kaçabilir ama parry'ye güvenemez). Bir uyarıda en çok bir kez.
+func _on_player_parry_started(actor: Node) -> void:
+	if actor != target or _phase != Phase.TELEGRAPH or _delayed or target == null:
+		return
+	if randf() >= tuning.patience:
+		return
+	var arrive := target.parry_window_time() + PATIENCE_ARRIVAL * target.parry_recovery_time()
+	var travel := maxf(absf(target.global_position.x - global_position.x) - LUNGE_LEAD_IN, 0.0) / maxf(lunge_speed, 1.0)
+	var wanted := maxf(arrive - travel, 0.05)
+	if wanted > _timer:
+		_timer = wanted
+		_delayed = true
+
+
+## CEZA: oyuncu parry'yi ıskaladı (toparlanıyor). Menzildeki Taurus beklemeyi bırakıp hemen, kısaltılmış uyarıyla saldırır.
+func _on_player_parry_failed(actor: Node) -> void:
+	if actor != target or _phase != Phase.CHASE or dead or target == null:
+		return
+	if absf(target.global_position.x - global_position.x) > lunge_range * 1.3:
+		return
+	if randf() >= tuning.punish:
+		return
+	_cooldown = 0.0
+	_quick = true

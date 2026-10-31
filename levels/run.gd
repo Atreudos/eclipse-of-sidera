@@ -59,6 +59,16 @@ static func enemies_in_wave(room_index: int, wave_index: int) -> int:
 	return clampi(2 + (room_index + wave_index) / 2, 2, 6)
 
 
+## Odanın tur ilerlemesi (EnemyScaling `n`): şimdilik oda numarası. Katlar gelince kat başına oda sayısını da hesaba katacak.
+static func progress_of(room_index: int) -> int:
+	return maxi(room_index, 0)
+
+
+## Oda `i`'nin düşman ayarı: seçili zorluk seviyesi + odanın tur ilerlemesi.
+func tuning_for(room_index: int) -> EnemyTuning:
+	return EnemyScaling.tuning(GameState.difficulty, progress_of(room_index))
+
+
 ## Oda `i` için bağımsız rastgele akış: oda içeriği oyuncunun yaptıklarından etkilenmesin.
 func rng_for(room_index: int, channel: String) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
@@ -148,6 +158,7 @@ func _build_room(index: int) -> Room:
 		x_left = prev.rect.end.x
 	var room := Room.new()
 	rooms_root.add_child(room)
+	room.tuning = tuning_for(index)
 	room.build(index, x_left, layout_for(index), enemies_root, rng_for(index, "room"), make_waves(index))
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)

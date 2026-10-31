@@ -14,6 +14,10 @@ var god_mode := false:
 		god_mode = value
 		god_mode_changed.emit(value)
 
+## Zorluk seviyesi (Difficulty.Level). Yeni oyun başlarken seçilir; düşman ayarı buna göre kurulur.
+## `reset()` bunu değiştirmez: ölüp yeniden başlayınca aynı zorlukta devam edilir.
+var difficulty: int = Difficulty.DEFAULT
+
 ## Oyuncunun seçmeyip BIRAKTIĞI eşyalar: Umbra bunları alır.
 var umbra_items: Array[ItemData] = []
 ## "Aç Kapı" gibi eşyalar Umbra'nın her pusuda fazladan taşıyacağı eşya sayısını artırır.

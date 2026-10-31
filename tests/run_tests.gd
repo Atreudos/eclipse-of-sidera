@@ -123,6 +123,11 @@ func _run_all() -> void:
 		"envanter_degisim": _test_inventory_swap,
 		"envanter_ekrani": _test_inventory_screen,
 		"gelistirici_menu": _test_dev_menu,
+		"zorluk_profil": _test_difficulty_profiles,
+		"zorluk_olcek": _test_enemy_scaling,
+		"zorluk_dusman": _test_enemy_tuning_hooks,
+		"zorluk_zeka": _test_enemy_brain,
+		"zorluk_oda": _test_difficulty_run,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -3953,5 +3958,463 @@ func _test_dev_menu() -> void:
 	dm._unhandled_input(_f_key(KEY_F5))
 	check(not dm.is_open and not get_tree().paused, "ölüyken F5 açmaz")
 	p.dead = false
+	run.queue_free()
+	await _frames(3)
+
+
+# ------------------------------------------------------------------ zorluk seviyeleri ve tur ölçeklemesi
+
+const SCALE_UP_FIELDS := ["hp", "damage", "speed", "gold", "red", "reach", "kite", "patience", "punish", "lead", "feint"]
+const SCALE_DOWN_FIELDS := ["cooldown", "telegraph", "recover", "stun"]
+## Toplanan (çarpan olmayan) profil anahtarları: NORMAL'de 0'dır.
+const ADDITIVE_KEYS := ["red", "patience", "punish", "lead", "feint"]
+
+
+func _test_difficulty_profiles() -> void:
+	print("\nZorluk: 4 seviye; Normal etkisiz, sıralama Easy < Normal < Difficult < Immortal")
+	check(Difficulty.count() == 4, "4 zorluk seviyesi")
+	check(Difficulty.NAMES == ["EASY", "NORMAL", "DIFFICULT", "IMMORTAL"], "menü adları: " + str(Difficulty.NAMES))
+	check(Difficulty.DEFAULT == Difficulty.Level.NORMAL, "varsayılan seviye NORMAL")
+	check(GameState.difficulty == Difficulty.Level.NORMAL, "oyun durumu NORMAL'le başlıyor")
+	GameState.reset()
+	check(GameState.difficulty == Difficulty.Level.NORMAL, "reset() zorluğu değiştirmez")
+	# Her profilin anahtar kümesi aynı; hepsi ya "büyüdükçe zor" ya "küçüldükçe zor" diye sınıflı
+	var keys: Array = Difficulty.profile(0).keys()
+	var same := true
+	for lv in Difficulty.count():
+		var prof := Difficulty.profile(lv)
+		if prof.size() != keys.size():
+			same = false
+		for k in keys:
+			if not prof.has(k):
+				same = false
+	check(same, "bütün profillerde aynı %d anahtar var" % keys.size())
+	var classified := {}
+	for k in Difficulty.HARDER_UP:
+		classified[k] = true
+	for k in Difficulty.HARDER_DOWN:
+		classified[k] = true
+	check(classified.size() == Difficulty.HARDER_UP.size() + Difficulty.HARDER_DOWN.size() and classified.size() == keys.size(), "her anahtar tam bir kez sınıflandı (%d)" % classified.size())
+	# NORMAL = etkisiz
+	var normal := Difficulty.profile(Difficulty.Level.NORMAL)
+	var neutral := true
+	for k in keys:
+		if k == "ai_half":
+			continue
+		var want := 0.0 if ADDITIVE_KEYS.has(k) else 1.0
+		if not is_equal_approx(float(normal[k]), want):
+			neutral = false
+			print("    NORMAL '%s' = %s (beklenen %s)" % [k, str(normal[k]), str(want)])
+	check(neutral, "NORMAL profil etkisiz (çarpanlar 1, zekâ ekleri 0)")
+	# Sıralama
+	var ordered := true
+	for k in Difficulty.HARDER_UP:
+		for lv in range(Difficulty.count() - 1):
+			if float(Difficulty.profile(lv)[k]) > float(Difficulty.profile(lv + 1)[k]) + 0.000001:
+				ordered = false
+				print("    sıra bozuk (büyüdükçe zor): %s %d->%d" % [k, lv, lv + 1])
+	for k in Difficulty.HARDER_DOWN:
+		for lv in range(Difficulty.count() - 1):
+			if float(Difficulty.profile(lv)[k]) < float(Difficulty.profile(lv + 1)[k]) - 0.000001:
+				ordered = false
+				print("    sıra bozuk (küçüldükçe zor): %s %d->%d" % [k, lv, lv + 1])
+	check(ordered, "her ayar seviye arttıkça sertleşiyor ya da eşit kalıyor")
+	var differs := true
+	for k in keys:
+		if is_equal_approx(float(Difficulty.profile(0)[k]), float(Difficulty.profile(3)[k])):
+			differs = false
+			print("    EASY ile IMMORTAL aynı: ", k)
+	check(differs, "EASY ile IMMORTAL her ayarda farklı")
+	# Adlar / kayıt anahtarları
+	var roundtrip := true
+	for lv in Difficulty.count():
+		if Difficulty.from_key(Difficulty.key_of(lv)) != lv:
+			roundtrip = false
+	check(roundtrip, "kayıt anahtarı gidiş-dönüş: " + str(Difficulty.KEYS))
+	check(Difficulty.from_key("bozuk") == Difficulty.DEFAULT and Difficulty.from_key("bozuk", 0) == 0, "tanınmayan anahtar varsayılana düşer")
+	check(Difficulty.clamp_level(-5) == 0 and Difficulty.clamp_level(99) == 3, "geçersiz seviye en yakın geçerliye çekilir")
+	check(Difficulty.name_of(99) == "IMMORTAL" and Difficulty.name_of(-1) == "EASY", "geçersiz seviyenin adı da çözülür")
+	var blurbs_ok := Difficulty.BLURBS.size() == Difficulty.count()
+	for b in Difficulty.BLURBS:
+		if (b as String).strip_edges() == "":
+			blurbs_ok = false
+	check(blurbs_ok, "her seviyenin menü açıklaması var")
+
+
+func _tuning_field(t: EnemyTuning, field: String) -> float:
+	return float(t.get(field))
+
+
+func _test_enemy_scaling() -> void:
+	print("\nTur ölçeklemesi: 1. tur != 100000. tur; zekâ doyar, can/hasar sınırsız ama yavaş")
+	var lv_normal := Difficulty.Level.NORMAL
+	check(EnemyScaling.tuning(lv_normal, 0).is_identity(), "NORMAL, tur 0 = etkisiz (eski düşmanla aynı)")
+	check(not EnemyScaling.tuning(lv_normal, 1).is_identity(), "NORMAL, tur 1 artık etkisiz değil")
+	var all_fields := SCALE_UP_FIELDS + SCALE_DOWN_FIELDS
+	# 1) Her seviyede ilk tur ile 100000. tur farklı (bütün sayısal ayarlarda)
+	var varying := ["hp", "damage", "speed", "gold", "cooldown", "telegraph", "recover", "stun", "red", "reach", "kite"]
+	for lv in Difficulty.count():
+		var first := EnemyScaling.tuning(lv, 0)
+		var last := EnemyScaling.tuning(lv, 100000)
+		var diff := true
+		for f in varying:
+			if is_equal_approx(_tuning_field(first, f), _tuning_field(last, f)):
+				diff = false
+				print("    %s: tur 0 ile 100000 aynı (%s)" % [f, f])
+		check(diff, "%s: tur 0 ile tur 100000 her ayarda farklı" % Difficulty.name_of(lv))
+		check(last.scale_hp(4) > first.scale_hp(4) * 100 and last.scale_damage(2) > first.scale_damage(2), "%s: 100000. turda Taurus çok daha canlı (%d -> %d can) ve daha sert (%d -> %d)" % [
+			Difficulty.name_of(lv), first.scale_hp(4), last.scale_hp(4), first.scale_damage(2), last.scale_damage(2)])
+	# 2) Tur arttıkça tek yönde büyür/küçülür
+	var steps := [0, 1, 2, 5, 10, 25, 50, 75, 100, 1000, 100000, 1000000000]
+	var mono := true
+	for lv in Difficulty.count():
+		for i in range(steps.size() - 1):
+			var a := EnemyScaling.tuning(lv, steps[i])
+			var b := EnemyScaling.tuning(lv, steps[i + 1])
+			for f in SCALE_UP_FIELDS:
+				if _tuning_field(b, f) < _tuning_field(a, f) - 0.000001:
+					mono = false
+					print("    düştü: %s %s tur %d -> %d" % [Difficulty.name_of(lv), f, steps[i], steps[i + 1]])
+			for f in SCALE_DOWN_FIELDS:
+				if _tuning_field(b, f) > _tuning_field(a, f) + 0.000001:
+					mono = false
+					print("    çıktı: %s %s tur %d -> %d" % [Difficulty.name_of(lv), f, steps[i], steps[i + 1]])
+	check(mono, "tur arttıkça düşman hiçbir ayarda geri gitmiyor (4 seviye x 12 tur)")
+	# 3) Aynı turda seviye arttıkça sertleşir
+	var ordered := true
+	for n in [0, 25, 100, 100000]:
+		for lv in range(Difficulty.count() - 1):
+			var a := EnemyScaling.tuning(lv, n)
+			var b := EnemyScaling.tuning(lv + 1, n)
+			for f in SCALE_UP_FIELDS:
+				if _tuning_field(b, f) < _tuning_field(a, f) - 0.000001:
+					ordered = false
+					print("    sıra bozuk: tur %d %s seviye %d->%d" % [n, f, lv, lv + 1])
+			for f in SCALE_DOWN_FIELDS:
+				if _tuning_field(b, f) > _tuning_field(a, f) + 0.000001:
+					ordered = false
+					print("    sıra bozuk: tur %d %s seviye %d->%d" % [n, f, lv, lv + 1])
+	check(ordered, "aynı turda seviye arttıkça düşman sertleşiyor (tur 0/25/100/100000)")
+	# 4) Sınırlar: sonsuz büyüyenler sonlu kalır, doyanlar doyar, alt sınırlar korunur
+	var bounded := true
+	var saturated := true
+	for lv in Difficulty.count():
+		for n in [100000, 1000000000, 1 << 62, -7]:
+			var t := EnemyScaling.tuning(lv, n)
+			for f in all_fields:
+				if not is_finite(_tuning_field(t, f)):
+					bounded = false
+					print("    sonlu değil: %s %s tur %d" % [Difficulty.name_of(lv), f, n])
+			if t.cooldown < EnemyScaling.MIN_COOLDOWN - 0.000001 or t.recover < EnemyScaling.MIN_RECOVER - 0.000001 or t.stun < EnemyScaling.MIN_STUN - 0.000001:
+				bounded = false
+			if t.red > EnemyScaling.MAX_RED_SHARE + 0.000001 or t.patience > 1.0 or t.punish > 1.0 or t.lead > 1.0 or t.patience < 0.0:
+				bounded = false
+			if t.telegraph <= 0.0 or t.speed <= 0.0 or t.hp <= 0.0:
+				bounded = false
+		var a := EnemyScaling.tuning(lv, 100000)
+		var b := EnemyScaling.tuning(lv, 1000000000)
+		for f in ["speed", "cooldown", "telegraph", "recover", "stun", "red", "reach", "kite", "patience", "punish", "lead", "feint"]:
+			if absf(_tuning_field(a, f) - _tuning_field(b, f)) > 0.0001:
+				saturated = false
+				print("    doymadı: %s %s" % [Difficulty.name_of(lv), f])
+		if not (b.hp > a.hp and b.damage > a.damage and b.gold > a.gold):
+			saturated = false
+	check(bounded, "çok büyük/negatif turlarda hiçbir değer taşmıyor, NaN olmuyor, alt sınırlar korunuyor")
+	check(saturated, "zekâ ve süreler 100000. turda doymuş; can, hasar, altın hâlâ büyüyor")
+	var neg := EnemyScaling.tuning(lv_normal, -7)
+	check(neg.is_identity() and neg.progress == 0, "negatif tur 0'a çekilir")
+	var huge := EnemyScaling.tuning(lv_normal, 1 << 62)
+	check(huge.progress == EnemyScaling.MAX_PROGRESS, "devasa tur üst sınıra çekilir (%d)" % huge.progress)
+	# 5) Tam sayıya çevirme: kalp ve can
+	var e0 := EnemyScaling.tuning(Difficulty.Level.EASY, 0)
+	var n0 := EnemyScaling.tuning(lv_normal, 0)
+	var i0 := EnemyScaling.tuning(Difficulty.Level.IMMORTAL, 0)
+	check(n0.scale_hp(4) == 4 and n0.scale_hp(3) == 3 and n0.scale_damage(1) == 1 and n0.scale_damage(2) == 2, "NORMAL tur 0: Taurus 4 can, hasar 1/2 (eskisi gibi)")
+	check(e0.scale_hp(4) == 3 and e0.scale_hp(3) == 2, "EASY tur 0: Taurus 3 can, Sagitta 2 can")
+	check(e0.scale_damage(1) == 1 and e0.scale_damage(2) == 1, "EASY: kırmızı atılma 1 kalp (hasar asla 0 olmaz)")
+	check(i0.scale_hp(4) == 7 and i0.scale_damage(1) == 1 and i0.scale_damage(2) == 3, "IMMORTAL tur 0: 7 can; kırmızı atılma 3 kalp")
+	var n100 := EnemyScaling.tuning(lv_normal, 100)
+	check(n100.scale_hp(4) >= 20 and n100.scale_hp(4) <= 28, "NORMAL tur 100: Taurus ~24 can (%d)" % n100.scale_hp(4))
+	check(n100.scale_damage(1) == 2 and n100.scale_damage(2) == 3, "NORMAL tur 100: hafif 2, kırmızı 3 kalp (%d/%d)" % [n100.scale_damage(1), n100.scale_damage(2)])
+	check(n0.scale_gold(0) == 0 and i0.scale_gold(1) >= 1 and n100.scale_gold(3) > 3, "altın: 0 kalır, en az 1, tur ilerledikçe artar")
+	check(n0.scale_hp(0) == 1 and n0.scale_damage(0) == 0, "can en az 1; hasarsız saldırı hasarsız kalır")
+	# 6) Uyarı süresi insan tepkisinin altına inemez
+	var worst := EnemyScaling.tuning(Difficulty.Level.IMMORTAL, 1000000000)
+	check(worst.warn(0.55, 0.5) >= 0.5 and worst.warn(0.55, 0.3) >= 0.3, "uyarı süresi tabanın altına inmiyor (%.3f)" % worst.warn(0.55, 0.5))
+	check(is_equal_approx(e0.warn(0.55, 0.3), 0.55 * 1.25), "EASY uyarıyı uzatır (%.3f)" % e0.warn(0.55, 0.3))
+	check(not n0.summary().is_empty() and n0.summary().contains("NORMAL"), "özet satırı: " + n0.summary().substr(0, 40))
+
+
+## `t` ayarıyla bir düşman sahnesini doğurur (tuning, ağaca girmeden önce verilir). Yapay zekâ kapalı: yalnız sayılara bakılır.
+func _tuned(scene: PackedScene, t: EnemyTuning, at: Vector2) -> EnemyBase:
+	var e := scene.instantiate() as EnemyBase
+	if t != null:
+		e.tuning = t
+	_world.add_child(e)
+	e.global_position = at
+	e.set_physics_process(false)
+	return e
+
+
+func _test_enemy_tuning_hooks() -> void:
+	await _new_world("Düşman ayarı: Taurus/Sagitta/Scorpius sayıları zorluk ve tura göre değişir, alt sınırlar korunur")
+	var imm := EnemyScaling.tuning(Difficulty.Level.IMMORTAL, 0)
+	var easy := EnemyScaling.tuning(Difficulty.Level.EASY, 0)
+	var worst := EnemyScaling.tuning(Difficulty.Level.IMMORTAL, 1000000000)
+	# --- ayarsız düşman = eski düşman
+	var t0 := _tuned(TAURUS, null, Vector2(300, 612)) as Taurus
+	check(t0.tuning != null and t0.tuning.is_identity(), "ayar verilmeyen düşman etkisiz ayar taşır")
+	check(t0.max_hp == 4 and t0.gold_min == 2 and t0.gold_max == 4 and t0.health == 4, "Taurus: can 4, altın 2-4 (değişmedi)")
+	check(is_equal_approx(t0.walk_speed, 115.0) and is_equal_approx(t0.lunge_range, 210.0) and is_equal_approx(t0.lunge_speed, 640.0), "Taurus: hız 115, menzil 210, atılma 640")
+	check(is_equal_approx(t0.telegraph_time, 0.55) and is_equal_approx(t0.recover_time, 0.85) and is_equal_approx(t0.red_chance, 0.6), "Taurus: uyarı 0.55, açık kalma 0.85, kırmızı %60")
+	var s0 := _tuned(SAGITTA, null, Vector2(500, 612)) as Sagitta
+	check(s0.max_hp == 3 and is_equal_approx(s0.fire_interval, 1.9) and is_equal_approx(s0.telegraph_time, 0.45) and is_equal_approx(s0.projectile_speed, 360.0) and s0.gold_every == 3, "Sagitta: can 3, 1.9 sn, uyarı 0.45, mermi 360, 3'te 1 altın")
+	var c0 := _tuned(SCORPIUS, null, Vector2(700, 612)) as Scorpius
+	check(c0.max_hp == 3 and is_equal_approx(c0.tell_time, 0.34) and is_equal_approx(c0.stun_time, 1.5) and is_equal_approx(c0.feint_chance, 0.35) and is_equal_approx(c0.close_range, 85.0), "Scorpius: can 3, uyarı 0.34, sersem 1.5, sahte %35, yakın 85")
+	# --- IMMORTAL, tur 0
+	var t1 := _tuned(TAURUS, imm, Vector2(900, 612)) as Taurus
+	check(t1.max_hp == 7 and t1.health == 7, "IMMORTAL Taurus: 7 can (%d)" % t1.health)
+	check(t1.gold_min == 3 and t1.gold_max == 6, "IMMORTAL Taurus: altın 3-6 (%d-%d)" % [t1.gold_min, t1.gold_max])
+	check(is_equal_approx(t1.walk_speed, 138.0) and is_equal_approx(t1.lunge_speed, 768.0) and is_equal_approx(t1.lunge_range, 252.0), "IMMORTAL Taurus: hızlı (%.0f), menzili uzun (%.0f)" % [t1.walk_speed, t1.lunge_range])
+	check(is_equal_approx(t1.telegraph_time, 0.44) and is_equal_approx(t1.recover_time, 0.595) and is_equal_approx(t1.red_chance, 0.8), "IMMORTAL Taurus: uyarı 0.44, açık 0.595, kırmızı %80")
+	var t_easy := _tuned(TAURUS, easy, Vector2(900, 612)) as Taurus
+	check(t_easy.max_hp == 3 and is_equal_approx(t_easy.telegraph_time, 0.6875) and is_equal_approx(t_easy.red_chance, 0.35), "EASY Taurus: 3 can, uzun uyarı (%.2f), kırmızı %%35" % t_easy.telegraph_time)
+	# hasar: gerçek atılmanın hasar alanı
+	var p := _spawn_player(100.0)
+	t1.target = p
+	t1._red = true
+	t1._begin_lunge()
+	check(t1.attack_hitbox.damage == 3 and not t1.attack_hitbox.parryable, "IMMORTAL kırmızı atılma 3 kalp, parry'lenemez")
+	t1._end_lunge()
+	t1._red = false
+	t1._begin_lunge()
+	check(t1.attack_hitbox.damage == 1 and t1.attack_hitbox.parryable, "IMMORTAL altın atılma 1 kalp, parry'lenebilir")
+	t_easy.target = p
+	t_easy._red = true
+	t_easy._begin_lunge()
+	check(t_easy.attack_hitbox.damage == 1, "EASY kırmızı atılma 1 kalp")
+	# parry sonrası sersemleme: seviyeyle kısalır, tabanın altına inmez
+	t1._on_attack_parried(p)
+	check(is_equal_approx(t1.stun_t, 0.9 * 0.7), "IMMORTAL Taurus parry'de %.2f sn sersemler (EASY: 1.17)" % t1.stun_t)
+	t_easy._on_attack_parried(p)
+	check(is_equal_approx(t_easy.stun_t, 0.9 * 1.3), "EASY Taurus parry'de %.2f sn sersemler" % t_easy.stun_t)
+	# --- en kötü bileşim: alt sınırlar
+	var tw := _tuned(TAURUS, worst, Vector2(1100, 612)) as Taurus
+	check(tw.telegraph_time >= Taurus.TELEGRAPH_FLOOR - 0.0001, "en kötü bileşimde Taurus uyarısı %.3f sn (taban %.1f)" % [tw.telegraph_time, Taurus.TELEGRAPH_FLOOR])
+	check(is_equal_approx(tw.recover_time, Taurus.RECOVER_FLOOR), "en kötü bileşimde açık kalma tabanda: %.3f" % tw.recover_time)
+	check(tw.red_chance <= EnemyScaling.MAX_RED_SHARE + 0.0001 and tw.red_chance > 0.9, "kırmızı payı tavanda: %.2f" % tw.red_chance)
+	tw.target = p
+	tw._on_attack_parried(p)
+	check(tw.stun_t >= Taurus.PARRY_STUN_FLOOR - 0.0001, "en kötü bileşimde parry sersemlemesi tabanın üstünde (%.2f)" % tw.stun_t)
+	# --- Sagitta
+	var s1 := _tuned(SAGITTA, imm, Vector2(1300, 612)) as Sagitta
+	check(s1.max_hp == 5 and is_equal_approx(s1.fire_interval, 1.14) and is_equal_approx(s1.telegraph_time, 0.36) and is_equal_approx(s1.projectile_speed, 432.0), "IMMORTAL Sagitta: 5 can, 1.14 sn, uyarı 0.36, mermi 432")
+	check(s1.gold_every >= 6 and s1.gold_every <= 10, "IMMORTAL Sagitta: altın mermi seyrek (her %d. mermi)" % s1.gold_every)
+	var s_easy := _tuned(SAGITTA, easy, Vector2(1300, 612)) as Sagitta
+	check(s_easy.gold_every == 2 and s_easy.max_hp == 2, "EASY Sagitta: her 2. mermi altın, 2 can")
+	var sw := _tuned(SAGITTA, worst, Vector2(1300, 612)) as Sagitta
+	check(is_equal_approx(sw.fire_interval, Sagitta.FIRE_INTERVAL_FLOOR) and sw.telegraph_time >= Sagitta.TELEGRAPH_FLOOR - 0.0001 and sw.gold_every == 10, "en kötü bileşim: ateş aralığı tabanda (%.2f), uyarı %.2f, her 10. mermi altın" % [sw.fire_interval, sw.telegraph_time])
+	s1.target = p
+	s1.global_position = Vector2(500, 612)
+	var proj_before := get_tree().get_nodes_in_group("projectiles").size()
+	s1._fire()
+	var shots := get_tree().get_nodes_in_group("projectiles")
+	check(shots.size() == proj_before + 1 and (shots[shots.size() - 1] as Projectile).damage == 1 and is_equal_approx((shots[shots.size() - 1] as Projectile).velocity.length(), 432.0), "IMMORTAL mermisi: hasar 1, hız 432")
+	# --- Scorpius
+	var c1 := _tuned(SCORPIUS, imm, Vector2(1500, 612)) as Scorpius
+	check(c1.max_hp == 5 and is_equal_approx(c1.tell_time, 0.272) and is_equal_approx(c1.stun_time, 1.05) and is_equal_approx(c1.feint_chance, 0.55), "IMMORTAL Scorpius: 5 can, uyarı 0.272, sersem 1.05, sahte %55")
+	check(is_equal_approx(c1.walk_speed, 156.0) and is_equal_approx(c1.lunge_speed, 672.0) and is_equal_approx(c1.close_range, 106.25), "IMMORTAL Scorpius: hızlı, erken geri takla (yakın %.1f)" % c1.close_range)
+	var cw := _tuned(SCORPIUS, worst, Vector2(1500, 612)) as Scorpius
+	check(cw.tell_time >= Scorpius.TELL_FLOOR - 0.0001 and cw.stun_time >= Scorpius.STUN_FLOOR - 0.0001 and cw.feint_chance <= 0.7001, "en kötü bileşim: uyarı %.3f, sersem %.2f, sahte %.2f (tabanlar korunur)" % [cw.tell_time, cw.stun_time, cw.feint_chance])
+	check(cw.close_range <= cw.ideal_distance - 25.0 + 0.0001, "geri takla eşiği ideal mesafedeki geri adım bölgesine taşmıyor (%.1f)" % cw.close_range)
+	c1.target = p
+	c1._begin_lunge()
+	check(c1.attack_hitbox.damage == 1 and c1.attack_hitbox.parryable, "IMMORTAL Scorpius dürtüşü: tur 0'da 1 kalp")
+	var c100 := _tuned(SCORPIUS, EnemyScaling.tuning(Difficulty.Level.NORMAL, 100), Vector2(1500, 612)) as Scorpius
+	c100.target = p
+	c100._begin_lunge()
+	check(c100.attack_hitbox.damage == 2 and c100.max_hp == 18, "NORMAL tur 100 Scorpius: dürtüş 2 kalp, 18 can (%d/%d)" % [c100.attack_hitbox.damage, c100.max_hp])
+	# --- ölünce altın: ölçeklenmiş
+	var coins_before := get_tree().get_nodes_in_group("coins").size()
+	t1.take_damage(99, p)
+	await _frames(2)
+	check(t1.dead, "ölçeklenmiş Taurus öldü (99 hasar)")
+	check(get_tree().get_nodes_in_group("coins").size() >= coins_before, "altın düştü")
+	GameState.difficulty = Difficulty.DEFAULT
+
+
+func _test_enemy_brain() -> void:
+	await _new_world("Düşman zekâsı: sabır (parry'yi bekletir), ceza (ıskalanan parry), önden hedefleme, kaçış")
+	var p := _spawn_player(700.0)
+	var smart := EnemyTuning.new()
+	smart.patience = 1.0
+	smart.punish = 1.0
+	smart.lead = 1.0
+	smart.kite = 1.25
+	var dumb := EnemyTuning.new()
+	# --- Taurus: SABIR
+	var t := _tuned(TAURUS, smart, Vector2(900, 612)) as Taurus
+	t.target = p
+	t._phase = Taurus.Phase.TELEGRAPH
+	t._timer = 0.05
+	t._on_player_parry_started(p)
+	var dist := absf(p.global_position.x - t.global_position.x)
+	var want := maxf(p.parry_window_time() + 0.75 * p.parry_recovery_time() - maxf(dist - Taurus.LUNGE_LEAD_IN, 0.0) / t.lunge_speed, 0.05)
+	check(is_equal_approx(t._timer, want) and t._delayed, "sabırlı Taurus parry'ye basılınca atılmayı geciktirdi (0.05 -> %.3f sn)" % t._timer)
+	t._timer = 0.01
+	t._on_player_parry_started(p)
+	check(is_equal_approx(t._timer, 0.01), "bir uyarıda en çok bir kez geciktirir")
+	t._delayed = false
+	t._timer = 0.9
+	t._on_player_parry_started(p)
+	check(is_equal_approx(t._timer, 0.9) and not t._delayed, "zaten geç gelecek atılmayı hızlandırmaz, bekletme saymaz")
+	t._timer = 0.05
+	t._phase = Taurus.Phase.CHASE
+	t._on_player_parry_started(p)
+	check(is_equal_approx(t._timer, 0.05), "uyarı yokken (kovalarken) parry'ye tepki vermez")
+	t._phase = Taurus.Phase.TELEGRAPH
+	t._on_player_parry_started(t)
+	check(is_equal_approx(t._timer, 0.05), "başkasının parry'si umurunda değil")
+	var td := _tuned(TAURUS, dumb, Vector2(1100, 612)) as Taurus
+	td.target = p
+	td._phase = Taurus.Phase.TELEGRAPH
+	td._timer = 0.05
+	td._on_player_parry_started(p)
+	check(is_equal_approx(td._timer, 0.05) and not td._delayed, "NORMAL Taurus bekletmez (sabır 0)")
+	# --- Taurus: CEZA
+	t._phase = Taurus.Phase.CHASE
+	t._cooldown = 1.0
+	t._on_player_parry_failed(p)
+	check(is_equal_approx(t._cooldown, 0.0) and t._quick, "parry'yi ıskalayana menzildeki Taurus hemen saldırıya geçer")
+	t._begin_telegraph()
+	check(is_equal_approx(t._timer, t.telegraph_time * Taurus.PUNISH_QUICK) and not t._quick, "uyarı kısalmış (%.3f sn) ve bir kerelik" % t._timer)
+	t._phase = Taurus.Phase.CHASE
+	t._cooldown = 1.0
+	t.global_position.x = 1700.0
+	t._on_player_parry_failed(p)
+	check(is_equal_approx(t._cooldown, 1.0) and not t._quick, "menzil dışındaki Taurus ceza vermez")
+	td._phase = Taurus.Phase.CHASE
+	td._cooldown = 1.0
+	td.global_position.x = 900.0
+	td._on_player_parry_failed(p)
+	check(is_equal_approx(td._cooldown, 1.0), "NORMAL Taurus cezalandırmaz (ceza 0)")
+	# --- Sagitta: ÖNDEN HEDEFLEME ve CEZA ve KAÇIŞ
+	var s := _tuned(SAGITTA, smart, Vector2(1000, 612)) as Sagitta
+	s.target = p
+	p.velocity = Vector2(300.0, 0.0)
+	var origin := s.global_position + Vector2(-24.0, -6.0)
+	var aim := s._aim_point(origin)
+	var flight := origin.distance_to(p.global_position) / s.projectile_speed
+	var shift := minf(300.0 * flight, Sagitta.LEAD_MAX)
+	check(is_equal_approx(aim.x, p.global_position.x + shift) and is_equal_approx(aim.y, p.global_position.y), "önden hedefleme: koşan oyuncunun %.0f px önüne nişan (yalnız yatay)" % shift)
+	check(is_equal_approx(shift, Sagitta.LEAD_MAX), "uzak hedefte öne tahmin tavanı (%.0f px) geçilmiyor" % Sagitta.LEAD_MAX)
+	s.global_position.x = 900.0
+	origin = s.global_position + Vector2(-24.0, -6.0)
+	aim = s._aim_point(origin)
+	flight = origin.distance_to(p.global_position) / s.projectile_speed
+	check(is_equal_approx(aim.x, p.global_position.x + 300.0 * flight) and 300.0 * flight < Sagitta.LEAD_MAX, "yakın hedefte tahmin sınırın altında (%.0f px)" % (300.0 * flight))
+	p.velocity = Vector2.ZERO
+	check(s._aim_point(origin).is_equal_approx(p.global_position), "duran oyuncuya doğrudan nişan")
+	var sd := _tuned(SAGITTA, dumb, Vector2(900, 612)) as Sagitta
+	sd.target = p
+	p.velocity = Vector2(300.0, 0.0)
+	check(sd._aim_point(origin).is_equal_approx(p.global_position), "NORMAL Sagitta hareketi önceden kestirmez (önden hedefleme 0)")
+	p.velocity = Vector2.ZERO
+	s._phase = Sagitta.Phase.IDLE
+	s._timer = 2.0
+	s._on_player_parry_failed(p)
+	check(s._timer <= 0.05, "parry'yi ıskalayana Sagitta hemen nişan alır (%.2f)" % s._timer)
+	sd._phase = Sagitta.Phase.IDLE
+	sd._timer = 2.0
+	sd._on_player_parry_failed(p)
+	check(is_equal_approx(sd._timer, 2.0), "NORMAL Sagitta cezalandırmaz")
+	# Kaçış: oyuncu 300 px uzakta (260 ile 260x1.25=325 arası): NORMAL durur, akıllı olan geri çekilir
+	var near_p := _spawn_player(600.0)
+	var sk := _tuned(SAGITTA, smart, Vector2(900, 612)) as Sagitta
+	var sn := _tuned(SAGITTA, dumb, Vector2(900, 612)) as Sagitta
+	for e in [sk, sn]:
+		e.target = near_p
+		(e as Sagitta)._phase = Sagitta.Phase.IDLE
+		(e as Sagitta)._timer = 10.0
+		e.velocity = Vector2.ZERO
+		e._ai(0.016)
+	check(sk.velocity.x > 50.0, "akıllı Sagitta 300 px'te geri çekilir (hız %.0f, sağa = uzağa)" % sk.velocity.x)
+	check(absf(sn.velocity.x) < 1.0, "NORMAL Sagitta 300 px'te durur (260 px'in altına girmeden kaçmaz)")
+	sk.global_position.x = 600.0 + 400.0
+	sk.velocity = Vector2.ZERO
+	sk._ai(0.016)
+	check(absf(sk.velocity.x) < 1.0, "400 px'te (kaçış bölgesinin dışında) durur")
+	# --- Scorpius: CEZA
+	var c := _tuned(SCORPIUS, smart, Vector2(900, 612)) as Scorpius
+	c.target = p
+	c._phase = Scorpius.Phase.SPACING
+	c._decide_t = 1.0
+	c._on_player_parry_failed(p)
+	check(c._decide_t <= 0.05, "parry'yi ıskalayana Scorpius hemen saldırıya geçer (%.2f)" % c._decide_t)
+	c._decide_t = 1.0
+	c._phase = Scorpius.Phase.TELL
+	c._on_player_parry_failed(p)
+	check(is_equal_approx(c._decide_t, 1.0), "saldırı sürerken karar süresine dokunmaz")
+	var cd := _tuned(SCORPIUS, dumb, Vector2(900, 612)) as Scorpius
+	cd.target = p
+	cd._decide_t = 1.0
+	cd._on_player_parry_failed(p)
+	check(is_equal_approx(cd._decide_t, 1.0), "NORMAL Scorpius cezalandırmaz")
+	# Karar süreleri zorlukla kısalır
+	var fast := EnemyTuning.new()
+	fast.cooldown = 0.5
+	var cf := _tuned(SCORPIUS, fast, Vector2(900, 612)) as Scorpius
+	var sum_fast := 0.0
+	var sum_slow := 0.0
+	for i in 40:
+		sum_fast += cf._decide_in(1.0, 2.0)
+		sum_slow += cd._decide_in(1.0, 2.0)
+	check(sum_fast < sum_slow * 0.7, "bekleme çarpanı 0.5: karar süreleri belirgin kısa (%.1f / %.1f)" % [sum_fast, sum_slow])
+
+
+func _test_difficulty_run() -> void:
+	await _new_world("Zorluk koşuda: odanın ayarı seviye + oda numarasından, doğan düşman ölçekli")
+	GameState.difficulty = Difficulty.Level.IMMORTAL
+	var run := _start_run(777)
+	var p := run.player
+	await _frames(5)
+	var r0 := run.rooms[0] as Room
+	var r1 := run.rooms[1] as Room
+	check(r0.tuning != null and r0.tuning.level == Difficulty.Level.IMMORTAL and r0.tuning.progress == 0, "oda 0: IMMORTAL, tur 0")
+	check(r1.tuning != null and r1.tuning.level == Difficulty.Level.IMMORTAL and r1.tuning.progress == 1, "oda 1: IMMORTAL, tur 1")
+	check(RunController.progress_of(7) == 7 and RunController.progress_of(-3) == 0, "tur ilerlemesi şimdilik oda numarası")
+	check(run.tuning_for(9).progress == 9 and run.tuning_for(9).hp > run.tuning_for(1).hp, "uzak odanın düşmanı daha canlı")
+	var spawned := await _wait_until(func() -> bool: return r0.alive_count() >= 2, 240)
+	check(spawned, "ilk dalga doğdu (%d düşman)" % r0.alive_count())
+	var all_scaled := true
+	var seen := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as EnemyBase
+		if en == null:
+			continue
+		seen += 1
+		var base := 4 if en is Taurus else 3
+		if en.tuning == null or en.tuning.level != Difficulty.Level.IMMORTAL or en.max_hp != en.tuning.scale_hp(base) or en.health != en.max_hp:
+			all_scaled = false
+	check(seen >= 2 and all_scaled, "doğan %d düşmanın hepsi IMMORTAL ayarıyla ölçeklendi (Taurus 7, Sagitta 5 can)" % seen)
+	_kill_all_enemies(p)
+	await _wait_until(func() -> bool: return r0.is_cleared(), 120)
+	run.queue_free()
+	await _frames(3)
+	# Aynı koşu NORMAL'de: ilk odanın düşmanı eskisi gibi
+	GameState.difficulty = Difficulty.Level.NORMAL
+	await _new_world("Zorluk koşuda: NORMAL, 0. oda = eski düşman")
+	run = _start_run(777)
+	await _frames(5)
+	r0 = run.rooms[0] as Room
+	check(r0.tuning.is_identity(), "NORMAL oda 0 ayarı etkisiz")
+	spawned = await _wait_until(func() -> bool: return r0.alive_count() >= 2, 240)
+	var old_stats := true
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as EnemyBase
+		if en != null and en.max_hp != (4 if en is Taurus else 3):
+			old_stats = false
+	check(spawned and old_stats, "NORMAL ilk oda: Taurus 4 can, Sagitta 3 can (eskisi gibi)")
+	check(GameState.difficulty == Difficulty.Level.NORMAL, "zorluk koşu boyunca değişmedi")
 	run.queue_free()
 	await _frames(3)

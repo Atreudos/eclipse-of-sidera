@@ -31,6 +31,9 @@ const STAB_TIME := 0.1
 const RETREAT_DISTANCE := 170.0
 const RETREAT_TIME := 0.34
 const BACKFLIP_TIME := 0.42
+## Zorluk/tur ayarının inemeyeceği alt sınırlar (sn): uyarı insan tepkisinin altına düşmesin, sersemleme hep bir fırsat versin.
+const TELL_FLOOR := 0.24
+const STUN_FLOOR := 0.8
 
 ## Scorpius'a özgü animasyonlar (taban düşman animasyonlarına eklenir).
 const SCORPIUS_ANIMS := {
@@ -93,12 +96,40 @@ func _ready() -> void:
 	attack_hitbox.active = false
 	attack_hitbox.parried.connect(_on_attack_parried)
 	EventBus.parry_started.connect(_on_player_parry_started)
-	_decide_t = randf_range(0.9, 1.5)
+	EventBus.parry_failed.connect(_on_player_parry_failed)
+	_decide_t = _decide_in(0.9, 1.5)
 
 
 func _exit_tree() -> void:
 	if EventBus.parry_started.is_connected(_on_player_parry_started):
 		EventBus.parry_started.disconnect(_on_player_parry_started)
+	if EventBus.parry_failed.is_connected(_on_player_parry_failed):
+		EventBus.parry_failed.disconnect(_on_player_parry_failed)
+
+
+func _apply_tuning() -> void:
+	walk_speed *= tuning.speed
+	lunge_speed *= tuning.speed
+	tell_time = tuning.warn(tell_time, TELL_FLOOR)
+	stun_time = tuning.stun_time(stun_time, STUN_FLOOR)
+	feint_chance = clampf(feint_chance + tuning.feint, 0.0, 0.7)
+	# Kaçış: yaklaşınca geri takla atma eşiği. Ideal mesafedeki geri adım bölgesine taşmasın.
+	close_range = minf(close_range * tuning.kite, maxf(ideal_distance - 25.0, close_range))
+
+
+## Saldırı/hamle kararı için rastgele bekleme (sn); zorlukla kısalır.
+func _decide_in(lo: float, hi: float) -> float:
+	return tuning.wait(randf_range(lo, hi))
+
+
+## CEZA (zekâ): oyuncu parry'yi ıskaladı (toparlanıyor). Mesafesindeki Scorpius beklemeyi bırakıp hemen saldırıya geçer.
+func _on_player_parry_failed(actor: Node) -> void:
+	if actor != target or _phase != Phase.SPACING or dead or target == null:
+		return
+	if absf(target.feet_y() - feet_y()) > ATTACK_LEVEL_TOLERANCE:
+		return
+	if randf() < tuning.punish:
+		_decide_t = minf(_decide_t, 0.05)
 
 
 # ---------------------------------------------------------------- yapay zekâ
@@ -193,7 +224,7 @@ func _begin_backflip(dist: float) -> bool:
 func _begin_retreat() -> void:
 	if not _begin_hop(Phase.RETREAT, RETREAT_DISTANCE, RETREAT_TIME):
 		_set_phase(Phase.SPACING)
-		_decide_t = randf_range(0.5, 0.9)
+		_decide_t = _decide_in(0.5, 0.9)
 
 
 ## Hedeften uzağa, hedefe bakmaya devam ederek zıplar. Arkası kapalıysa (duvar) false döner.
@@ -231,7 +262,7 @@ func _ai_hop(delta: float) -> void:
 		velocity.x = 0.0
 		_set_phase(Phase.SPACING)
 		_hop_cooldown = 0.35
-		_decide_t = randf_range(0.5, 0.9) if was_flip else randf_range(0.7, 1.3)
+		_decide_t = _decide_in(0.5, 0.9) if was_flip else _decide_in(0.7, 1.3)
 
 
 # ---- TELL / LUNGE / FEINT
@@ -280,7 +311,7 @@ func _begin_lunge() -> void:
 	_timer = lunge_time
 	attack_hitbox.position = Vector2(facing * BLADE_CENTER, -4.0)
 	attack_hitbox.parryable = true
-	attack_hitbox.damage = 1
+	attack_hitbox.damage = tuning.scale_damage(1)
 	attack_hitbox.active = true
 	anim.trigger("attack", lunge_time)
 	Sfx.play("thrust", -3.0, 1.0, 0.04)
@@ -377,7 +408,7 @@ func _begin_stab() -> void:
 	_timer = STAB_TIME
 	attack_hitbox.position = Vector2(facing * BLADE_CENTER, -4.0)
 	attack_hitbox.parryable = false
-	attack_hitbox.damage = 1
+	attack_hitbox.damage = tuning.scale_damage(1)
 	attack_hitbox.active = true
 	anim.trigger("stab", STAB_TIME)
 	Sfx.play("thrust", -3.0, 0.9, 0.04)
@@ -440,7 +471,7 @@ func _on_interrupted() -> void:
 	attack_hitbox.active = false
 	_bait = false
 	_set_phase(Phase.SPACING)
-	_decide_t = randf_range(0.8, 1.3)
+	_decide_t = _decide_in(0.8, 1.3)
 
 
 func _on_stunned() -> void:
@@ -451,7 +482,7 @@ func _on_stunned() -> void:
 
 func _on_stun_end() -> void:
 	_set_phase(Phase.SPACING)
-	_decide_t = randf_range(0.6, 1.0)
+	_decide_t = _decide_in(0.6, 1.0)
 	_hop_cooldown = 0.0
 
 

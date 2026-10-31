@@ -47,6 +47,9 @@ const ANIM_SPEC := {
 @export var jump_velocity := 0.0
 @export var air_speed := 150.0
 
+## Doğarken uygulanan zorluk + tur ayarı (null = ayarsız: düşman eskisi gibi davranır). `_ready`'den ÖNCE verilmelidir
+## (SpawnMarker ağaca eklemeden önce verir). Bkz. Difficulty ve EnemyScaling.
+var tuning: EnemyTuning = null
 var target: Player = null
 var facing := -1
 var stun_t := 0.0
@@ -84,11 +87,17 @@ func anim_spec() -> Dictionary:
 func _ready() -> void:
 	super._ready()
 	faction = "enemy"
+	if tuning == null:
+		tuning = EnemyTuning.new()  # etkisiz ayar
+	max_hp = tuning.scale_hp(max_hp)
+	gold_min = tuning.scale_gold(gold_min)
+	gold_max = tuning.scale_gold(gold_max)
 	stats = Stats.new({"max_health": float(max_hp)})
 	health = max_hp
 	nav = PlatformNav.new(self)
 	add_to_group("enemies")
 	set_tell(Tell.NONE)
+	_apply_tuning()
 
 
 func max_jump_height() -> float:
@@ -231,6 +240,11 @@ func is_stunned() -> bool:
 
 ## Alt sınıflar bunu doldurur.
 func _ai(_delta: float) -> void:
+	pass
+
+
+## Zorluk/tur ayarını (`tuning`) kendi sayılarına uygular: hız, bekleme, uyarı süresi... `_ready` sonunda bir kez çağrılır.
+func _apply_tuning() -> void:
 	pass
 
 

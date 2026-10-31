@@ -52,6 +52,9 @@ var palette: Dictionary = {}
 var waves: Array = []
 var wave_number := 0
 
+## Bu odada doğan düşmanların zorluk/tur ayarı (null = ayarsız).
+var tuning: EnemyTuning = null
+
 var _enemies_root: Node
 var _rng: RandomNumberGenerator
 var _pending := 0
@@ -212,6 +215,7 @@ func _start_wave() -> void:
 	for i in wave.size():
 		_pending += 1
 		var m := SpawnMarker.spawn(self, points[i], wave[i], _enemies_root, SPAWN_DELAY + 0.12 * float(i))
+		m.tuning = tuning
 		m.finished.connect(_on_marker_finished)
 	_wait = NEXT_WAVE_DELAY if wave_number < waves.size() else CLEAR_DELAY
 	wave_started.emit(wave_number, waves.size())
