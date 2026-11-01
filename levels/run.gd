@@ -27,6 +27,8 @@ const KEEP_BEHIND := 1
 
 ## 0 = her seferinde rastgele tohum.
 @export var seed_value := 0
+## Kayıttan devam: kaydedilmiş koşunun anlık görüntüsü (RunSnapshot). Boşsa (ve GameState'te de bekleyen yoksa) yeni koşu.
+var restore: Dictionary = {}
 
 var run_seed := 0
 ## oda no -> Room
@@ -130,15 +132,25 @@ func make_waves(room_index: int) -> Array:
 func _ready() -> void:
 	Hitstop.reset()
 	TimeStop.reset()
+	if restore.is_empty():
+		restore = GameState.take_resume()
 	run_seed = seed_value if seed_value != 0 else int(Time.get_ticks_usec() & 0x7fffffff)
+	var start := 0
+	if not restore.is_empty():
+		run_seed = SaveSlot._int(restore.get("seed", run_seed), run_seed)
+		start = maxi(SaveSlot._int(restore.get("room", 0)), 0)
 	player = get_tree().get_first_node_in_group("player") as Player
 	if player == null:
 		player = $Player as Player
 	player.died.connect(_on_player_died)
 	EventBus.enemy_died.connect(_on_enemy_died)
 	EventBus.combo_ended.connect(_on_combo_ended)
-	_build_room(0)
-	_enter_room(0, true)
+	if start > 0:
+		_build_room(start - 1)  # sol sınır: önceki odanın kapısı (kapanır)
+	_build_room(start)
+	if not restore.is_empty():
+		_apply_restore(start)
+	_enter_room(start, true)
 
 
 func _exit_tree() -> void:
@@ -148,14 +160,19 @@ func _exit_tree() -> void:
 		EventBus.combo_ended.disconnect(_on_combo_ended)
 
 
-## Odayı (yoksa) kurar. Odalar sıralı kurulur: oda i, oda i-1'in sağ kenarında başlar.
+## Odanın sol kenarının dünya x'i: önceki odaların genişliklerinin toplamı (odaları kurmadan hesaplanır).
+func x_left_of(index: int) -> float:
+	var x := 0.0
+	for k in index:
+		x += RoomLayouts.width_of(layout_for(k))
+	return x
+
+
+## Odayı (yoksa) kurar. Odalar sıralı yan yana dizilir: oda i, oda i-1'in sağ kenarında başlar.
 func _build_room(index: int) -> Room:
 	if rooms.has(index):
 		return rooms[index]
-	var x_left := 0.0
-	if index > 0:
-		var prev: Room = _build_room(index - 1)
-		x_left = prev.rect.end.x
+	var x_left := x_left_of(index)
 	var room := Room.new()
 	rooms_root.add_child(room)
 	room.tuning = tuning_for(index)
@@ -186,6 +203,7 @@ func _enter_room(index: int, first: bool = false) -> void:
 	hud.announcer.push_runs([["ODA ", GameFont.WHITE], [str(index + 1), GameFont.YELLOW]], 64, 1.5)
 	EventBus.room_entered.emit(index)
 	room_changed.emit(index)
+	save_checkpoint()
 
 
 func _free_old_rooms() -> void:
@@ -206,13 +224,18 @@ func _process(delta: float) -> void:
 	if player == null or not is_instance_valid(player) or player.dead:
 		return
 	stats["time"] = float(stats["time"]) + delta
+	if GameState.slot != null:
+		GameState.slot.playtime += delta
 	var room := current_room()
 	var next := rooms.get(current + 1) as Room
 	if room != null and next != null and room.is_cleared() and player.global_position.x > next.rect.position.x + ENTER_DEPTH:
 		_enter_room(current + 1)
 
 
+## Baştan başla (R). Koşu sürerken basılırsa terk edilmiş sayılır: sayaçlara işlenir, yarım koşu silinir.
 func restart() -> void:
+	if player != null and is_instance_valid(player) and not player.dead:
+		_finish_run(false)
 	Hitstop.reset()
 	TimeStop.reset()
 	get_tree().reload_current_scene()
@@ -259,6 +282,63 @@ func _on_combo_ended(hits: int, parries: int, _damage: int) -> void:
 
 func _on_player_died() -> void:
 	hud.set_summary(stats)
+	_finish_run(true)
+
+
+# ---------------------------------------------------------------- kayıt
+
+## Koşunun anlık görüntüsü (kayıt için). Konum: odanın başı; devam edince oda baştan başlar.
+func snapshot() -> Dictionary:
+	var seen: Array = []
+	for key in seen_enemies:
+		seen.append(String(key).get_file().get_basename())
+	var d := {"seed": run_seed, "floor": 1, "room": maxi(current, 0), "wave": 0, "seen": seen}
+	d["player"] = RunSnapshot.capture_player(player)
+	d.merge(RunSnapshot.capture_umbra())
+	d["stats"] = RunSnapshot.capture_stats(stats)
+	return d
+
+
+## Kayıt slotu açıksa (menüden başlandıysa) koşuyu yazar. Slot yoksa (test/geliştirme) hiçbir şey yapmaz.
+func save_checkpoint() -> bool:
+	var slot := GameState.slot
+	if slot == null or GameState.mode != GameMode.Kind.NORMAL or player == null or player.dead:
+		return false
+	slot.set_run(GameMode.Kind.NORMAL, snapshot())
+	slot.touch()
+	return SaveStore.save_slot(slot)
+
+
+## Kayıttaki durumu oyuncuya, Umbra'ya ve istatistiklere işler.
+func _apply_restore(start: int) -> void:
+	var pl: Variant = restore.get("player")
+	if pl is Dictionary:
+		RunSnapshot.apply_player(player, pl as Dictionary)
+	RunSnapshot.apply_umbra(restore)
+	var st: Variant = restore.get("stats")
+	if st is Dictionary:
+		RunSnapshot.apply_stats(stats, st as Dictionary)
+	var seen: Variant = restore.get("seen", [])
+	if seen is Array:
+		for n in seen:
+			var path := "res://actors/enemies/%s.tscn" % str(n)
+			if ResourceLoader.exists(path):
+				seen_enemies[path] = true
+	if start > 0:
+		var room := rooms[start] as Room
+		player.global_position = Vector2(room.rect.position.x + 180.0, 600.0)
+
+
+## Koşu bitti (öldün ya da terk ettin): rekorlar işlenir, yarım koşu silinir, slot yazılır.
+func _finish_run(died: bool) -> void:
+	var slot := GameState.slot
+	if slot == null or GameState.mode != GameMode.Kind.NORMAL:
+		return
+	slot.record_run(GameMode.Kind.NORMAL, {
+		"kills": int(stats["kills"]), "best_combo": int(stats["best_combo"]), "floor": 1, "room": maxi(current, 0),
+	}, died)
+	slot.touch()
+	SaveStore.save_slot(slot)
 
 
 ## Geliştirici kısayolu: F6 = odadaki herkesi öldür ve odayı temizle (akışı hızlı denemek için).

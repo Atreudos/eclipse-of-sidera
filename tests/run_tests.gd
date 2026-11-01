@@ -128,6 +128,10 @@ func _run_all() -> void:
 		"zorluk_dusman": _test_enemy_tuning_hooks,
 		"zorluk_zeka": _test_enemy_brain,
 		"zorluk_oda": _test_difficulty_run,
+		"kayit_slot": _test_save_slot_data,
+		"kayit_dosya": _test_save_store,
+		"kayit_oyuncu": _test_save_player_snapshot,
+		"kayit_kosu": _test_save_run,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -4418,3 +4422,384 @@ func _test_difficulty_run() -> void:
 	check(GameState.difficulty == Difficulty.Level.NORMAL, "zorluk koşu boyunca değişmedi")
 	run.queue_free()
 	await _frames(3)
+
+
+# ------------------------------------------------------------------ kayıt sistemi
+
+const TEST_SAVE_DIR := "user://test_saves"
+
+
+func _clean_saves() -> void:
+	SaveStore.dir = TEST_SAVE_DIR
+	for i in SaveStore.COUNT:
+		SaveStore.delete_slot(i)
+
+
+func _end_saves() -> void:
+	_clean_saves()
+	DirAccess.remove_absolute(TEST_SAVE_DIR)
+	SaveStore.dir = "user://saves"
+	GameState.end_session()
+	GameState.difficulty = Difficulty.DEFAULT
+	GameState.mode = GameMode.DEFAULT
+
+
+func _write_raw(path: String, text: String) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(text)
+	f.close()
+
+
+func _read_raw(path: String) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var t := f.get_as_text()
+	f.close()
+	return t
+
+
+func _json_roundtrip(v: Variant) -> Variant:
+	var j := JSON.new()
+	j.parse(JSON.stringify(v))
+	return j.data
+
+
+func _test_save_slot_data() -> void:
+	print("\nKayıt slotu: isim temizleme, rekorlar, kaldığımız yer, doğrulama")
+	check(SaveSlot.clean_name("  Sidera  ") == "Sidera", "baştaki/sondaki boşluk atılır")
+	check(SaveSlot.clean_name("ÇAĞRI Şen") == "ÇAĞRI Şen", "Türkçe harfler korunur")
+	check(SaveSlot.clean_name("a<b>c\n") == "abc", "geçersiz karakterler atılır (<>, satır sonu)")
+	check(SaveSlot.clean_name("A      B") == "A B", "ardışık boşluklar tek olur")
+	check(SaveSlot.clean_name("Umut_2.0-x'") == "Umut_2.0-x'", "rakam ve - _ . ' kalır")
+	check(SaveSlot.clean_name("") == SaveSlot.DEFAULT_NAME and SaveSlot.clean_name("   ") == SaveSlot.DEFAULT_NAME and SaveSlot.clean_name("<<>>") == SaveSlot.DEFAULT_NAME, "boş kalan isim varsayılana döner")
+	check(SaveSlot.clean_name("0123456789ABCDEFGHIJ").length() == SaveSlot.NAME_MAX, "isim en çok %d karakter" % SaveSlot.NAME_MAX)
+	check(SaveSlot.clean_name("😀Ali😀") == "Ali", "emoji atılır")
+	var s := SaveSlot.create(1, "  Test  ", 99)
+	check(s.index == 1 and s.name == "Test" and s.difficulty == Difficulty.Level.IMMORTAL, "create: isim temiz, zorluk geçerliye çekildi")
+	check(s.created > 0 and s.last_played == s.created and s.playtime == 0.0, "create: tarih atandı, süre 0")
+	check(int(s.records["runs"]) == 0 and int(s.records["best_wave"]) == 0, "create: rekorlar sıfır")
+	check(not s.has_run(GameMode.Kind.NORMAL) and s.run_of(GameMode.Kind.NORMAL).is_empty(), "başta yarım koşu yok")
+	check(s.progress_text(GameMode.Kind.NORMAL) == "" and s.best_text(GameMode.Kind.NORMAL) == "" and s.best_text(GameMode.Kind.ENDLESS) == "", "başta 'kaldığımız yer' ve rekor satırı boş")
+	# Yarım koşu ve kaldığımız yer
+	var snap := {"seed": 42, "floor": 2, "room": 3, "wave": 0, "player": {"health": 3}}
+	s.set_run(GameMode.Kind.NORMAL, snap)
+	snap["seed"] = 7  # kopyalandı: dışarıdaki değişiklik kaydı etkilemez
+	check(s.has_run(GameMode.Kind.NORMAL) and int(s.run_of(GameMode.Kind.NORMAL)["seed"]) == 42, "koşu kopyalanarak saklanır")
+	check(s.progress_text(GameMode.Kind.NORMAL) == "KAT 2  ODA 4", "kaldığımız yer: " + s.progress_text(GameMode.Kind.NORMAL))
+	s.set_run(GameMode.Kind.ENDLESS, {"seed": 1, "wave": 37, "player": {}})
+	check(s.progress_text(GameMode.Kind.ENDLESS) == "DALGA 37", "sınırsız: " + s.progress_text(GameMode.Kind.ENDLESS))
+	var copy := s.run_of(GameMode.Kind.NORMAL)
+	copy["seed"] = 99
+	check(int(s.run_of(GameMode.Kind.NORMAL)["seed"]) == 42, "run_of kopya döndürür")
+	# Rekorlar
+	s.record_run(GameMode.Kind.NORMAL, {"kills": 12, "best_combo": 9, "floor": 2, "room": 3}, true)
+	check(not s.has_run(GameMode.Kind.NORMAL) and s.has_run(GameMode.Kind.ENDLESS), "biten koşu silindi, diğer kipin koşusu durdu")
+	check(int(s.records["runs"]) == 1 and int(s.records["deaths"]) == 1 and int(s.records["kills"]) == 12 and int(s.records["best_combo"]) == 9, "rekorlar işlendi %s" % str(s.records))
+	check(int(s.records["best_floor"]) == 2 and int(s.records["best_room"]) == 4 and s.best_text(GameMode.Kind.NORMAL) == "EN İYİ KAT 2  ODA 4", "en iyi konum: " + s.best_text(GameMode.Kind.NORMAL))
+	s.record_run(GameMode.Kind.NORMAL, {"kills": 3, "best_combo": 20, "floor": 1, "room": 6}, false)
+	check(int(s.records["best_floor"]) == 2 and int(s.records["best_room"]) == 4, "daha kötü koşu rekoru düşürmez")
+	check(int(s.records["runs"]) == 2 and int(s.records["deaths"]) == 1 and int(s.records["kills"]) == 15 and int(s.records["best_combo"]) == 20, "terk edilen koşu ölüm sayılmaz, toplamlar birikir")
+	s.record_run(GameMode.Kind.NORMAL, {"kills": 0, "best_combo": 0, "floor": 2, "room": 7}, true)
+	check(int(s.records["best_room"]) == 8, "aynı katta daha ileri oda rekoru artırır")
+	s.record_run(GameMode.Kind.ENDLESS, {"kills": 40, "best_combo": 5, "wave": 37}, true)
+	check(int(s.records["best_wave"]) == 37 and s.best_text(GameMode.Kind.ENDLESS) == "EN İYİ DALGA 37" and not s.has_run(GameMode.Kind.ENDLESS), "sınırsız rekor: dalga 37, koşu silindi")
+	s.record_run(GameMode.Kind.ENDLESS, {"kills": 1, "wave": 12}, true)
+	check(int(s.records["best_wave"]) == 37, "daha düşük dalga rekoru düşürmez")
+	# Biçimlendirme
+	check(SaveSlot.format_playtime(0.0) == "0:00" and SaveSlot.format_playtime(65.9) == "1:05" and SaveSlot.format_playtime(3725.0) == "1:02:05" and SaveSlot.format_playtime(-30.0) == "0:00", "süre biçimi")
+	check(SaveSlot.format_date(0) == "-", "tarih yoksa '-'")
+	var d := SaveSlot.format_date(1790000000)
+	check(d.length() == 10 and d[2] == "." and d[5] == "." and d.ends_with("2026"), "tarih gg.aa.yyyy: " + d)
+	# Dosya biçimi gidiş-dönüş (JSON'dan sayılar float döner)
+	var full := SaveSlot.create(2, "Gidiş", Difficulty.Level.HARD)
+	full.playtime = 1234.56
+	full.records["kills"] = 77
+	full.set_run(GameMode.Kind.NORMAL, snap)
+	var back := SaveSlot.from_dict(_json_roundtrip(full.to_dict()), 2)
+	check(back != null and back.name == "Gidiş" and back.difficulty == Difficulty.Level.HARD and back.index == 2, "gidiş-dönüş: isim, zorluk, indeks")
+	check(back != null and back.created == full.created and is_equal_approx(back.playtime, 1234.6) and int(back.records["kills"]) == 77, "gidiş-dönüş: tarih, süre, rekor")
+	check(back != null and back.has_run(GameMode.Kind.NORMAL) and back.progress_text(GameMode.Kind.NORMAL) == "KAT 2  ODA 4", "gidiş-dönüş: yarım koşu (JSON float'ları int'e çevrildi)")
+	check(full.to_dict()["difficulty"] == "difficult" and full.to_dict()["version"] == SaveSlot.VERSION, "dosyada zorluk anahtarı 'difficult', sürüm var")
+	# Doğrulama: bozuk veri güvenli değerlere çekilir
+	check(SaveSlot.from_dict("x", 0) == null and SaveSlot.from_dict(null, 0) == null and SaveSlot.from_dict([1, 2], 0) == null, "sözlük olmayan veri reddedilir")
+	check(SaveSlot.from_dict({"version": 999}, 0) == null, "gelecek sürümün dosyası reddedilir")
+	var junk := SaveSlot.from_dict({
+		"name": 12345, "difficulty": "çılgın", "created": -5, "last_played": "abc", "playtime": "bozuk",
+		"records": {"kills": -9, "runs": "7", "deaths": [1], "best_wave": 2.9},
+		"runs": {"normal": "yok", "endless": {"wave": 5}},
+	}, 1)
+	check(junk != null and junk.name == "12345" and junk.difficulty == Difficulty.DEFAULT, "bozuk isim/zorluk: metne çevrildi, varsayılana düştü")
+	check(junk.created == 0 and junk.last_played == 0 and junk.playtime == 0.0, "negatif/bozuk tarih ve süre 0 oldu")
+	check(int(junk.records["kills"]) == 0 and int(junk.records["runs"]) == 7 and int(junk.records["deaths"]) == 0 and int(junk.records["best_wave"]) == 2, "bozuk rekorlar: negatif 0, '7' sayıya, liste 0, 2.9 -> 2")
+	check(not junk.has_run(GameMode.Kind.NORMAL) and not junk.has_run(GameMode.Kind.ENDLESS), "tohumsuz/sözlük olmayan yarım koşu atıldı")
+	var minimal := SaveSlot.from_dict({}, 0)
+	check(minimal != null and minimal.name == SaveSlot.DEFAULT_NAME and minimal.difficulty == Difficulty.DEFAULT, "boş sözlük bile geçerli (varsayılanlar)")
+	var nan_slot := SaveSlot.from_dict({"playtime": NAN, "created": INF}, 0)
+	check(nan_slot != null and nan_slot.playtime == 0.0 and nan_slot.created == 0, "NaN/sonsuz değerler 0 olur")
+	check(GameMode.count() == 2 and GameMode.name_of(0) == "NORMAL" and GameMode.name_of(1) == "SINIRSIZ" and GameMode.from_key("endless") == GameMode.Kind.ENDLESS and GameMode.from_key("x") == GameMode.DEFAULT, "oyun kipleri: adlar ve anahtarlar")
+	check(GameMode.clamp_kind(-3) == 0 and GameMode.clamp_kind(9) == 1 and GameMode.blurb_of(0) != "" and GameMode.blurb_of(1) != "", "kip sınırlandırma ve açıklamalar")
+
+
+func _test_save_store() -> void:
+	print("\nKayıt dosyası: yazma, okuma, yedek, bozuk dosya, silme")
+	_clean_saves()
+	check(SaveStore.list_slots() == [null, null, null], "boş klasör: 3 slot da boş")
+	check(SaveStore.first_free() == 0, "ilk boş slot 0")
+	check(SaveStore.load_slot(-1) == null and SaveStore.load_slot(3) == null, "geçersiz indeks null")
+	check(not SaveStore.save_slot(null) and not SaveStore.save_slot(SaveSlot.create(7, "X", 1)) and not SaveStore.delete_slot(5), "geçersiz kayıt/silme reddedilir")
+	var a := SaveSlot.create(0, "Birinci", Difficulty.Level.EASY)
+	a.records["kills"] = 5
+	check(SaveStore.save_slot(a), "slot 0 yazıldı")
+	check(FileAccess.file_exists(SaveStore.path_of(0)) and not FileAccess.file_exists(SaveStore.path_of(0) + ".tmp") and not FileAccess.file_exists(SaveStore.path_of(0) + ".bak"), "ana dosya var, geçici dosya kalmadı, yedek henüz yok")
+	check(SaveStore.path_of(0).ends_with("slot_1.json") and SaveStore.path_of(2).ends_with("slot_3.json"), "dosya adları slot_1..3.json")
+	var back := SaveStore.load_slot(0)
+	check(back != null and back.name == "Birinci" and back.difficulty == Difficulty.Level.EASY and int(back.records["kills"]) == 5 and not back.recovered, "slot 0 aynen okundu")
+	check(SaveStore.first_free() == 1, "ilk boş slot 1'e kaydı")
+	var b := SaveSlot.create(1, "ÇAĞRI", Difficulty.Level.IMMORTAL)
+	b.set_run(GameMode.Kind.NORMAL, {"seed": 5, "floor": 1, "room": 0, "player": {}})
+	check(SaveStore.save_slot(b), "slot 1 yazıldı")
+	var listed := SaveStore.list_slots()
+	check(listed[0] != null and listed[1] != null and listed[2] == null and (listed[1] as SaveSlot).name == "ÇAĞRI" and (listed[1] as SaveSlot).has_run(GameMode.Kind.NORMAL), "liste: dolu, dolu, boş; Türkçe isim ve koşu korundu")
+	check(SaveStore.first_free() == 2, "ilk boş slot 2")
+	var c := SaveSlot.create(2, "Üçüncü", Difficulty.Level.HARD)
+	SaveStore.save_slot(c)
+	check(SaveStore.first_free() == -1, "hepsi doluyken ilk boş yok (-1)")
+	# Üzerine yazma: eski sürüm .bak olur
+	a.records["kills"] = 9
+	check(SaveStore.save_slot(a), "slot 0 yeniden yazıldı")
+	check(FileAccess.file_exists(SaveStore.path_of(0) + ".bak"), "eski dosya .bak olarak saklandı")
+	check(int(SaveStore.load_slot(0).records["kills"]) == 9, "ana dosya yeni sürüm (9)")
+	var bak_text := _read_raw(SaveStore.path_of(0) + ".bak")
+	check(bak_text.contains("\"kills\": 5"), "yedek eski sürüm (5)")
+	check(_read_raw(SaveStore.path_of(0)).contains("\"version\": 1"), "dosyada sürüm numarası var")
+	# Ana dosya bozuldu: yedekten
+	_write_raw(SaveStore.path_of(0), "{ bu json degil")
+	var rec := SaveStore.load_slot(0)
+	check(rec != null and rec.recovered and int(rec.records["kills"]) == 5 and rec.name == "Birinci", "ana dosya bozukken yedekten okundu (recovered)")
+	check(SaveStore.save_slot(rec), "yedekten kurtarılan slot yeniden yazılabilir")
+	var again := SaveStore.load_slot(0)
+	check(again != null and not again.recovered and int(again.records["kills"]) == 5, "yeniden yazınca ana dosya sağlam")
+	# Boş dosya ve sözlük olmayan JSON da bozuk sayılır
+	_write_raw(SaveStore.path_of(1), "")
+	_write_raw(SaveStore.path_of(1) + ".bak", "[1,2,3]")
+	check(SaveStore.load_slot(1) == null, "boş ana dosya + liste yedek = okunamaz, slot boş görünür")
+	check(FileAccess.file_exists(SaveStore.path_of(1) + ".corrupt") and FileAccess.file_exists(SaveStore.path_of(1) + ".bak.corrupt"), "bozuk dosyalar silinmedi, .corrupt olarak kenara alındı")
+	check(not FileAccess.file_exists(SaveStore.path_of(1)) and not FileAccess.file_exists(SaveStore.path_of(1) + ".bak"), "ana ve yedek adı boşaldı (yeni oyun açılabilir)")
+	check(SaveStore.first_free() == 1, "bozuk slot yeni oyun için boş sayıldı")
+	var fresh := SaveSlot.create(1, "Yeni", Difficulty.Level.NORMAL)
+	check(SaveStore.save_slot(fresh) and SaveStore.load_slot(1).name == "Yeni", "bozuk slotun yerine yeni oyun yazıldı")
+	# Sürüm: gelecekteki dosya okunamaz sayılır ama silinmez
+	_write_raw(SaveStore.path_of(2), "{\"version\": 99, \"name\": \"Gelecek\"}")
+	SaveStore.delete_slot(2)
+	check(not FileAccess.file_exists(SaveStore.path_of(2)), "delete: ana dosya silindi")
+	_write_raw(SaveStore.path_of(2) + ".bak", "{\"name\": \"Yedek\"}")
+	_write_raw(SaveStore.path_of(2) + ".corrupt", "x")
+	check(SaveStore.delete_slot(2), "delete true döndü")
+	check(not FileAccess.file_exists(SaveStore.path_of(2) + ".bak") and not FileAccess.file_exists(SaveStore.path_of(2) + ".corrupt"), "delete: yedek ve bozuk kopyalar da silindi")
+	check(SaveStore.load_slot(2) == null, "silinen slot boş")
+	_end_saves()
+
+
+func _test_save_player_snapshot() -> void:
+	await _new_world("Kayıt: oyuncunun durumu (eşyalar, çanta, can, bağışıklık, altın) ve Umbra'nın eşyaları")
+	var p := _spawn_player(300.0)
+	await _frames(2)
+	var inv := p.inventory
+	inv.add(_item("feather_boots"))
+	inv.add(_item("viper_fang"))
+	inv.give(_item("tower_bread"))
+	inv.give(_item("tower_bread"))
+	inv.give(_item("mirror_boots"))  # ayak slotu dolu: çantada kalır
+	p.gold = 77
+	p.set_immunity(2)
+	p.health = 2
+	var speed_with := p.stats.value("move_speed")
+	var snap := RunSnapshot.capture_player(p)
+	check(snap["equipped"] == ["feather_boots", "viper_fang"] and int(snap["gold"]) == 77 and int(snap["immunity"]) == 2 and int(snap["health"]) == 2, "capture: takılı eşyalar sırayla, altın, bağışıklık, can")
+	var bag_ids: Array = []
+	for e in snap["bag"]:
+		bag_ids.append("%s x%d" % [e["id"], int(e["count"])])
+	check(bag_ids.has("tower_bread x2") and bag_ids.has("mirror_boots x1") and bag_ids.size() == 2, "capture: çanta yığınları " + str(bag_ids))
+	var disk := _json_roundtrip(snap) as Dictionary
+	# Başka bir oyuncuya yükle
+	var q := _spawn_player(500.0)
+	await _frames(2)
+	q.inventory.add(_item("hourglass_of_saturn")) if _item("hourglass_of_saturn") != null else null
+	q.gold = 1
+	RunSnapshot.apply_player(q, disk)
+	check(q.inventory.items.size() == 2 and q.inventory.has("feather_boots") and q.inventory.has("viper_fang") and not q.inventory.has("hourglass_of_saturn"), "apply: eski eşyalar silindi, kayıttakiler takıldı")
+	check(q.inventory.bag_count("tower_bread") == 2 and q.inventory.bag_count("mirror_boots") == 1, "apply: çanta yığınları geri geldi")
+	check(q.gold == 77 and q.immunity == 2 and q.health == 2, "apply: altın 77, bağışıklık 2, can 2")
+	check(is_equal_approx(q.stats.value("move_speed"), speed_with), "apply: takılan eşyaların etkileri çalışıyor (hız %.0f)" % q.stats.value("move_speed"))
+	# Bozuk/eski veri
+	var weird := {"health": 999, "immunity": -4, "gold": -50, "equipped": ["yok_boyle_esya", "feather_boots", 5], "bag": [{"id": "tower_bread", "count": 1000}, {"id": "silinmis"}, "x", {"id": "viper_fang", "count": "3"}]}
+	RunSnapshot.apply_player(q, weird)
+	check(q.health == q.stats.int_value("max_health"), "can en çok max_health (%d)" % q.health)
+	check(q.immunity == 0 and q.gold == 0, "negatif bağışıklık/altın 0")
+	check(q.inventory.items.size() == 1 and q.inventory.has("feather_boots"), "tanınmayan eşya kimlikleri atlandı")
+	check(q.inventory.bag_count("tower_bread") == 99 and q.inventory.bag_count("viper_fang") == 3, "yığın en çok 99; metin sayı '3' çözüldü")
+	RunSnapshot.apply_player(q, {"health": -3})
+	check(q.health == 1 and q.inventory.items.is_empty() and q.inventory.bag.is_empty(), "can en az 1; eksik alanlar boş envanter")
+	RunSnapshot.apply_player(q, {})
+	check(q.health >= 1 and q.gold == 0, "boş sözlük çökmeden uygulanır")
+	# Umbra
+	GameState.reset()
+	GameState.leave_behind(_item("mirror_boots"))
+	GameState.leave_behind(_item("viper_fang"))
+	GameState.umbra_extra_carry = 1
+	var um := _json_roundtrip(RunSnapshot.capture_umbra()) as Dictionary
+	GameState.reset()
+	check(GameState.umbra_items.is_empty(), "sıfırlandı")
+	RunSnapshot.apply_umbra(um)
+	check(GameState.umbra_has("mirror_boots") and GameState.umbra_has("viper_fang") and GameState.umbra_items.size() == 2 and GameState.umbra_extra_carry == 1, "Umbra'nın eşyaları ve taşıma artışı geri geldi")
+	RunSnapshot.apply_umbra({"umbra": ["yok", "viper_fang", 3], "umbra_carry": -2})
+	check(GameState.umbra_items.size() == 1 and GameState.umbra_extra_carry == 0, "Umbra: tanınmayan kimlik atlandı, negatif taşıma 0")
+	# İstatistikler
+	var st := {"kills": 5, "rooms_cleared": 2, "best_combo": 7, "time": 123.456, "room": 3}
+	var cs := _json_roundtrip(RunSnapshot.capture_stats(st)) as Dictionary
+	var st2 := {"kills": 0, "rooms_cleared": 0, "best_combo": 0, "time": 0.0, "room": 1}
+	RunSnapshot.apply_stats(st2, cs)
+	check(st2["kills"] == 5 and st2["rooms_cleared"] == 2 and st2["best_combo"] == 7 and is_equal_approx(st2["time"], 123.5) and st2["room"] == 1, "istatistikler geri geldi (oda alanına dokunulmadı)")
+	GameState.reset()
+
+
+func _test_save_run() -> void:
+	await _new_world("Kayıt: koşu odanın başında kendiliğinden kaydedilir, devam edince aynı oda, eşya, can ve altınla başlar")
+	_clean_saves()
+	# Kayıt slotu yokken hiçbir şey yazılmaz
+	check(GameState.slot == null, "oturum açık değil")
+	var run0 := _start_run(5)
+	await _frames(3)
+	check(not run0.save_checkpoint(), "slot yokken kaydedilmez")
+	check(SaveStore.first_free() == 0, "diske hiçbir şey yazılmadı")
+	run0.queue_free()
+	await _frames(3)
+	# Oturum aç: yeni slot, zorluk slottan gelir
+	await _new_world("Kayıt: oturum ve ilk kayıt noktası")
+	var slot := SaveSlot.create(0, "Deneme", Difficulty.Level.HARD)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	check(GameState.difficulty == Difficulty.Level.HARD and GameState.slot == slot and GameState.mode == GameMode.Kind.NORMAL, "oturum: zorluk slottan geldi")
+	var run := _start_run(4242)
+	var p := run.player
+	await _frames(3)
+	var on_disk := SaveStore.load_slot(0)
+	check(on_disk != null and on_disk.has_run(GameMode.Kind.NORMAL), "0. odaya girince koşu kendiliğinden kaydedildi")
+	var r := on_disk.run_of(GameMode.Kind.NORMAL)
+	check(SaveSlot._int(r["seed"]) == 4242 and SaveSlot._int(r["room"]) == 0 and SaveSlot._int(r["floor"]) == 1, "kayıt: tohum 4242, kat 1, oda 0")
+	check(on_disk.progress_text(GameMode.Kind.NORMAL) == "KAT 1  ODA 1" and on_disk.difficulty == Difficulty.Level.HARD, "kaldığımız yer 'KAT 1  ODA 1', zorluk DIFFICULT")
+	check((run.rooms[0] as Room).tuning.level == Difficulty.Level.HARD, "koşunun düşmanları slotun zorluğunda")
+	var t0 := slot.playtime
+	await _frames(30)
+	check(slot.playtime > t0, "oynama süresi işliyor (%.2f sn)" % slot.playtime)
+	# Oyuncu eşya toplasın, sonra yeni odaya geçsin
+	p.inventory.add(_item("feather_boots"))
+	p.inventory.give(_item("tower_bread"))
+	p.gold = 41
+	p.health = 3
+	GameState.leave_behind(_item("mirror_boots"))
+	run.stats["kills"] = 6
+	var r0 := run.rooms[0] as Room
+	var spawned := await _wait_until(func() -> bool: return r0.alive_count() >= 2, 240)
+	check(spawned, "ilk dalga doğdu")
+	_kill_all_enemies(p)
+	var cleared := await _wait_until(func() -> bool: return r0.is_cleared(), 120)
+	check(cleared, "oda temizlendi")
+	p.global_position = Vector2(r0.rect.end.x - 150.0, 612.0)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	var entered := await _wait_until(func() -> bool: return run.current == 1, 150)
+	p.intent.move_x = 0.0
+	check(entered, "1. odaya geçildi")
+	var saved := SaveStore.load_slot(0)
+	var r1 := saved.run_of(GameMode.Kind.NORMAL)
+	check(SaveSlot._int(r1["room"]) == 1 and saved.progress_text(GameMode.Kind.NORMAL) == "KAT 1  ODA 2", "yeni odaya girince kayıt güncellendi: " + saved.progress_text(GameMode.Kind.NORMAL))
+	var pl: Dictionary = r1["player"]
+	check(pl["equipped"] == ["feather_boots"] and SaveSlot._int(pl["gold"]) >= 41 and SaveSlot._int(pl["health"]) == 3, "kayıtta oyuncu: eşya, altın, can")
+	check((r1["umbra"] as Array) == ["mirror_boots"], "kayıtta Umbra'nın eşyası")
+	var layout1 := (run.rooms[1] as Room).layout_id
+	var rect1_x := (run.rooms[1] as Room).rect.position.x
+	var waves1 := _wave_names(run.make_waves(1))
+	var gold_then := p.gold
+	var kills_then := int(run.stats["kills"])
+	check(kills_then >= 8 and SaveSlot._int(r1["stats"]["kills"]) == kills_then, "kayıttaki öldürme sayısı koşununkiyle aynı (%d)" % kills_then)
+	run.queue_free()
+	await _frames(3)
+	GameState.reset()
+	# --- Devam: yeni oyuncu, yeni koşu sahnesi; her şey kayıttan gelir
+	await _new_world("Kayıt: devam et (odanın başından, kayıtlı durumla)")
+	var slot2 := SaveStore.load_slot(0)
+	GameState.begin_session(slot2, GameMode.Kind.NORMAL)
+	GameState.resume_run = slot2.run_of(GameMode.Kind.NORMAL)
+	var run2 := RUN.instantiate() as RunController
+	run2.seed_value = 999  # kayıttaki tohum kazanmalı
+	var p2 := run2.get_node("Player") as Player
+	p2.scripted = true
+	_world.add_child(run2)
+	(run2.get_node("Camera") as ShakeCamera).set_process(false)
+	await _frames(3)
+	check(GameState.resume_run.is_empty(), "bekleyen devam koşusu bir kez alındı")
+	check(run2.run_seed == 4242 and run2.current == 1, "devam: kayıttaki tohum (4242) ve oda (1)")
+	check(run2.rooms.has(0) and run2.rooms.has(1) and run2.rooms.has(2) and not run2.rooms.has(3), "önceki (sol sınır), mevcut ve sonraki oda kurulu")
+	var rr := run2.rooms[1] as Room
+	check(rr.layout_id == layout1 and is_equal_approx(rr.rect.position.x, rect1_x), "oda aynı yerleşim ve konumda (%s, x=%.0f)" % [rr.layout_id, rr.rect.position.x])
+	check(_wave_names(run2.make_waves(1)) == waves1, "aynı dalgalar (tohum aynı): " + str(waves1))
+	check((run2.rooms[0] as Room).door.is_blocking(), "sol sınır: önceki odanın kapısı kapalı")
+	check(rr.rect.has_point(p2.global_position) and p2.global_position.x < rr.rect.position.x + 400.0, "oyuncu odanın başında (x=%.0f)" % p2.global_position.x)
+	check(run2.camera.bounds.is_equal_approx(rr.camera_rect()), "kamera yeni odada")
+	check(p2.inventory.has("feather_boots") and p2.inventory.bag_count("tower_bread") == 1 and p2.gold == gold_then and p2.health == 3, "oyuncu: eşya, çanta, altın (%d), can 3 geri geldi" % p2.gold)
+	check(GameState.umbra_has("mirror_boots"), "Umbra'nın eşyası geri geldi")
+	check(int(run2.stats["kills"]) == kills_then and int(run2.stats["room"]) == 2, "istatistikler: %d öldürme, oda 2" % kills_then)
+	check(rr.tuning.level == Difficulty.Level.HARD and rr.tuning.progress == 1, "düşman ayarı: DIFFICULT, tur 1")
+	var spawned2 := await _wait_until(func() -> bool: return rr.alive_count() >= 2, 300)
+	check(spawned2 and rr.state == Room.State.ACTIVE, "devam edilen odada dalga başladı (%d düşman)" % rr.alive_count())
+	# --- Ölüm: rekor işlenir, yarım koşu silinir
+	_kill_all_enemies(p2)
+	run2.stats["kills"] = 10
+	run2.stats["best_combo"] = 8
+	p2.health = 1
+	p2.take_damage(99, null)
+	await _frames(3)
+	var after := SaveStore.load_slot(0)
+	check(p2.dead and after != null and not after.has_run(GameMode.Kind.NORMAL), "ölünce yarım koşu silindi")
+	check(int(after.records["runs"]) == 1 and int(after.records["deaths"]) == 1 and int(after.records["kills"]) == 10 and int(after.records["best_combo"]) == 8, "ölünce rekorlar işlendi %s" % str(after.records))
+	check(int(after.records["best_floor"]) == 1 and int(after.records["best_room"]) == 2 and after.best_text(GameMode.Kind.NORMAL) == "EN İYİ KAT 1  ODA 2", "en iyi konum: " + after.best_text(GameMode.Kind.NORMAL))
+	check(after.playtime > 0.0 and after.last_played >= after.created, "oynama süresi ve son oynama tarihi kaydedildi")
+	run2.queue_free()
+	await _frames(3)
+	# --- Terk etme (R): ölüm sayılmaz
+	await _new_world("Kayıt: koşuyu terk etmek ölüm sayılmaz")
+	var slot3 := SaveStore.load_slot(0)
+	GameState.begin_session(slot3, GameMode.Kind.NORMAL)
+	var run3 := _start_run(31)
+	await _frames(3)
+	check(SaveStore.load_slot(0).has_run(GameMode.Kind.NORMAL), "yeni koşu kaydedildi")
+	run3._finish_run(false)
+	var ab := SaveStore.load_slot(0)
+	check(not ab.has_run(GameMode.Kind.NORMAL) and int(ab.records["runs"]) == 2 and int(ab.records["deaths"]) == 1, "terk: koşu sayıldı (2), ölüm değil (1), yarım koşu silindi")
+	run3.queue_free()
+	await _frames(3)
+	# --- Ölü oyuncu kaydetmez; Sınırsız kipte Normal koşu kaydı yazılmaz
+	await _new_world("Kayıt: kip uyuşmazlığı ve ölü oyuncu")
+	GameState.begin_session(SaveStore.load_slot(0), GameMode.Kind.ENDLESS)
+	var run4 := _start_run(32)
+	await _frames(3)
+	check(not SaveStore.load_slot(0).has_run(GameMode.Kind.NORMAL), "Sınırsız kipte Normal koşu kaydı yazılmaz")
+	GameState.mode = GameMode.Kind.NORMAL
+	run4.player.dead = true
+	check(not run4.save_checkpoint(), "ölü oyuncu kaydetmez")
+	run4.player.dead = false
+	run4.queue_free()
+	await _frames(3)
+	_end_saves()
+
+
+## Dalga listesini karşılaştırmak için sahne adlarına çevirir.
+func _wave_names(waves: Array) -> Array:
+	var out: Array = []
+	for w in waves:
+		var names: Array = []
+		for sc in w:
+			names.append((sc as PackedScene).resource_path.get_file().get_basename())
+		out.append(names)
+	return out

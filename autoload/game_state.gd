@@ -18,10 +18,39 @@ var god_mode := false:
 ## `reset()` bunu değiştirmez: ölüp yeniden başlayınca aynı zorlukta devam edilir.
 var difficulty: int = Difficulty.DEFAULT
 
+## Şu an oynanan kayıt slotu (null = kayıtsız oturum: testler, geliştirme). Doluyken koşu kendiliğinden kaydedilir.
+var slot: SaveSlot = null
+## Oynanan kip (GameMode.Kind).
+var mode: int = GameMode.DEFAULT
+## Menüden "devam" denince yüklenecek koşu (RunSnapshot sözlüğü). Koşu sahnesi `_ready`'de bir kez alır.
+var resume_run: Dictionary = {}
+
 ## Oyuncunun seçmeyip BIRAKTIĞI eşyalar: Umbra bunları alır.
 var umbra_items: Array[ItemData] = []
 ## "Aç Kapı" gibi eşyalar Umbra'nın her pusuda fazladan taşıyacağı eşya sayısını artırır.
 var umbra_extra_carry := 0
+
+
+## Bir kayıt slotuyla oyuna başlar: zorluk slottan gelir, koşu durumu sıfırlanır.
+func begin_session(s: SaveSlot, kind: int) -> void:
+	slot = s
+	mode = GameMode.clamp_kind(kind)
+	difficulty = s.difficulty
+	reset()
+
+
+## Kayıt oturumunu kapatır (ana menüye dönüş).
+func end_session() -> void:
+	slot = null
+	resume_run = {}
+	reset()
+
+
+## Bekleyen "devam" koşusunu verir ve temizler (boşsa yeni koşu başlar).
+func take_resume() -> Dictionary:
+	var r := resume_run
+	resume_run = {}
+	return r
 
 
 func reset() -> void:
