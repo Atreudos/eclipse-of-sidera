@@ -23,6 +23,8 @@ var rhythm_bar: RhythmBar
 ## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
 var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
+## Duraklatma menüsü (Esc).
+var pause_menu: PauseMenu
 
 var _hearts: Array[ColorRect] = []
 var _pips: Array[ColorRect] = []
@@ -136,6 +138,9 @@ func _build() -> void:
 	dev_menu = DevMenu.new()
 	dev_menu.name = "DevMenu"
 	root.add_child(dev_menu)
+	pause_menu = PauseMenu.new()
+	pause_menu.name = "PauseMenu"
+	root.add_child(pause_menu)
 
 
 ## Oda sistemi bilgisi: görünen oda no (1'den), mevcut dalga, toplam dalga, oda temizlendi mi.

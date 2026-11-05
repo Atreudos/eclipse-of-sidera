@@ -52,7 +52,7 @@ const PACKS := {
 }
 
 ## Temalar: her tema için aynı 8 dünya çizimi istenir (adın başına tema adı gelir: kat1_bg_far, lobi_floor ...).
-## Sonsuz moddaki arena kat1...kat5 temalarını sırayla kullanır (10 dalgada bir değişir).
+## Sınırsız moddaki arena kat1...kat5 temalarını sırayla kullanır (10 dalgada bir değişir).
 const THEMES: Array[Dictionary] = [
 	{"id": "kat1", "label": "Kat 1", "pack": 2, "mood": "Giriş kulesi: koyu mor taş, altın ışık çizgileri (şimdiki ilk palet)."},
 	{"id": "kat2", "label": "Kat 2", "pack": 7, "mood": "Soğuk su altı hissi: koyu turkuaz taş, turkuaz ışık."},
@@ -325,7 +325,7 @@ static func _world() -> void:
 		var pm := _add(S, gt, id + "_platform_mid", "Platformun orta parçası. Yatayda tekrarlanır", 32, 32, "1", false, 0.0, "üst sol", p)
 		pm["tile"] = "x"
 		_add(S, gt, id + "_platform_right", "Platformun sağ ucu", 24, 32, "1", false, 0.0, "üst sağ", p)
-		var wl := _add(S, gt, id + "_wall", "Duvar: ilk odanın solunda ve sonsuz modun iki ucunda durur. Duvara tutunup sekilebilir. Dikeyde tekrarlanır", 80, 256, "1-4", true, 1.0, "üst sol", p, false)
+		var wl := _add(S, gt, id + "_wall", "Duvar: ilk odanın solunda ve sınırsız modun iki ucunda durur. Duvara tutunup sekilebilir. Dikeyde tekrarlanır", 80, 256, "1-4", true, 1.0, "üst sol", p, false)
 		wl["tile"] = "y"
 
 
@@ -344,7 +344,7 @@ static func _lobby() -> void:
 	_add(S, g, "shop_stand_empty", "Satılınca boş kalan stand", 96, 128, "1-4", true, 0.6, GROUND, 6)
 	_add(S, g, "shop_sign", "Dükkân tabelası (hafifçe sallanır)", 160, 80, "4", true, 1.0, "üst orta", 6, false)
 	_add(S, g, "price_tag", "Fiyat etiketi zemini (rakamı oyun yazar)", 80, 32, "1", false, 0.0, CENTER, 6)
-	_add(S, g, "exit_closed", "Kat geçidi, kapalı (merdiven / kapak / geçit; teması sen belirle). Sonsuz modda dalga geçidi olarak da kullanılır", 128, 192, "4", true, 0.8, GROUND, 6)
+	_add(S, g, "exit_closed", "Kat geçidi, kapalı (merdiven / kapak / geçit; teması sen belirle). Sınırsız modda dalga geçidi olarak da kullanılır", 128, 192, "4", true, 0.8, GROUND, 6)
 	_add(S, g, "exit_opening", "Kat geçidi açılıyor", 128, 192, "8", false, 0.7, GROUND, 6)
 	_add(S, g, "exit_open", "Kat geçidi açık, bekliyor", 128, 192, "6", true, 0.8, GROUND, 6)
 
@@ -451,12 +451,12 @@ static func _menus() -> void:
 	_add(S, g, "ui_slot_delete_icon", "Slotu silme simgesi (çöp / mühür)", 48, 48, "1", false, 0.0, NONE, 5, false)
 	_add(S, g, "ui_text_field", "İsim yazma kutusu (9 dilim)", 360, 56, "1", false, 0.0, NONE, 5, false).merge({"nine": 16})
 	_add(S, g, "ui_text_cursor", "Yazı imleci (yanıp söner)", 8, 40, "2", true, 0.8, NONE, 5, false)
-	_add(S, g, "ui_diff_easy", "KOLAY zorluk amblemi (hareketli olabilir)", 96, 96, "1-6", true, 1.0, NONE, 5)
+	_add(S, g, "ui_diff_easy", "EASY zorluk amblemi (hareketli olabilir)", 96, 96, "1-6", true, 1.0, NONE, 5)
 	_add(S, g, "ui_diff_normal", "NORMAL zorluk amblemi", 96, 96, "1-6", true, 1.0, NONE, 5)
-	_add(S, g, "ui_diff_hard", "ZOR zorluk amblemi", 96, 96, "1-6", true, 1.0, NONE, 5)
-	_add(S, g, "ui_diff_immortal", "ÖLÜMSÜZ zorluk amblemi (en zoru)", 96, 96, "1-6", true, 1.0, NONE, 5)
+	_add(S, g, "ui_diff_difficult", "DIFFICULT zorluk amblemi", 96, 96, "1-6", true, 1.0, NONE, 5)
+	_add(S, g, "ui_diff_immortal", "IMMORTAL zorluk amblemi (en zoru)", 96, 96, "1-6", true, 1.0, NONE, 5)
 	_add(S, g, "ui_mode_normal", "NORMAL MOD (katlar) amblemi", 128, 128, "1-6", true, 1.0, NONE, 5)
-	_add(S, g, "ui_mode_endless", "SONSUZ MOD (dalgalar) amblemi", 128, 128, "1-6", true, 1.0, NONE, 5)
+	_add(S, g, "ui_mode_endless", "SINIRSIZ MOD (dalgalar) amblemi", 128, 128, "1-6", true, 1.0, NONE, 5)
 	g = "Ölüm ekranı ve geçişler"
 	_add(S, g, "ui_death_overlay", "Ölünce ekranı kaplayan karartma / kenar efekti", 1280, 720, "1-8", true, 1.5, NONE, 9, false)
 	_add(S, g, "ui_death_title", "ÖLDÜN başlık grafiği (isteğe bağlı; yoksa yazı tipi kullanılır)", 640, 160, "1-8", false, 0.8, NONE, 9, false)

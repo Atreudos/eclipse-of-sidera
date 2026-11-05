@@ -132,6 +132,13 @@ func _run_all() -> void:
 		"kayit_dosya": _test_save_store,
 		"kayit_oyuncu": _test_save_player_snapshot,
 		"kayit_kosu": _test_save_run,
+		"art_yukleyici": _test_art_loader,
+		"menu_giris": _test_menu_input,
+		"menu_akis": _test_menu_flow,
+		"menu_kayitlar": _test_menu_slots,
+		"menu_kayit_menusu": _test_menu_slot_menu,
+		"menu_duraklat": _test_menu_pause,
+		"menu_sahne": _test_menu_scene,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -4471,7 +4478,8 @@ func _test_save_slot_data() -> void:
 	check(SaveSlot.clean_name("ÇAĞRI Şen") == "ÇAĞRI Şen", "Türkçe harfler korunur")
 	check(SaveSlot.clean_name("a<b>c\n") == "abc", "geçersiz karakterler atılır (<>, satır sonu)")
 	check(SaveSlot.clean_name("A      B") == "A B", "ardışık boşluklar tek olur")
-	check(SaveSlot.clean_name("Umut_2.0-x'") == "Umut_2.0-x'", "rakam ve - _ . ' kalır")
+	check(SaveSlot.clean_name("Umut-2.0-x'") == "Umut-2.0-x'", "rakam ve - . ' kalır")
+	check(SaveSlot.clean_name("a_b") == "ab", "alt çizgi atılır (yazı tipinde yok)")
 	check(SaveSlot.clean_name("") == SaveSlot.DEFAULT_NAME and SaveSlot.clean_name("   ") == SaveSlot.DEFAULT_NAME and SaveSlot.clean_name("<<>>") == SaveSlot.DEFAULT_NAME, "boş kalan isim varsayılana döner")
 	check(SaveSlot.clean_name("0123456789ABCDEFGHIJ").length() == SaveSlot.NAME_MAX, "isim en çok %d karakter" % SaveSlot.NAME_MAX)
 	check(SaveSlot.clean_name("😀Ali😀") == "Ali", "emoji atılır")
@@ -4803,3 +4811,482 @@ func _wave_names(waves: Array) -> Array:
 			names.append((sc as PackedScene).resource_path.get_file().get_basename())
 		out.append(names)
 	return out
+
+
+
+# ------------------------------------------------------------------ çizim yükleyici ve ana menü
+
+const MAIN_MENU := preload("res://ui/menu/main_menu.tscn")
+
+
+## Art.draw / Art.draw_nine'ı gerçek bir _draw içinde çağırıp sonucunu saklar.
+class _ArtProbe extends Control:
+	var file := ""
+	var nine := false
+	var result := false
+
+	func _draw() -> void:
+		var r := Rect2(0.0, 0.0, 64.0, 64.0)
+		result = Art.draw_nine(self, file, r) if nine else Art.draw(self, file, r, 0.0)
+
+
+func _new_menu() -> MainMenu:
+	var m := MAIN_MENU.instantiate() as MainMenu
+	_world.add_child(m)
+	return m
+
+
+func _menu_key(code: Key, pressed := true, echo := false) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.keycode = code
+	e.physical_keycode = code
+	e.pressed = pressed
+	e.echo = echo
+	return e
+
+
+## Yarım koşu kaydı örneği (menü testleri için): 1. kat, 3. oda.
+func _fake_run(seed_value: int = 77, room: int = 2) -> Dictionary:
+	return {"seed": seed_value, "floor": 1, "room": room, "wave": 0, "seen": [], "player": {"health": 3, "gold": 10, "equipped": [], "bag": []}}
+
+
+func _test_art_loader() -> void:
+	await _new_world("Art: çizim yükleyici (ada göre bulma, şerit kareleri, yoksa yer tutucu)")
+	Art.reset()
+	check(not Art.has("ui_logo") and Art.texture("ui_logo") == null and Art.frame_count("ui_logo") == 0, "çizim yokken: yok, doku null, kare 0")
+	var img := Image.create(128, 32, false, Image.FORMAT_RGBA8)
+	img.fill(Color.WHITE)
+	Art.override["ui_arrow_left"] = ImageTexture.create_from_image(img)
+	check(Art.has("ui_arrow_left") and Art.frame_count("ui_arrow_left") == 4, "128x32 şerit, kare 32 geniş: 4 kare")
+	check(Art.frame_at("ui_arrow_left", 0.0) == 0 and Art.frame_at("ui_arrow_left", 0.26) == 2 and Art.frame_at("ui_arrow_left", 0.51) == 0, "döngülü: 0.26 sn kare 2, 0.51 sn başa döner")
+	check(Art.frame_rect("ui_arrow_left", 2) == Rect2(64.0, 0.0, 32.0, 32.0) and Art.frame_rect("ui_arrow_left", 99) == Rect2(96.0, 0.0, 32.0, 32.0), "kare alanı; sınır dışı kare sona çekilir")
+	var strip := Image.create(288, 48, false, Image.FORMAT_RGBA8)
+	Art.override["ui_heart_break"] = ImageTexture.create_from_image(strip)
+	check(Art.frame_count("ui_heart_break") == 6 and Art.frame_at("ui_heart_break", 0.0) == 0 and Art.frame_at("ui_heart_break", 0.16) == 3, "tek seferlik şerit: 6 kare, ortada kare 3")
+	check(Art.frame_at("ui_heart_break", 5.0) == 5 and Art.frame_at("ui_heart_break", -1.0) == 0, "tek seferlik: bitince son karede kalır, negatif süre ilk kare")
+	Art.override["bilinmeyen_cizim"] = ImageTexture.create_from_image(img)
+	check(Art.frame_count("bilinmeyen_cizim") == 1 and Art.frame_rect("bilinmeyen_cizim", 0) == Rect2(0.0, 0.0, 128.0, 32.0), "manifestte olmayan ad: tek kare")
+	Art.override["ui_arrow_right"] = ImageTexture.create_from_image(Image.create(16, 16, false, Image.FORMAT_RGBA8))
+	check(Art.frame_count("ui_arrow_right") == 1, "kare genişliğinden dar çizim: tek kare")
+	# Gerçek bir _draw içinde
+	var probe := _ArtProbe.new()
+	_world.add_child(probe)
+	probe.file = "ui_arrow_left"
+	probe.queue_redraw()
+	await _frames(3)
+	check(probe.result, "Art.draw: çizim varsa çizer")
+	probe.file = "ui_logo"
+	probe.queue_redraw()
+	await _frames(3)
+	check(not probe.result, "Art.draw: çizim yoksa false (yer tutucu çizilir)")
+	probe.nine = true
+	probe.file = "ui_inv_panel"
+	Art.override["ui_inv_panel"] = ImageTexture.create_from_image(Image.create(96, 96, false, Image.FORMAT_RGBA8))
+	probe.queue_redraw()
+	await _frames(3)
+	check(probe.result, "Art.draw_nine: 9 dilimli çerçeve çizilir")
+	# Dosya dizini: ada göre, klasör önemsiz
+	var dir := "user://art_test"
+	DirAccess.make_dir_recursive_absolute(dir + "/a")
+	DirAccess.make_dir_recursive_absolute(dir + "/b")
+	img.save_png(dir + "/a/ayni_ad.png")
+	img.save_png(dir + "/b/ayni_ad.png")
+	img.save_png(dir + "/b/sadece_b.png")
+	var old_root := Art.root
+	Art.root = dir
+	Art.reset()
+	check(Art.path_of("sadece_b") == dir + "/b/sadece_b.png" and Art.has("sadece_b"), "dosya adıyla bulunur (klasör önemsiz)")
+	check(Art.path_of("ayni_ad") == dir + "/a/ayni_ad.png", "aynı ad iki yerdeyse alfabetik ilk klasör kazanır")
+	check(Art.path_of("yok_boyle_dosya") == "" and not Art.has("yok_boyle_dosya"), "olmayan dosya: boş yol")
+	for f in ["/a/ayni_ad.png", "/b/ayni_ad.png", "/b/sadece_b.png"]:
+		DirAccess.remove_absolute(dir + f)
+	for d in ["/a", "/b", ""]:
+		DirAccess.remove_absolute(dir + d)
+	Art.root = old_root
+	Art.reset()
+	check(Art.override.is_empty() and Art.texture("ui_arrow_left") == null, "reset: geçersiz kılmalar temizlendi")
+
+
+func _test_menu_input() -> void:
+	await _new_world("Menü: giriş eşlemesi (klavye, kumanda, çubuk, yazı modu)")
+	_clean_saves()
+	var m := _new_menu()
+	await _frames(2)
+	check(m.top_id() == "title" and m.stack.size() == 1, "açılış: başlık ekranı")
+	check(m.action_of(_menu_key(KEY_W)) == "up" and m.action_of(_menu_key(KEY_S)) == "down" and m.action_of(_menu_key(KEY_A)) == "left" and m.action_of(_menu_key(KEY_D)) == "right", "WASD gezinir")
+	check(m.action_of(_menu_key(KEY_UP)) == "up" and m.action_of(_menu_key(KEY_DOWN)) == "down" and m.action_of(_menu_key(KEY_LEFT)) == "left" and m.action_of(_menu_key(KEY_RIGHT)) == "right", "ok tuşları gezinir")
+	check(m.action_of(_menu_key(KEY_ENTER)) == "accept" and m.action_of(_menu_key(KEY_SPACE)) == "accept" and m.action_of(_menu_key(KEY_E)) == "accept" and m.action_of(_menu_key(KEY_J)) == "accept", "Enter / Space / E / J seçer")
+	check(m.action_of(_menu_key(KEY_ESCAPE)) == "back" and m.action_of(_menu_key(KEY_BACKSPACE)) == "back", "Esc ve Backspace geri")
+	check(m.action_of(_menu_key(KEY_DELETE)) == "delete", "Delete: sil")
+	check(m.action_of(_menu_key(KEY_W, false)) == "" and m.action_of(_menu_key(KEY_K)) == "", "tuş bırakma ve ilgisiz tuş eylem değil")
+	check(m.action_of(_menu_key(KEY_ENTER, true, true)) == "" and m.action_of(_menu_key(KEY_DOWN, true, true)) == "down", "tuş tekrarı: yön tuşu tekrarlar, Enter tekrarlamaz")
+	var jb := InputEventJoypadButton.new()
+	jb.pressed = true
+	jb.button_index = JOY_BUTTON_DPAD_UP
+	var pad_up := m.action_of(jb)
+	jb.button_index = JOY_BUTTON_A
+	var pad_a := m.action_of(jb)
+	jb.button_index = JOY_BUTTON_B
+	var pad_b := m.action_of(jb)
+	check(pad_up == "up" and pad_a == "accept" and pad_b == "back", "kumanda: D-pad yukarı, A seç, B geri")
+	var jm := InputEventJoypadMotion.new()
+	jm.axis = JOY_AXIS_LEFT_Y
+	jm.axis_value = 0.8
+	var s1 := m.action_of(jm)
+	jm.axis_value = 0.9
+	var s2 := m.action_of(jm)
+	jm.axis_value = 0.1
+	var s3 := m.action_of(jm)
+	jm.axis_value = -0.8
+	var s4 := m.action_of(jm)
+	check(s1 == "down" and s2 == "" and s3 == "" and s4 == "up", "sol çubuk: itişte bir kez, basılı tutarken tekrarlamaz, bırakınca yeniden")
+	# Yazı modu: harf tuşları gezinmez, yazılır
+	m.push(NewGameScreen.new(0))
+	check(m.top().wants_text(), "yeni oyun adımı yazı modunda")
+	check(m.action_of(_menu_key(KEY_W)) == "" and m.action_of(_menu_key(KEY_SPACE)) == "" and m.action_of(_menu_key(KEY_E)) == "", "yazı modunda harf tuşları ve Space gezinme/seçme olmaz")
+	check(m.action_of(_menu_key(KEY_BACKSPACE)) == "backspace" and m.action_of(_menu_key(KEY_ENTER)) == "accept" and m.action_of(_menu_key(KEY_ESCAPE)) == "back" and m.action_of(_menu_key(KEY_UP)) == "up", "yazı modunda Backspace siler; Enter, Esc, ok tuşları çalışır")
+	var typed := _menu_key(KEY_W)
+	typed.unicode = "w".unicode_at(0)
+	m._unhandled_input(typed)
+	check((m.top() as NewGameScreen).name_text == "W", "gerçek tuş olayı: 'w' yazıldı (büyük harf)")
+	# Yazı modu dışında yazılan harf isme gitmez
+	m.pop()
+	m.type_char("x")
+	check(m.top_id() == "title", "başlıkta karakter yazmak bir şey yapmaz")
+	_end_saves()
+
+
+func _test_menu_flow() -> void:
+	await _new_world("Menü: başlık ekranı, krediler, çıkış ve fare")
+	_clean_saves()
+	var quits := [0]
+	SceneRouter.quit_hook = func() -> void: quits[0] += 1
+	var m := _new_menu()
+	await _frames(2)
+	var title := m.top() as TitleScreen
+	check(title != null and title.list.count() == 3 and title.list.current_id() == "play", "başlık: 3 seçenek, imleç OYNA'da")
+	m.press("down")
+	check(title.list.current_id() == "credits", "aşağı: KREDİLER")
+	m.press("down")
+	m.press("down")
+	check(title.list.current_id() == "play", "aşağı uçta başa sarar")
+	m.press("up")
+	check(title.list.current_id() == "quit", "yukarı başta sona sarar")
+	m.press("up")
+	m.press("accept")
+	check(m.top_id() == "credits", "KREDİLER açıldı")
+	var cr := m.top() as CreditsScreen
+	var o0 := cr.offset
+	cr.on_tick(1.0)
+	check(cr.offset > o0 and cr.content_height() > 500.0, "krediler kayıyor, içerik dolu (%.0f px)" % cr.content_height())
+	var kinds_ok := true
+	for l in CreditsScreen.LINES:
+		if not CreditsScreen.HEIGHTS.has(l[0]):
+			kinds_ok = false
+	check(kinds_ok, "kredi satırlarının hepsi bilinen türde")
+	m.press("up")
+	check(cr.offset >= 0.0, "yukarı kaydırma sınırı aşmaz")
+	await _frames(3)
+	m.press("back")
+	check(m.top_id() == "title", "geri: başlığa dönüldü")
+	# Fare
+	var r_quit := title.list.rect_of(2)
+	m.hover_at(r_quit.get_center())
+	check(title.list.current_id() == "quit", "fare üstüne gelince seçer")
+	m.click_at(Vector2(4.0, 4.0))
+	check(quits[0] == 0, "boş yere tıklamak çıkış yapmaz")
+	m.click_at(r_quit.get_center())
+	check(quits[0] == 1, "ÇIKIŞ'a tıklayınca çıkış kancası çağrıldı")
+	m.press("back")
+	m.pop()
+	check(m.top_id() == "title" and m.stack.size() == 1, "kök ekranda geri/pop ekranı kapatmaz")
+	title.list.focus("play")
+	m.press("accept")
+	check(m.top_id() == "slots", "OYNA: kayıt ekranı")
+	await _frames(3)
+	m.press("back")
+	check(m.top_id() == "title", "geri: başlık")
+	m.push(CreditsScreen.new())
+	m.push(SlotsScreen.new())
+	m.pop_to_root()
+	check(m.stack.size() == 1 and m.top_id() == "title", "pop_to_root: başlığa döner")
+	# F8: kayıtsız hızlı koşu (yalnız başlıkta)
+	var went := [""]
+	SceneRouter.hook = func(path: String) -> void: went[0] = path
+	m.push(CreditsScreen.new())
+	m._unhandled_input(_menu_key(KEY_F8))
+	check(went[0] == "", "F8 yalnız başlık ekranında çalışır")
+	m.pop()
+	m._unhandled_input(_menu_key(KEY_F8))
+	check(went[0] == SceneRouter.RUN and GameState.slot == null, "F8: kayıtsız koşu sahnesi")
+	SceneRouter.hook = Callable()
+	SceneRouter.quit_hook = Callable()
+	_end_saves()
+
+
+func _test_menu_slots() -> void:
+	await _new_world("Menü: kayıt ekranı (boş/dolu kartlar, yeni oyun sihirbazı, silme)")
+	_clean_saves()
+	var m := _new_menu()
+	await _frames(2)
+	m.press("accept")
+	var sl := m.top() as SlotsScreen
+	check(sl != null and sl.slots.size() == 3 and sl.slot_at(0) == null and sl.slot_at(1) == null and sl.slot_at(2) == null, "üç boş kart")
+	check(sl.cursor == 0, "hepsi boşken imleç ilk kartta")
+	m.press("down")
+	m.press("down")
+	check(sl.cursor == 2, "aşağı: 3. kart")
+	m.press("down")
+	check(sl.cursor == 0, "aşağı uçta başa sarar")
+	m.press("delete")
+	check(m.top_id() == "slots", "boş kartı silmeye çalışmak onay açmaz")
+	await _frames(3)
+	# Yeni oyun: isim
+	m.press("accept")
+	check(m.top_id() == "new_game", "boş kart: yeni oyun sihirbazı")
+	var ng := m.top() as NewGameScreen
+	check(ng.slot_index == 0 and ng.step == 0 and ng.wants_text() and ng.name_text == "", "adım 1: isim, boş")
+	m.type_text("ali veli")
+	check(ng.name_text == "ALİ VELİ", "Türkçe büyük harf: 'ali veli' -> 'ALİ VELİ' (i -> İ)")
+	m.type_text("<_>")
+	check(ng.name_text == "ALİ VELİ", "yazı tipinde olmayan karakterler yazılmaz")
+	m.type_text("1234567890")
+	check(ng.name_text == "ALİ VELİ1234" and ng.name_text.length() == SaveSlot.NAME_MAX, "en çok %d karakter" % SaveSlot.NAME_MAX)
+	m.press("backspace")
+	check(ng.name_text == "ALİ VELİ123", "Backspace sondan siler")
+	await _frames(3)
+	m.press("accept")
+	check(ng.step == 1 and not ng.wants_text() and ng.level == Difficulty.DEFAULT, "adım 2: zorluk, varsayılan NORMAL")
+	m.press("down")
+	check(ng.level == Difficulty.Level.HARD, "aşağı: DIFFICULT")
+	m.press("down")
+	m.press("down")
+	check(ng.level == Difficulty.Level.EASY, "aşağı uçta başa sarar: EASY")
+	m.press("up")
+	check(ng.level == Difficulty.Level.IMMORTAL, "yukarı başta sona sarar: IMMORTAL")
+	await _frames(3)
+	m.press("back")
+	check(ng.step == 0 and ng.name_text == "ALİ VELİ123" and m.top_id() == "new_game", "geri: isim adımına döner, isim korunur")
+	m.press("accept")
+	check(ng.step == 1 and ng.level == Difficulty.Level.IMMORTAL, "yeniden ileri: seçili zorluk korunur")
+	m.press("accept")
+	check(m.top_id() == "slot" and (m.top() as SlotMenuScreen).slot.index == 0, "oluşturunca kayıt menüsü açıldı")
+	var disk := SaveStore.load_slot(0)
+	check(disk != null and disk.name == "ALİ VELİ123" and disk.difficulty == Difficulty.Level.IMMORTAL and not disk.has_run(GameMode.Kind.NORMAL), "diskte: ad, zorluk IMMORTAL, koşu yok")
+	m.press("back")
+	check(m.top_id() == "slots" and sl.slot_at(0) != null and sl.slot_at(0).name == "ALİ VELİ123", "geri: kayıt ekranı, kart doldu")
+	# Mouse ile 3. slot; boş isim = varsayılan
+	m.click_at(sl.card_rect(2).get_center())
+	check(m.top_id() == "new_game" and (m.top() as NewGameScreen).slot_index == 2, "karta tıklamak onu açar (3. kart)")
+	m.press("accept")
+	m.press("accept")
+	var d2 := SaveStore.load_slot(2)
+	check(d2 != null and d2.name == SaveSlot.DEFAULT_NAME and d2.difficulty == Difficulty.DEFAULT, "boş isim varsayılana döndü, zorluk NORMAL")
+	m.press("back")
+	# Son oynanan slota imleç
+	var s0 := SaveStore.load_slot(0)
+	var s2 := SaveStore.load_slot(2)
+	s2.last_played = s0.last_played + 500
+	SaveStore.save_slot(s2)
+	m.pop_to_root()
+	m.press("accept")
+	sl = m.top() as SlotsScreen
+	check(sl.cursor == 2, "kayıt ekranı en son oynanan slotta açılır")
+	# Silme: vazgeç, sonra onayla
+	sl.cursor = 0
+	m.press("delete")
+	check(m.top_id() == "confirm" and (m.top() as ConfirmScreen).cursor == 1, "Del: onay penceresi, imleç güvenli seçenekte (hayır)")
+	await _frames(3)
+	m.press("accept")
+	check(m.top_id() == "slots" and SaveStore.load_slot(0) != null, "VAZGEÇ: kayıt silinmedi")
+	m.press("delete")
+	m.press("left")
+	m.press("accept")
+	check(m.top_id() == "slots" and SaveStore.load_slot(0) == null and sl.slot_at(0) == null, "SİL: kayıt diskten ve karttan kalktı")
+	check(m.message() == "SLOT 1 SİLİNDİ" and SaveStore.load_slot(2) != null, "mesaj gösterildi, diğer kayıt yerinde")
+	_end_saves()
+
+
+func _test_menu_slot_menu() -> void:
+	await _new_world("Menü: kayıt menüsü (kipler, devam, yeni koşu, zorluk, silme) ve oyuna geçiş")
+	_clean_saves()
+	var went := [""]
+	SceneRouter.hook = func(path: String) -> void: went[0] = path
+	var s := SaveSlot.create(1, "Test", Difficulty.Level.NORMAL)
+	s.set_run(GameMode.Kind.NORMAL, _fake_run())
+	s.records["best_floor"] = 2
+	s.records["best_room"] = 4
+	check(SaveStore.save_slot(s), "kayıt yazıldı")
+	var m := _new_menu()
+	await _frames(2)
+	m.press("accept")
+	check(m.top_id() == "slots" and (m.top() as SlotsScreen).cursor == 1, "dolu tek kayıt: imleç ona")
+	m.press("accept")
+	var sm := m.top() as SlotMenuScreen
+	check(sm != null and sm.slot.name == "Test", "dolu kart: kayıt menüsü")
+	var ids: Array = []
+	for r in sm.list.rows:
+		ids.append(r["id"])
+	check(ids == ["play_normal", "new_normal", "play_endless", "difficulty", "delete", "back"], "satırlar: " + str(ids))
+	check(sm.list.rows[0]["text"] == "NORMAL  DEVAM" and sm.list.rows[0]["note"] == "KAT 1  ODA 3", "yarım koşu: DEVAM ve kaldığın yer (KAT 1  ODA 3)")
+	var endless_ok := SceneRouter.can_play(GameMode.Kind.ENDLESS)
+	check(bool(sm.list.rows[2]["enabled"]) == endless_ok and bool(sm.list.rows[0]["enabled"]), "NORMAL açık; SINIRSIZ yalnız sahnesi varsa açık")
+	await _frames(3)
+	if not endless_ok:
+		check(sm.list.rows[2]["note"] == "YAKINDA", "kapalı kipte YAKINDA notu")
+		sm.list.focus("play_endless")
+		m.press("accept")
+		check(went[0] == "" and m.message() == "BU KİP HENÜZ HAZIR DEĞİL", "kapalı kipe girilmez, mesaj gösterilir")
+		check(not m.start_game(sm.slot, GameMode.Kind.ENDLESS, false) and GameState.slot == null, "sahnesi olmayan kip başlatılamaz, oturum açılmaz")
+	# Zorluk yarım koşu varken kilitli
+	sm.list.focus("difficulty")
+	m.press("right")
+	check(sm.slot.difficulty == Difficulty.Level.NORMAL and m.message() == "YARIM KOŞU VARKEN ZORLUK DEĞİŞMEZ", "yarım koşu varken zorluk değişmez")
+	# Devam
+	sm.list.focus("play_normal")
+	m.press("accept")
+	check(went[0] == SceneRouter.RUN, "DEVAM: koşu sahnesine geçildi")
+	check(GameState.slot != null and GameState.slot.index == 1 and GameState.mode == GameMode.Kind.NORMAL and GameState.difficulty == Difficulty.Level.NORMAL, "oturum kayıtla kuruldu")
+	check(not GameState.resume_run.is_empty() and SaveSlot._int(GameState.resume_run["seed"]) == 77, "kayıtlı koşu devam için hazır (tohum 77)")
+	GameState.end_session()
+	went[0] = ""
+	# Yeni koşu: vazgeç, sonra onayla
+	sm.list.focus("new_normal")
+	m.press("accept")
+	check(m.top_id() == "confirm", "YENİ KOŞU: onay soruldu")
+	m.press("accept")
+	check(m.top_id() == "slot" and went[0] == "" and SaveStore.load_slot(1).has_run(GameMode.Kind.NORMAL), "VAZGEÇ: yarım koşu silinmedi")
+	m.press("accept")
+	m.press("left")
+	m.press("accept")
+	check(went[0] == SceneRouter.RUN and GameState.resume_run.is_empty(), "onaylandı: koşu sahnesi, devam verisi yok (yeni koşu)")
+	check(not SaveStore.load_slot(1).has_run(GameMode.Kind.NORMAL), "eski yarım koşu diskten silindi")
+	check(SaveStore.load_slot(1).records["best_floor"] == 2, "rekorlar korundu")
+	GameState.end_session()
+	went[0] = ""
+	# Koşu yok: BAŞLA ve zorluk serbest
+	check(not sm.has_any_run() and sm.list.rows[0]["text"] == "NORMAL  BAŞLA" and sm.list.index_of("new_normal") == -1, "koşu yok: BAŞLA, YENİ KOŞU satırı yok")
+	sm.list.focus("difficulty")
+	m.press("right")
+	check(sm.slot.difficulty == Difficulty.Level.HARD and SaveStore.load_slot(1).difficulty == Difficulty.Level.HARD, "sağ: DIFFICULT, diske yazıldı")
+	m.press("left")
+	m.press("left")
+	check(sm.slot.difficulty == Difficulty.Level.EASY, "sol sol: EASY")
+	m.press("left")
+	check(sm.slot.difficulty == Difficulty.Level.IMMORTAL, "sol başta sona sarar: IMMORTAL")
+	m.press("right")
+	check(sm.slot.difficulty == Difficulty.Level.EASY, "sağ sonda başa sarar: EASY")
+	await _frames(3)
+	sm.list.focus("play_normal")
+	m.press("accept")
+	check(went[0] == SceneRouter.RUN and GameState.difficulty == Difficulty.Level.EASY and GameState.resume_run.is_empty(), "BAŞLA: seçili zorlukla yeni koşu")
+	GameState.end_session()
+	went[0] = ""
+	# Fare: satıra tıklamak çalıştırır
+	m.click_at(sm.list.rect_of(sm.list.index_of("delete")).get_center())
+	check(m.top_id() == "confirm", "satıra tıklamak çalıştırır (KAYDI SİL onayı)")
+	m.press("left")
+	m.press("accept")
+	check(m.top_id() == "slots" and SaveStore.load_slot(1) == null and (m.top() as SlotsScreen).slot_at(1) == null, "kayıt silindi, kayıt ekranına dönüldü")
+	check(m.message() == "KAYIT SİLİNDİ", "silme mesajı")
+	SceneRouter.hook = Callable()
+	_end_saves()
+
+
+func _test_menu_pause() -> void:
+	await _new_world("Menü: duraklatma menüsü, ana menüye dönüş, ölüm ekranında M")
+	_clean_saves()
+	GameState.end_session()
+	var went := [""]
+	SceneRouter.hook = func(path: String) -> void: went[0] = path
+	var run := _start_run(5)
+	await _frames(3)
+	var pm := run.hud.pause_menu
+	check(pm != null and not pm.is_open, "duraklatma menüsü HUD'da var, kapalı")
+	var esc := InputEventAction.new()
+	esc.action = "ui_cancel"
+	esc.pressed = true
+	pm._unhandled_input(esc)
+	check(pm.is_open and get_tree().paused, "Esc: açıldı, oyun durdu")
+	check(pm.list.current_id() == "resume", "imleç DEVAM ET'te")
+	pm.press("down")
+	check(pm.list.current_id() == "restart", "aşağı: YENİDEN BAŞLA")
+	pm.press("accept")
+	check(pm.armed == "restart" and pm.is_open and went[0] == "", "YENİDEN BAŞLA ilk basışta onay ister")
+	pm.press("down")
+	check(pm.armed == "" and pm.list.current_id() == "menu", "imleç oynayınca onay iptal olur")
+	pm.press("accept")
+	check(pm.armed == "menu" and went[0] == "", "kayıtsız oturumda ANA MENÜ de onay ister")
+	await _frames(3)
+	pm.press("accept")
+	check(went[0] == SceneRouter.MENU and not pm.is_open and not get_tree().paused, "ikinci basış: ana menüye geçildi, duraklama kalktı")
+	went[0] = ""
+	pm.open(run.player)
+	pm._unhandled_input(esc)
+	check(not pm.is_open and not get_tree().paused, "Esc yeniden: kapandı, oyun sürüyor")
+	pm.open(run.player)
+	pm.press("accept")
+	check(not pm.is_open, "DEVAM ET: kapanır")
+	# Başka menü açıkken Esc duraklatmayı açmaz
+	run.hud.inventory_screen.open(run.player)
+	pm._unhandled_input(esc)
+	check(not pm.is_open and ItemView.active_menu == run.hud.inventory_screen, "envanter açıkken Esc duraklatmayı açmaz")
+	run.hud.inventory_screen.close()
+	# Ölüyken açılmaz; ölüm ekranında M
+	run.player.dead = true
+	pm._unhandled_input(esc)
+	check(not pm.is_open, "ölüyken duraklatma açılmaz")
+	run._unhandled_key_input(_ui_key(KEY_M))
+	check(went[0] == SceneRouter.MENU, "ölüm ekranında M: ana menü")
+	went[0] = ""
+	run.player.dead = false
+	run._unhandled_key_input(_ui_key(KEY_M))
+	check(went[0] == "", "yaşarken M bir şey yapmaz")
+	run.queue_free()
+	await _frames(3)
+	# Kayıtlı oturum: onay istemez, süre yazılır, yarım koşu (oda başı) durur
+	await _new_world("Menü: kayıtlı oturumda ana menüye dönüş")
+	var slot := SaveSlot.create(0, "Deneme", Difficulty.Level.NORMAL)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run2 := _start_run(9)
+	await _frames(40)
+	var played := slot.playtime
+	check(played > 0.0 and SaveStore.load_slot(0).has_run(GameMode.Kind.NORMAL), "koşu sürüyor, oda başı kaydı var")
+	var pm2 := run2.hud.pause_menu
+	pm2.open(run2.player)
+	pm2.list.focus("menu")
+	check(not pm2.needs_confirm("menu") and pm2.needs_confirm("restart"), "kayıtlı oturumda ANA MENÜ onay istemez, YENİDEN BAŞLA ister")
+	run2.return_to_menu()
+	check(went[0] == SceneRouter.MENU and GameState.slot == null and not get_tree().paused, "ana menüye dönüldü, oturum kapandı")
+	var disk := SaveStore.load_slot(0)
+	check(disk != null and disk.has_run(GameMode.Kind.NORMAL) and disk.playtime >= played - 0.01, "diskte: yarım koşu duruyor, süre yazıldı (%.1f sn)" % disk.playtime)
+	run2.queue_free()
+	await _frames(3)
+	SceneRouter.hook = Callable()
+	_end_saves()
+
+
+func _test_menu_scene() -> void:
+	await _new_world("Menü: ana sahne ve oturum temizliği")
+	check(str(ProjectSettings.get_setting("application/run/main_scene")) == SceneRouter.MENU, "oyun ana menüyle açılır (main_scene)")
+	check(ResourceLoader.exists(SceneRouter.MENU) and ResourceLoader.exists(SceneRouter.RUN), "menü ve koşu sahneleri var")
+	GameState.begin_session(SaveSlot.create(0, "X", Difficulty.Level.HARD), GameMode.Kind.NORMAL)
+	GameState.resume_run = {"seed": 1}
+	get_tree().paused = true
+	var m := _new_menu()
+	check(GameState.slot == null and GameState.resume_run.is_empty() and not get_tree().paused, "menü açılınca eski oturum kapanır, duraklama kalkar")
+	check(m.stack.size() == 1 and m.top() is TitleScreen, "başlık ekranı açıldı")
+	check(not m.start_game(null, GameMode.Kind.NORMAL, false), "slotsuz başlatılamaz")
+	var went := [""]
+	SceneRouter.hook = func(path: String) -> void: went[0] = path
+	GameState.begin_session(SaveSlot.create(0, "T", Difficulty.Level.IMMORTAL), GameMode.Kind.NORMAL)
+	m.quick_run()
+	check(went[0] == SceneRouter.RUN and GameState.slot == null, "hızlı koşu kayıtsız oturum açar")
+	check(SceneRouter.scene_for(GameMode.Kind.NORMAL) == SceneRouter.RUN and SceneRouter.scene_for(GameMode.Kind.ENDLESS) == SceneRouter.ENDLESS, "kip -> sahne eşlemesi")
+	went[0] = ""
+	GameState.begin_session(SaveSlot.create(0, "T", Difficulty.Level.HARD), GameMode.Kind.NORMAL)
+	get_tree().paused = true
+	SceneRouter.go_menu(get_tree())
+	check(went[0] == SceneRouter.MENU and GameState.slot == null and not get_tree().paused, "go_menu: oturum kapanır, duraklama kalkar")
+	SceneRouter.hook = Callable()
+	_end_saves()

@@ -12,7 +12,7 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 
 1. Godot 4.4.x indir (standart sürüm, .NET gerekmez).
 2. Godot'ta **Import** ile bu klasördeki `project.godot` dosyasını aç.
-3. Editörde `F5` (ya da sağ üstteki ▶) ile oynat. (Oyunun içindeki `F5` başka işe yarar, aşağıya bak.)
+3. Editörde `F5` (ya da sağ üstteki ▶) ile oynat: oyun **ana menüyle** açılır (OYNA, KREDİLER, ÇIKIŞ). Doğrudan koşuyu denemek için menüde `F8` (kayıtsız hızlı koşu) ya da editörde `levels/run.tscn` açıp `F6` ("Geçerli sahneyi çalıştır"). (Oyunun içindeki `F5` başka işe yarar, aşağıya bak.)
 
 ## Kontroller (şimdilik)
 
@@ -29,6 +29,8 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | I / Tab | **Envanter ekranı**: karakter, slotlar, çanta. Oyunu durdurur. Yön tuşları/WASD/fare ile gez; Enter/E/J ya da tıkla: tak, çıkar, ye. Esc kapatır |
 | F5 | **Eşya menüsü (deneme)**: listeden eşya seçip envantere ekler. Enter/E/J ekle, T yalnız çantaya, G +50 altın, H canı doldur, B +1 bağışıklık kalbi, C hepsini sil |
 | F6 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
+| Esc | **Duraklatma menüsü**: devam, yeniden başla, ana menü, oyundan çık (koşuyu kaybettirenler ikinci basışta onaylanır) |
+| M | Ölüm ekranında: ana menüye dön |
 
 Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile kaç.
 
@@ -42,6 +44,7 @@ Gövdeler katı: dash düşmanın içinden geçmez (çarpıp durur), birbirinizi
 Vuruş sersemletmesi: kombo yediği sırada düşman saldıramaz (hazırlığı iptal olur). Altın (parry'lenebilir) saldırılar seyrek, kırmızılar (kaçılacak) çoğunlukta; altın saldırıda sarı elmas, kırmızıda sadece kırmızı parıltı var.
 **Scorpius** (3. düşman): mesafe oyunu oynar: fazla yakınsan geri takla atar, rapier menzilinde çok kısa bir altın uyarıyla ışık hızında dürtüp hemen geri çekilir. Bazen sahte dürtüş yapar: erken parry'lersen arkana ışınlanıp sırtından vurur, sakin kalırsan boşa gider. Gerçek dürtüşü tam zamanında parry'lersen 1.5 sn sersemler (tek güvenli hasar fırsatı). 3. odanın 2. dalgasından itibaren dalgalara karışır.
 **Eşya sistemi** (Aşama 3'ün büyük kısmı): slotlar (ayak 1, charm 3, kafa 2, cep 1, bilek 1, zırh 1) + 24 hücrelik çanta + envanter ekranı (`I`) ve deneme için `F5` eşya menüsü. 10 donanım (Ayna Tabanlı Çizmeler, Hafif Tüy Botlar, Engerek Dişi Kolyesi, Yıldız Tozu Broşu, Vampir Yadigarı, Antika Muhafız Kaskı, Gözcü Bandı, Çatlak El Aynası, Satürn'ün Kum Saati, Hırsızın Zinciri) ve 3 yemek (Kule Ekmeği, Fırınlanmış Tatlı Patates, Kozmik Yıldız Çorbası). Fazla iyileşme mavi **bağışıklık kalbi** olur (bağışıklık kalbi varken yemek yenmez). Düşmanlar altın düşürür (sayaç HUD'da; harcama yeri mağaza). **Refleks** statı parry penceresini ölçekler. Satürn'ün Kum Saati: iki saldırıyı birlikte parry'lersen zaman 1.5 sn durur.
+**Ana menü ve kayıt** (`ui/menu/`): başlık ekranı (OYNA / KREDİLER / ÇIKIŞ), 3 kayıt slotu (ad, zorluk, kaldığın yer, süre, rekorlar), yeni oyun sihirbazı (ad yaz + zorluk seç: EASY / NORMAL / DIFFICULT / IMMORTAL), kayıt menüsü (NORMAL ve SINIRSIZ kip için DEVAM / BAŞLA / YENİ KOŞU, zorluk değiştirme, kaydı silme), krediler ve oyun içi duraklatma menüsü. Klavye, fare ve kumandayla gezilir. Koşu her odaya girerken kendiliğinden kaydedilir (kayıt `user://saves/` altında, bozulursa yedeğe düşer). Zorluk düşman canını, hasarını, hızını, saldırı sıklığını ve **zekâsını** (sabır, ceza, önden hedefleme, kaçış, aldatma) ayarlar; tur ilerledikçe düşmanlar sınırsız ama yavaş güçlenir. Arka plan ve logo kodla çizilir; çizimlerin (`ui_menu_bg_far`, `ui_logo`...) `assets/` altına konunca otomatik onların yerine geçer (`art/art.gd`).
 Sıradaki: ödül mezatı (2 eşya, seçmediğin Umbra'ya), **her katın başında mağaza**, Umbra ve yeni düşmanlar (ör. zırhlı bir 4. düşman).
 
 ## Sprite eklemek
@@ -64,7 +67,8 @@ Ekran görüntüsü alma (sanal ekranla):
 xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
   godot --path . --rendering-driver opengl3 --fixed-fps 60 res://tools/screenshots.tscn -- /cikti/klasoru
 # oda sistemi için: res://tools/screenshots_run.tscn
-# envanter ekranı ve F5 menüsü için: res://tools/screenshots_menus.tscn
+# envanter ekranı, F5 menüsü ve duraklatma menüsü için: res://tools/screenshots_menus.tscn
+# ana menü ekranları için: res://tools/screenshots_main_menu.tscn
 ```
 
 Betik derleme kontrolü (tüm `.gd` dosyalarını yükler, hata varsa listeler):

@@ -106,4 +106,17 @@ func _run() -> void:
 	await _frames(4)
 	await _shot("m10_deneme_menusu_son")
 	dev_menu._unhandled_input(_key(KEY_F5, true))
+	await _frames(4)
+
+	# 4) Duraklatma menüsü (Esc)
+	var esc := InputEventAction.new()
+	esc.action = "ui_cancel"
+	esc.pressed = true
+	run.hud.pause_menu._unhandled_input(esc)
+	await _frames(8)
+	await _shot("m11_duraklat")
+	run.hud.pause_menu.press("down")
+	run.hud.pause_menu.press("accept")
+	await _frames(6)
+	await _shot("m12_duraklat_onay")
 	get_tree().quit()

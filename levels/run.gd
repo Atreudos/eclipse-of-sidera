@@ -341,14 +341,36 @@ func _finish_run(died: bool) -> void:
 	SaveStore.save_slot(slot)
 
 
+## Ana menüye döner (duraklatma menüsü ve ölüm ekranı). Yarım koşu son oda başlangıcında kalır; süre yazılır.
+func return_to_menu() -> void:
+	_save_slot_time()
+	SceneRouter.go_menu(get_tree())
+
+
+## Oyundan çıkar (süre yazılır).
+func quit_game() -> void:
+	_save_slot_time()
+	SceneRouter.quit(get_tree())
+
+
+## Kayıt slotu açıksa oynama süresini ve son oynama tarihini yazar (yarım koşuya dokunmaz).
+func _save_slot_time() -> void:
+	var slot := GameState.slot
+	if slot != null:
+		slot.touch()
+		SaveStore.save_slot(slot)
+
+
 ## Geliştirici kısayolu: F6 = odadaki herkesi öldür ve odayı temizle (akışı hızlı denemek için).
-## (F4 = deneme/god modu, F5 = eşya menüsü.)
+## (F4 = deneme/god modu, F5 = eşya menüsü.) Ölüm ekranında M = ana menü.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
 	if key.physical_keycode == KEY_F6:
 		skip_room()
+	elif key.physical_keycode == KEY_M and player != null and is_instance_valid(player) and player.dead:
+		return_to_menu()
 
 
 ## Odayı hemen temizler (geliştirici kısayolu ve testler için).

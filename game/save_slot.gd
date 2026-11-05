@@ -9,8 +9,8 @@ extends RefCounted
 const VERSION := 1
 const NAME_MAX := 12
 const DEFAULT_NAME := "SIDERA"
-## İsimde harf (Türkçe dahil), rakam ve bunlar kullanılabilir (oyun yazı tipinin çizebildikleri).
-const NAME_PUNCT := "-_.'"
+## İsimde harf (Türkçe dahil), rakam ve bunlar kullanılabilir (oyun yazı tipinin çizebildikleri; alt çizgi fontta yok).
+const NAME_PUNCT := "-.'"
 const TURKISH_LETTERS := "çğıöşüÇĞİÖŞÜ"
 
 var index := 0

@@ -151,7 +151,9 @@ func _draw_death(w: float, h: float) -> void:
 			var row_k := clampf((_dead_t - 0.35 - 0.1 * float(i)) / 0.25, 0.0, 1.0)
 			GameFont.draw_runs_centered(self, rows[i], Vector2(w * 0.5, y + 46.0 * float(i)), 30, row_k)
 	var blink := 0.65 + 0.35 * sin(_t * 4.0)
-	GameFont.draw_runs_centered(self, [["R", GameFont.YELLOW], ["  YENİDEN BAŞLA", GameFont.WHITE]], Vector2(w * 0.5, h * 0.86), 28, clampf((_dead_t - 0.9) / 0.3, 0.0, 1.0) * blink)
+	var k_hint := clampf((_dead_t - 0.9) / 0.3, 0.0, 1.0)
+	GameFont.draw_runs_centered(self, [["R", GameFont.YELLOW], ["  YENİDEN BAŞLA", GameFont.WHITE]], Vector2(w * 0.5, h * 0.82), 28, k_hint * blink)
+	GameFont.draw_runs_centered(self, [["M", GameFont.YELLOW], ["  ANA MENÜ", GameFont.WHITE]], Vector2(w * 0.5, h * 0.82 + 42.0), 28, k_hint * 0.85)
 
 
 ## 83.4 -> "1:23"
