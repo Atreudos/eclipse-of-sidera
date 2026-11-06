@@ -139,6 +139,7 @@ func _run_all() -> void:
 		"menu_kayit_menusu": _test_menu_slot_menu,
 		"menu_duraklat": _test_menu_pause,
 		"menu_sahne": _test_menu_scene,
+		"menu_sahne_degisimi": _test_menu_scene_change_input,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -5261,6 +5262,47 @@ func _test_menu_pause() -> void:
 	var disk := SaveStore.load_slot(0)
 	check(disk != null and disk.has_run(GameMode.Kind.NORMAL) and disk.playtime >= played - 0.01, "diskte: yarım koşu duruyor, süre yazıldı (%.1f sn)" % disk.playtime)
 	run2.queue_free()
+	await _frames(3)
+	SceneRouter.hook = Callable()
+	_end_saves()
+
+
+## Sahneyi değiştiren bir tuş menüyü ağaçtan çıkarır; tuş ONDAN ÖNCE "işlendi" işaretlenmiş olmalı
+## (eskiden sonradan `get_viewport()` null dönüp "null değerde set_input_as_handled" hatası veriyordu).
+func _test_menu_scene_change_input() -> void:
+	await _new_world("Menü: sahne değiştiren tuş, menü ağaçtan çıksa bile hatasız işlenir")
+	var went := [""]
+	var m := _new_menu()
+	var vp := m.get_viewport()
+	SceneRouter.hook = func(path: String) -> void:
+		went[0] = path
+		if m.get_parent() != null:
+			m.get_parent().remove_child(m)  # gerçek sahne değişimi gibi: menü ağaçtan çıkar
+	m._unhandled_input(_menu_key(KEY_F8))
+	check(went[0] == SceneRouter.RUN and not m.is_inside_tree(), "F8 hızlı koşuyu başlattı, menü ağaçtan çıktı")
+	check(vp.is_input_handled(), "başlatan tuş 'işlendi' diye işaretlendi")
+	m.queue_free()
+	GameState.end_session()
+	# Duraklatma menüsünden ANA MENÜ: aynı kalıp
+	went[0] = ""
+	vp.push_input(_menu_key(KEY_F23))  # kimsenin işlemediği bir tuş: "işlendi" bayrağını sıfırlar
+	check(not vp.is_input_handled(), "bayrak sıfırlandı (ikinci sınama anlamlı olsun)")
+	var slot := SaveSlot.create(0, "Deneme", Difficulty.Level.NORMAL)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run := _start_run(11)
+	await _frames(5)
+	var pm := run.hud.pause_menu
+	var vp2 := pm.get_viewport()
+	SceneRouter.hook = func(path: String) -> void:
+		went[0] = path
+		if run.get_parent() != null:
+			run.get_parent().remove_child(run)
+	pm.open(run.player)
+	pm.list.focus("menu")
+	pm._unhandled_input(_menu_key(KEY_ENTER))
+	check(went[0] == SceneRouter.MENU and not pm.is_inside_tree(), "duraklatma menüsünden ANA MENÜ: sahne değişti, menü ağaçtan çıktı")
+	check(vp2.is_input_handled(), "tuş yine 'işlendi' işaretli")
+	run.queue_free()
 	await _frames(3)
 	SceneRouter.hook = Callable()
 	_end_saves()

@@ -28,14 +28,16 @@ func _on_open() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Eylemler sahneyi değiştirebilir (ana menü, yeniden başla): tuşu önce işaretle, sonra işle.
+	var vp := get_viewport()
 	if not is_open:
 		if event.is_action_pressed("ui_cancel"):
 			if open(_find_player()):
-				get_viewport().set_input_as_handled()
+				vp.set_input_as_handled()
 		return
 	if event.is_action_pressed("ui_cancel"):
 		close()
-		get_viewport().set_input_as_handled()
+		vp.set_input_as_handled()
 		return
 	var action := ""
 	if event.is_action_pressed("ui_up", true):
@@ -53,11 +55,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				action = "down"
 			KEY_E, KEY_J:
 				action = "accept" if not key.echo else ""
-	if action != "":
-		press(action)
 	# Açıkken oyun tuşları (dash, parry...) alta geçmesin.
 	if key != null or event is InputEventJoypadButton:
-		get_viewport().set_input_as_handled()
+		vp.set_input_as_handled()
+	if action != "":
+		press(action)
 
 
 ## Testler ve gerçek giriş aynı yoldan: "up" "down" "accept".

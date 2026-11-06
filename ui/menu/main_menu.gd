@@ -224,21 +224,24 @@ func action_of(event: InputEvent) -> String:
 func _unhandled_input(event: InputEvent) -> void:
 	if top() == null:
 		return
+	# Tuşu ÖNCE "işlendi" diye işaretle, sonra işle: eylem sahneyi değiştirebilir (oyunu başlatmak gibi);
+	# menü ağaçtan çıkınca viewport kalmaz ve sonradan çağrı "null değer" hatası verir.
+	var vp := get_viewport()
 	var act := action_of(event)
 	if act != "":
+		vp.set_input_as_handled()
 		press(act)
-		get_viewport().set_input_as_handled()
 		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed:
 		return
 	if top().wants_text():
 		if key.unicode >= 32 and key.unicode != 127:
+			vp.set_input_as_handled()
 			type_char(char(key.unicode))
-			get_viewport().set_input_as_handled()
 	elif not key.echo and key.physical_keycode == KEY_F8 and top_id() == "title":
+		vp.set_input_as_handled()
 		quick_run()
-		get_viewport().set_input_as_handled()
 
 
 func _gui_input(event: InputEvent) -> void:
