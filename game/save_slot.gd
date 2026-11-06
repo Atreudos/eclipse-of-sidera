@@ -28,7 +28,7 @@ var recovered := false
 
 
 static func default_records() -> Dictionary:
-	return {"runs": 0, "deaths": 0, "kills": 0, "best_floor": 0, "best_room": 0, "best_wave": 0, "best_combo": 0}
+	return {"runs": 0, "deaths": 0, "kills": 0, "best_floor": 0, "best_room": 0, "best_wave": 0, "best_combo": 0, "wins": 0}
 
 
 static func now() -> int:
@@ -100,10 +100,13 @@ func clear_run(mode: int) -> void:
 
 ## Bir koşu bitti (öldün ya da bitirdin): rekorlar güncellenir, yarım koşu silinir.
 ## `stats`: kills, best_combo, floor, room (kat içi 0'dan), wave.
-func record_run(mode: int, stats: Dictionary, died: bool = true) -> void:
+## `won`: koşu zaferle bitti (son katın Gölge'si yenildi).
+func record_run(mode: int, stats: Dictionary, died: bool = true, won: bool = false) -> void:
 	records["runs"] = int(records["runs"]) + 1
 	if died:
 		records["deaths"] = int(records["deaths"]) + 1
+	if won:
+		records["wins"] = int(records.get("wins", 0)) + 1
 	records["kills"] = int(records["kills"]) + maxi(_int(stats.get("kills", 0)), 0)
 	records["best_combo"] = maxi(int(records["best_combo"]), _int(stats.get("best_combo", 0)))
 	if mode == GameMode.Kind.ENDLESS:

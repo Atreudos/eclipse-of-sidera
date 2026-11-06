@@ -20,6 +20,8 @@ const CLOSE_SPEED := 6.0
 var accent := Color(0.95, 0.78, 0.3)
 var look: Look = Look.LOCKED
 var is_open := false
+## Hiç açılmayan kapı: katın son odasının sonu duvar gibi kalır (ileri yol kat geçididir). Hep mühürlü görünür.
+var permanent := false
 
 var _slide := 0.0
 var _t := 0.0
@@ -43,7 +45,7 @@ func _ready() -> void:
 
 ## Kapıyı açar (oda temizlendi).
 func open() -> void:
-	if is_open:
+	if is_open or permanent:
 		return
 	is_open = true
 	look = Look.OPEN
@@ -95,7 +97,7 @@ func _draw() -> void:
 	draw_rect(Rect2(-half - 12.0, 0.0, 12.0, HEIGHT), frame)
 	draw_rect(Rect2(half, 0.0, 12.0, HEIGHT), frame)
 	var glow := Color(0.9, 0.2, 0.28, 0.85)
-	match look:
+	match Look.SEALED if permanent else look:
 		Look.OPEN:
 			glow = Color(accent, 0.55 + 0.4 * (0.5 + 0.5 * sin(_t * 5.0)))
 		Look.SEALED:

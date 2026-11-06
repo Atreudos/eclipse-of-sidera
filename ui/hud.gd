@@ -23,6 +23,8 @@ var rhythm_bar: RhythmBar
 ## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
 var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
+## Dükkân menüsü (lobide tezgâhta E).
+var shop_menu: ShopMenu
 ## Duraklatma menüsü (Esc).
 var pause_menu: PauseMenu
 
@@ -138,17 +140,41 @@ func _build() -> void:
 	dev_menu = DevMenu.new()
 	dev_menu.name = "DevMenu"
 	root.add_child(dev_menu)
+	shop_menu = ShopMenu.new()
+	shop_menu.name = "ShopMenu"
+	root.add_child(shop_menu)
 	pause_menu = PauseMenu.new()
 	pause_menu.name = "PauseMenu"
 	root.add_child(pause_menu)
 
 
 ## Oda sistemi bilgisi: görünen oda no (1'den), mevcut dalga, toplam dalga, oda temizlendi mi.
-func set_room(room_number: int, wave_now: int, wave_count: int, is_cleared: bool = false) -> void:
+## `floor_no` > 0 ise sağ üstte "KAT n" de yazılır; `kind` lobi/Gölge odasında numara yerine ad gösterir.
+func set_room(room_number: int, wave_now: int, wave_count: int, is_cleared: bool = false, floor_no: int = 0, kind: FloorPlan.Kind = FloorPlan.Kind.COMBAT) -> void:
 	overlay.room_number = room_number
 	overlay.wave = wave_now
 	overlay.wave_total = wave_count
 	overlay.cleared = is_cleared
+	overlay.floor_number = floor_no
+	overlay.room_kind = kind
+
+
+## Ekran kararması: 0 = açık, 1 = simsiyah. Kat geçişinde koşu denetleyicisi her kare sürer.
+func set_fade(value: float) -> void:
+	overlay.fade = clampf(value, 0.0, 1.0)
+
+
+## Karartmanın üstünde büyük kat kartı ("KAT 2"): başlık, alt yazı, görünürlük (0..1).
+func set_card(title: String, sub_text: String, k: float) -> void:
+	overlay.card_title = title
+	overlay.card_sub = sub_text
+	overlay.card_k = clampf(k, 0.0, 1.0)
+
+
+## Zafer ekranı (son katın Gölge'si yenildi).
+func set_victory(data: Dictionary) -> void:
+	overlay.summary = data
+	overlay.victory = true
 
 
 ## Ölüm ekranındaki özet (kills, rooms_cleared, best_combo, time, room).

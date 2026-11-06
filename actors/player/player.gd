@@ -98,6 +98,8 @@ const ANIM_SPEC := {
 var intent := Intent.new()
 ## true ise tuş okunmaz; intent'i dışarıdan (test/yapay zeka) doldurursun.
 var scripted := false
+## true ise tuşlar okunmaz ve yürüme durur (kat geçişinde kararırken). `scripted`tan farkı: dışarıdan intent verilmez.
+var input_locked := false
 var state: State = State.MOVE
 var facing := 1
 
@@ -206,7 +208,11 @@ func _gather_intent() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not scripted:
-		_gather_intent()
+		if input_locked:
+			intent.move_x = 0.0
+			intent.jump_held = false
+		else:
+			_gather_intent()
 	_tick_timers(delta)
 	match state:
 		State.MOVE:

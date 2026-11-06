@@ -16,7 +16,25 @@ const CAMERA_HEIGHT := 900.0
 const PLATFORM_H := 20.0
 const MAX_RISE := 150.0
 
+## Lobinin ve Gölge arenasının yerleşim adları. `ids()` (savaş odası seçimi) bunları DÖNDÜRMEZ.
+const LOBBY_ID := "lobi"
+const BOSS_ID := "golge"
+
 const LAYOUTS := {
+	# Gölge arenası: her katın 6. odası. Düz zemin, iki yanda duvar (Gölge'nin duvar tırmanışı için), ortada iki küçük platform.
+	# Gölge ortadan sağa doğar (spawns[0]).
+	"golge": {
+		"width": 1600,
+		"platforms": [[300, 500, 220], [1080, 500, 220]],
+		"spawns": [[1100, 640]],
+	},
+	# Lobi: her katın ilk odası. Düz zemin, platform ve doğma noktası yok; dükkân `shop_x` konumunda durur.
+	"lobi": {
+		"width": 1500,
+		"platforms": [],
+		"spawns": [],
+		"shop_x": 900,
+	},
 	# Düz zemin: sadece parry/dash hissi.
 	"duz": {
 		"width": 1500,
@@ -50,8 +68,23 @@ const LAYOUTS := {
 }
 
 
+## Savaş odası yerleşimleri (lobi hariç).
 static func ids() -> Array:
+	var out: Array = []
+	for k in LAYOUTS.keys():
+		if k != LOBBY_ID and k != BOSS_ID:
+			out.append(k)
+	return out
+
+
+## Lobi ve Gölge arenası dahil bütün yerleşimler (doğrulama testleri için).
+static func all_ids() -> Array:
 	return LAYOUTS.keys()
+
+
+## Lobideki dükkânın oda-yerel x konumu.
+static func shop_x(id: String) -> float:
+	return float(get_layout(id).get("shop_x", 900.0))
 
 
 static func get_layout(id: String) -> Dictionary:

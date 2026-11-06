@@ -9,6 +9,8 @@ var scene: PackedScene
 var enemies_root: Node
 ## Doğan düşmana verilecek zorluk/tur ayarı (null = ayarsız).
 var tuning: EnemyTuning = null
+## Doğan düşmana `set_meta` ile verilecek ek bilgiler (ör. Gölge'nin katı: {"floor": 3}). `_ready`'den ÖNCE verilir.
+var meta: Dictionary = {}
 var duration := 0.55
 var color := Color(1.0, 0.86, 0.4)
 
@@ -44,6 +46,8 @@ func _emerge() -> void:
 		enemy = scene.instantiate()
 		if tuning != null and enemy is EnemyBase:
 			(enemy as EnemyBase).tuning = tuning  # _ready'den önce: can ve altın doğarken ölçeklensin
+		for k in meta:
+			enemy.set_meta(k, meta[k])
 		enemies_root.add_child(enemy)
 		if enemy is Node2D:
 			(enemy as Node2D).global_position = global_position + Vector2(0.0, -34.0)

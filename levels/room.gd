@@ -1,10 +1,11 @@
 class_name Room
 extends Node2D
-## Tek bir savaş odası. Kodla kurulur (zemin, tavan, duvarlar, platformlar, arka plan, sağ kapı).
-## Oda dünyada soldan sağa dizilir: bir odanın sağ kapısı sonraki odanın sol sınırıdır.
+## Tek bir oda: SAVAŞ odası, LOBİ (düşman yok, dükkân) ya da GÖLGE odası (patron). Kodla kurulur (zemin, tavan, duvarlar,
+## platformlar, arka plan, sağ kapı). Oda dünyada soldan sağa dizilir: bir odanın sağ kapısı sonraki odanın sol sınırıdır.
+## Katın son odasında sağ kapı hiç açılmaz; onun yerine KAT GEÇİDİ (FloorExit) vardır.
 ##
-## Akış:  PENDING (oyuncu girmedi) -> ACTIVE (dalgalar sırayla doğar) -> CLEARED (kapı açılır).
-## Düşmanlar doğmadan önce SpawnMarker (ışık sütunu) çıkar. Son dalga bitince kapı açılır.
+## Akış:  PENDING (oyuncu girmedi) -> ACTIVE (dalgalar sırayla doğar) -> CLEARED (kapı / kat geçidi açılır).
+## Düşmanlar doğmadan önce SpawnMarker (ışık sütunu) çıkar. Son dalga bitince kapı açılır. Lobi girişte hemen CLEARED olur.
 
 enum State { PENDING, ACTIVE, CLEARED }
 
@@ -15,9 +16,13 @@ const ROOMS_PER_PALETTE := 3
 ## Doğma noktaları oyuncudan en az bu kadar uzakta seçilir (yeterince nokta varsa).
 const MIN_SPAWN_DISTANCE := 380.0
 const NEXT_WAVE_DELAY := 1.0
+## Gölge'nin doğuş süresi (uzun, gösterişli).
+const BOSS_SPAWN_DELAY := 1.4
 const CLEAR_DELAY := 0.5
 const SPAWN_DELAY := 0.55
 const WALL_THICKNESS := 80.0
+## Kat geçidi sağ uçtan bu kadar içeride durur.
+const EXIT_MARGIN := 170.0
 
 ## Her 3 odada bir renk teması değişir (kapıdan geçerken fark edilir).
 const PALETTES := [
@@ -37,11 +42,34 @@ const PALETTES := [
 		"wall": Color(0.055, 0.06, 0.115), "pillar": Color(0.075, 0.085, 0.15), "floor": Color(0.12, 0.13, 0.22),
 		"edge": Color(0.55, 0.6, 1.0, 0.8), "platform": Color(0.17, 0.19, 0.32), "accent": Color(0.62, 0.68, 1.0),
 	},
+	# Tutulma (son katlar): simsiyah, beyaz-altın ışık.
+	{
+		"wall": Color(0.025, 0.025, 0.035), "pillar": Color(0.05, 0.05, 0.068), "floor": Color(0.09, 0.09, 0.105),
+		"edge": Color(1.0, 0.94, 0.72, 0.85), "platform": Color(0.13, 0.13, 0.16), "accent": Color(1.0, 0.93, 0.7),
+	},
 ]
+
+## Lobi: sıcak, loş, güvenli.
+const LOBBY_PALETTE := {
+	"wall": Color(0.085, 0.062, 0.058), "pillar": Color(0.115, 0.085, 0.07), "floor": Color(0.2, 0.15, 0.115),
+	"edge": Color(1.0, 0.72, 0.35, 0.8), "platform": Color(0.27, 0.2, 0.15), "accent": Color(1.0, 0.76, 0.38),
+}
+## Kat kat kayan ton: aynı temadaki katlar birbirinden hafifçe ayrılsın.
+const HUE_STEP := 0.022
 
 var index := 0
 var layout_id := ""
 var layout: Dictionary = {}
+## Odanın türü (FloorPlan.Kind): savaş, lobi, Gölge. Kat/sıra/tema koşu denetleyicisinden gelir.
+var kind: FloorPlan.Kind = FloorPlan.Kind.COMBAT
+var floor_no := 1
+var slot := 0
+var theme_id := ""
+## Katın son odası: sağ kapı kalıcı duvardır, kat geçidi vardır.
+var has_exit := false
+var floor_exit: FloorExit = null
+## Lobideki dükkân tezgâhı (yoksa null).
+var shop: ShopStand = null
 ## Odanın DÜNYA dikdörtgeni (x, 0, genişlik, 720).
 var rect := Rect2()
 var state: State = State.PENDING
@@ -54,6 +82,8 @@ var wave_number := 0
 
 ## Bu odada doğan düşmanların zorluk/tur ayarı (null = ayarsız).
 var tuning: EnemyTuning = null
+## Doğan düşmanlara `set_meta` ile verilecek bilgiler (Gölge odasında {"floor": kat}).
+var spawn_meta: Dictionary = {}
 
 var _enemies_root: Node
 var _rng: RandomNumberGenerator
@@ -65,27 +95,66 @@ static func palette_for(room_index: int) -> Dictionary:
 	return PALETTES[floori(float(room_index) / float(ROOMS_PER_PALETTE)) % PALETTES.size()]
 
 
+## Katın paleti: tema her 4 katta değişir, temanın içinde her kat tonu azıcık kayar.
+static func palette_for_floor(floor_no: int) -> Dictionary:
+	var f := maxi(floor_no, 1) - 1
+	var base: Dictionary = PALETTES[mini(f / FloorPlan.FLOORS_PER_THEME, PALETTES.size() - 1)]
+	var shift := float(f % FloorPlan.FLOORS_PER_THEME) * HUE_STEP
+	if is_zero_approx(shift):
+		return base
+	var out := {}
+	for k in base:
+		var c: Color = base[k]
+		out[k] = Color.from_hsv(fposmod(c.h + shift, 1.0), c.s, c.v, c.a)
+	return out
+
+
 ## Odayı kurar. Odanın ağaca eklenmiş olması gerekir.
-func build(room_index: int, x_left: float, layout_name: String, enemies_parent: Node, rng: RandomNumberGenerator, wave_list: Array) -> void:
+## `opts` (hepsi isteğe bağlı): kind (FloorPlan.Kind), floor, slot, theme, palette, left_wall (bool), exit (bool: kat geçidi var),
+## seal (bool: sağ kapı hiç açılmaz; son katın Gölge odası gibi).
+func build(room_index: int, x_left: float, layout_name: String, enemies_parent: Node, rng: RandomNumberGenerator, wave_list: Array, opts: Dictionary = {}) -> void:
 	index = room_index
 	layout_id = layout_name
 	layout = RoomLayouts.get_layout(layout_name)
 	_enemies_root = enemies_parent
 	_rng = rng
 	waves = wave_list
-	palette = palette_for(room_index)
+	kind = int(opts.get("kind", FloorPlan.Kind.COMBAT)) as FloorPlan.Kind
+	floor_no = int(opts.get("floor", 1))
+	slot = int(opts.get("slot", room_index))
+	theme_id = String(opts.get("theme", ""))
+	has_exit = bool(opts.get("exit", false))
+	palette = opts.get("palette", palette_for(room_index))
+	var left_wall := bool(opts.get("left_wall", room_index == 0))
 	var width := RoomLayouts.width_of(layout_name)
 	position = Vector2(x_left, 0.0)
 	rect = Rect2(x_left, 0.0, width, RoomLayouts.HEIGHT)
 	name = "Room%d" % index
 	_build_background(width)
-	_build_solids(width)
+	_build_solids(width, left_wall)
 	_build_platforms()
 	door = Door.new()
 	door.name = "Door"
 	door.position = Vector2(width, 0.0)
 	door.accent = palette["accent"]
+	var sealed := has_exit or bool(opts.get("seal", false))
+	door.permanent = sealed
+	if sealed:
+		door.look = Door.Look.SEALED
 	add_child(door)
+	if has_exit:
+		floor_exit = FloorExit.new()
+		floor_exit.name = "FloorExit"
+		floor_exit.position = Vector2(width - EXIT_MARGIN, RoomLayouts.FLOOR_Y)
+		floor_exit.next_floor = floor_no + 1
+		floor_exit.accent = palette["accent"]
+		add_child(floor_exit)
+	if kind == FloorPlan.Kind.LOBBY:
+		var decor := LobbyDecor.new()
+		decor.name = "Decor"
+		decor.width = width
+		decor.accent = palette["accent"]
+		add_child(decor)
 
 
 func _build_background(width: float) -> void:
@@ -109,7 +178,7 @@ func _build_background(width: float) -> void:
 	_add_rect(self, Rect2(0.0, RoomLayouts.FLOOR_Y, width, 4.0), palette["edge"])
 
 
-func _build_solids(width: float) -> void:
+func _build_solids(width: float, left_wall: bool) -> void:
 	var body := StaticBody2D.new()
 	body.name = "World"
 	body.collision_layer = Layers.WORLD
@@ -119,8 +188,8 @@ func _build_solids(width: float) -> void:
 	_add_shape(body, Vector2(width * 0.5, RoomLayouts.FLOOR_Y + 50.0), Vector2(width + 8.0, 100.0))
 	# Tavan
 	_add_shape(body, Vector2(width * 0.5, -WALL_THICKNESS * 0.5), Vector2(width + 8.0, WALL_THICKNESS))
-	# İlk odanın sol duvarı (diğer odalarda sol sınır, öncekinin kapısıdır)
-	if index == 0:
+	# Katın ilk odasının sol duvarı (diğer odalarda sol sınır, öncekinin kapısıdır)
+	if left_wall:
 		_add_shape(body, Vector2(-WALL_THICKNESS * 0.5, 360.0), Vector2(WALL_THICKNESS, 1400.0))
 
 
@@ -160,11 +229,15 @@ func _add_rect(parent: Node, r: Rect2, color: Color) -> ColorRect:
 
 # ---------------------------------------------------------------- savaş akışı
 
-## Oyuncu odaya girdi: kapı kilitli, dalgalar `delay` sn sonra başlar.
+## Oyuncu odaya girdi: kapı kilitli, dalgalar `delay` sn sonra başlar. Lobide düşman yok: oda hemen temizlenmiş sayılır.
 func begin_encounter(delay: float = 1.0) -> void:
+	if kind == FloorPlan.Kind.LOBBY:
+		force_clear()
+		return
 	state = State.ACTIVE
 	_wait = delay
-	door.look = Door.Look.LOCKED
+	if not door.permanent:
+		door.look = Door.Look.LOCKED
 
 
 func is_cleared() -> bool:
@@ -216,6 +289,10 @@ func _start_wave() -> void:
 		_pending += 1
 		var m := SpawnMarker.spawn(self, points[i], wave[i], _enemies_root, SPAWN_DELAY + 0.12 * float(i))
 		m.tuning = tuning
+		m.meta = spawn_meta
+		if kind == FloorPlan.Kind.BOSS:
+			m.color = Color(0.7, 0.45, 1.0)
+			m.duration = BOSS_SPAWN_DELAY
 		m.finished.connect(_on_marker_finished)
 	_wait = NEXT_WAVE_DELAY if wave_number < waves.size() else CLEAR_DELAY
 	wave_started.emit(wave_number, waves.size())
@@ -256,5 +333,7 @@ func force_clear() -> void:
 		return
 	state = State.CLEARED
 	door.open()
+	if floor_exit != null:
+		floor_exit.open_up()
 	get_tree().call_group("projectiles", "queue_free")
 	cleared.emit(self)

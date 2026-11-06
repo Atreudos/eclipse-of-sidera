@@ -84,6 +84,11 @@ func bag_free() -> int:
 	return BAG_SIZE - bag.size()
 
 
+## `give(item)` başarılı olur mu? (Aynı eşya çantada varsa yığılır, yoksa boş hücre gerekir.) Dükkân parayı çekmeden önce bunu sorar.
+func can_give(item: ItemData) -> bool:
+	return _bag_index(item.id) >= 0 or bag.size() < BAG_SIZE
+
+
 func _bag_index(item_id: String) -> int:
 	for i in bag.size():
 		if (bag[i]["item"] as ItemData).id == item_id:
@@ -249,6 +254,20 @@ func count(item_id: String) -> int:
 ## Takılı + çantadaki toplam kopya.
 func owned_count(item_id: String) -> int:
 	return count(item_id) + bag_count(item_id)
+
+
+## Sahip olunan (takılı ya da çantadaki) eşyaların kimlikleri; tekrarsız, sıralı. Dükkân ve ödül rafı bunları dışlar.
+func owned_ids() -> Array[String]:
+	var out: Array[String] = []
+	for it in items:
+		if not (it.id in out):
+			out.append(it.id)
+	for e in bag:
+		var item := e["item"] as ItemData
+		if item != null and not (item.id in out):
+			out.append(item.id)
+	out.sort()
+	return out
 
 
 ## Takılı eşyalar arasında bu etiketten kaç tane var.

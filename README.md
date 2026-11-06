@@ -29,6 +29,7 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | I / Tab | **Envanter ekranı**: karakter, slotlar, çanta. Oyunu durdurur. Yön tuşları/WASD/fare ile gez; Enter/E/J ya da tıkla: tak, çıkar, ye. Esc kapatır |
 | F5 | **Eşya menüsü (deneme)**: listeden eşya seçip envantere ekler. Enter/E/J ekle, T yalnız çantaya, G +50 altın, H canı doldur, B +1 bağışıklık kalbi, C hepsini sil |
 | F6 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
+| F7 | Geliştirici kısayolu: bir sonraki katın lobisine geç (kararma olmadan) |
 | Esc | **Duraklatma menüsü**: devam, yeniden başla, ana menü, oyundan çık (koşuyu kaybettirenler ikinci basışta onaylanır) |
 | M | Ölüm ekranında: ana menüye dön |
 
@@ -39,13 +40,14 @@ Altın uyarı = parry'lenebilir. Kırmızı uyarı = parry'lenemez, dash ile ka�
 Aşama 0 ve 1 tamam: hareket, zıplama, dash (i-frame + şarj), 3'lü saldırı kombosu, parry (altın/kırmızı saldırı ayrımı, hitstop, ses), iki düşman tipi (Taurus, Sagitta) ve test arenası.
 Ek olarak: vuruş flaşı + kıvılcım, yumuşak ekran sarsıntısı/kamera tepmesi, hasar/parry ekran flaşı, üst platformlara çıkabilen düşmanlar ve sprite/animasyon altyapısı.
 Dinamik kamera (oyuncuyu yumuşak takip, baktığı yöne önden bakış, hafif zoom-in; dash'te açılır, kombo uzadıkça yaklaşır), fontlu hasar sayıları, 1 sn'lik kombo barı (COMBO yazısı + vuruş/parry/hasar sayaçları) ve ekranı kaplayan parry dalgası + yeni parry sesi.
-Oyun artık **oda sistemiyle** açılıyor (`levels/run.tscn`): odalar sağa doğru dizilir; düşmanlar ışık sütunuyla dalga dalga doğar, hepsi ölünce kapı açılır, sağa geçince kapı arkandan kapanır. Her odanın yerleşimi (platformlar) ve dalgaları tohuma bağlıdır; her 3 odada renk teması değişir. Ölünce özet ekranı çıkar (R ile yeniden başla). Eski test arenası `levels/test_arena.tscn` olarak duruyor.
+Oyun artık **oda sistemiyle** açılıyor (`levels/run.tscn`): odalar sağa doğru dizilir; düşmanlar ışık sütunuyla dalga dalga doğar, hepsi ölünce kapı açılır, sağa geçince kapı arkandan kapanır. Her odanın yerleşimi (platformlar) ve dalgaları tohuma bağlıdır; her 4 katta renk teması değişir. Ölünce özet ekranı çıkar (R ile yeniden başla). Eski test arenası `levels/test_arena.tscn` olarak duruyor.
 Gövdeler katı: dash düşmanın içinden geçmez (çarpıp durur), birbirinizin başına düşerseniz yana kayarsınız. Kamera yukarı/aşağı da çok az oynar (zıplarken yükselir, düşerken aşağı bakar, sert inişte çöker).
 Vuruş sersemletmesi: kombo yediği sırada düşman saldıramaz (hazırlığı iptal olur). Altın (parry'lenebilir) saldırılar seyrek, kırmızılar (kaçılacak) çoğunlukta; altın saldırıda sarı elmas, kırmızıda sadece kırmızı parıltı var.
 **Scorpius** (3. düşman): mesafe oyunu oynar: fazla yakınsan geri takla atar, rapier menzilinde çok kısa bir altın uyarıyla ışık hızında dürtüp hemen geri çekilir. Bazen sahte dürtüş yapar: erken parry'lersen arkana ışınlanıp sırtından vurur, sakin kalırsan boşa gider. Gerçek dürtüşü tam zamanında parry'lersen 1.5 sn sersemler (tek güvenli hasar fırsatı). 3. odanın 2. dalgasından itibaren dalgalara karışır.
 **Eşya sistemi** (Aşama 3'ün büyük kısmı): slotlar (ayak 1, charm 3, kafa 2, cep 1, bilek 1, zırh 1) + 24 hücrelik çanta + envanter ekranı (`I`) ve deneme için `F5` eşya menüsü. 10 donanım (Ayna Tabanlı Çizmeler, Hafif Tüy Botlar, Engerek Dişi Kolyesi, Yıldız Tozu Broşu, Vampir Yadigarı, Antika Muhafız Kaskı, Gözcü Bandı, Çatlak El Aynası, Satürn'ün Kum Saati, Hırsızın Zinciri) ve 3 yemek (Kule Ekmeği, Fırınlanmış Tatlı Patates, Kozmik Yıldız Çorbası). Fazla iyileşme mavi **bağışıklık kalbi** olur (bağışıklık kalbi varken yemek yenmez). Düşmanlar altın düşürür (sayaç HUD'da; harcama yeri mağaza). **Refleks** statı parry penceresini ölçekler. Satürn'ün Kum Saati: iki saldırıyı birlikte parry'lersen zaman 1.5 sn durur.
 **Ana menü ve kayıt** (`ui/menu/`): başlık ekranı (OYNA / KREDİLER / ÇIKIŞ), 3 kayıt slotu (ad, zorluk, kaldığın yer, süre, rekorlar), yeni oyun sihirbazı (ad yaz + zorluk seç: EASY / NORMAL / DIFFICULT / IMMORTAL), kayıt menüsü (NORMAL ve SINIRSIZ kip için DEVAM / BAŞLA / YENİ KOŞU, zorluk değiştirme, kaydı silme), krediler ve oyun içi duraklatma menüsü. Klavye, fare ve kumandayla gezilir. Koşu her odaya girerken kendiliğinden kaydedilir (kayıt `user://saves/` altında, bozulursa yedeğe düşer). Zorluk düşman canını, hasarını, hızını, saldırı sıklığını ve **zekâsını** (sabır, ceza, önden hedefleme, kaçış, aldatma) ayarlar; tur ilerledikçe düşmanlar sınırsız ama yavaş güçlenir. Arka plan ve logo kodla çizilir; çizimlerin (`ui_menu_bg_far`, `ui_logo`...) `assets/` altına konunca otomatik onların yerine geçer (`art/art.gd`).
-Sıradaki: ödül mezatı (2 eşya, seçmediğin Umbra'ya), **her katın başında mağaza**, Umbra ve yeni düşmanlar (ör. zırhlı bir 4. düşman).
+**Katlar** (`game/floor_plan.gd`, `levels/run.gd`): normal koşu **18 kat**tır; her kat **6 oda**: 1. oda **lobi** (düşman yok, tüccarın **dükkânı**: tezgâha yaklaşıp `E`, altınla eşya ve yemek al), 2-5. odalar savaş, 6. oda **Gölge** (Umbra) odası. Gölge yenilince sağdaki **kat geçidi** açılır; içine yürüyünce ekran kararır, "KAT n" kartı çıkar, yeni katın lobisi kurulur. 18. katın Gölge'sini yenmek koşuyu **zaferle** bitirir (kayıtta ZAFER sayısı tutulur). Düşman gücü katlar boyunca sürekli artar (`progress`: kat başına 4 savaş odası); dükkân rafı kat ilerledikçe pahalanır/zenginleşir (`items/shop_stock.gd`). Eski (sürümsüz) kayıtlar yeni yapıya aynı ilerlemeyle aktarılır. Eski "tek sonsuz şerit" davranışı yalnız testlerde (`floors_enabled = false`) kalıyor; asıl sonsuz kip ayrı bir mod olarak gelecek.
+Sıradaki: Umbra patronu (her katta yeni bir yetenek), ödül mezatı (2 eşya, seçmediğin Umbra'ya), silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
 
 ## Sprite eklemek
 
@@ -69,6 +71,13 @@ xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 # oda sistemi için: res://tools/screenshots_run.tscn
 # envanter ekranı, F5 menüsü ve duraklatma menüsü için: res://tools/screenshots_menus.tscn
 # ana menü ekranları için: res://tools/screenshots_main_menu.tscn
+# katlar, dükkân, Gölge odası, kat geçidi, zafer için: res://tools/screenshots_floors.tscn
+```
+
+Gerçek tuş girdileriyle uçtan uca duman testi (menü -> yeni kayıt -> oyun -> duraklatma -> ana menü -> devam; ekransız çalışır, betik hatalarını yakalar):
+
+```
+godot --headless --fixed-fps 60 --path . res://tools/e2e_flow.tscn
 ```
 
 Betik derleme kontrolü (tüm `.gd` dosyalarını yükler, hata varsa listeler):

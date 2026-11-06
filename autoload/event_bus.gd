@@ -71,3 +71,9 @@ signal item_consumed(actor: Node, item: ItemData)
 ## Oyuncu altın topladı (amount kadar).
 @warning_ignore("unused_signal")
 signal gold_collected(actor: Node, amount: int)
+## Yeni bir katın lobisine girildi (koşu başında da: kat 1).
+@warning_ignore("unused_signal")
+signal floor_entered(floor_no: int)
+## Oyuncu dükkândan bir şey satın aldı (price kadar altın verdi).
+@warning_ignore("unused_signal")
+signal item_purchased(actor: Node, item: ItemData, price: int)

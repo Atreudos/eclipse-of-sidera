@@ -73,6 +73,15 @@ func umbra_has(item_id: String) -> bool:
 	return false
 
 
+## Umbra'ya kalmış eşyaların kimlikleri (dükkân ve ödül rafı bunları dışlar).
+func umbra_ids() -> Array[String]:
+	var out: Array[String] = []
+	for it in umbra_items:
+		if not (it.id in out):
+			out.append(it.id)
+	return out
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_F4:

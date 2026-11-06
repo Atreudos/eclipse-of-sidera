@@ -140,6 +140,13 @@ func _run_all() -> void:
 		"menu_duraklat": _test_menu_pause,
 		"menu_sahne": _test_menu_scene,
 		"menu_sahne_degisimi": _test_menu_scene_change_input,
+		"kat_plani": _test_floor_plan,
+		"dukkan_raf": _test_shop_stock,
+		"dukkan_menu": _test_shop_menu,
+		"kat_cikisi": _test_floor_exit,
+		"kat_akisi": _test_floor_flow,
+		"kat_son": _test_final_floor,
+		"kat_kayit": _test_floor_save,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -1013,9 +1020,11 @@ func _test_camera_room_transition() -> void:
 # ------------------------------------------------------------------ oda sistemi
 
 ## Koşuyu gerçek sahneden kurar (test için oyuncu betikli, çok canlı). Tohum sabit.
-func _start_run(seed_value: int) -> RunController:
+## `floors`: katlı yapı (lobi, Gölge, kat geçidi). Varsayılan kapalı: eski testler tek sonsuz şeritte çalışır.
+func _start_run(seed_value: int, floors: bool = false) -> RunController:
 	var run := RUN.instantiate() as RunController
 	run.seed_value = seed_value
+	run.floors_enabled = floors
 	var p := run.get_node("Player") as Player
 	p.scripted = true
 	_world.add_child(run)
@@ -1283,10 +1292,13 @@ func _test_run_waves() -> void:
 	check(in_range, "dalga başına 2..6 düşman")
 	check(monotonic, "oda ilerledikçe düşman sayısı azalmıyor")
 	var a := RunController.new()
+	a.floors_enabled = false  # eski tek şerit: katlı yapı ayrı testlerde
 	a.run_seed = 4242
 	var b := RunController.new()
+	b.floors_enabled = false
 	b.run_seed = 4242
 	var c := RunController.new()
+	c.floors_enabled = false
 	c.run_seed = 99
 	var same := true
 	var diff := false
@@ -4741,6 +4753,7 @@ func _test_save_run() -> void:
 	GameState.begin_session(slot2, GameMode.Kind.NORMAL)
 	GameState.resume_run = slot2.run_of(GameMode.Kind.NORMAL)
 	var run2 := RUN.instantiate() as RunController
+	run2.floors_enabled = false
 	run2.seed_value = 999  # kayıttaki tohum kazanmalı
 	var p2 := run2.get_node("Player") as Player
 	p2.scripted = true
@@ -5265,6 +5278,576 @@ func _test_menu_pause() -> void:
 	await _frames(3)
 	SceneRouter.hook = Callable()
 	_end_saves()
+
+
+# ------------------------------------------------------------------ katlar, dükkân, Gölge odası
+
+func _test_floor_plan() -> void:
+	print("\nKat planı: 18 kat x 6 oda (lobi, 4 savaş, Gölge), tur ilerlemesi, temalar")
+	check(FloorPlan.ROOMS_PER_FLOOR == 6 and FloorPlan.FLOOR_COUNT == 18 and FloorPlan.COMBAT_ROOMS == 4, "kat başına 6 oda (4 savaş), toplam 18 kat")
+	var lobbies := 0
+	var combats := 0
+	var bosses := 0
+	var monotonic := true
+	var shape_ok := true
+	var prev_progress := -1
+	for i in FloorPlan.FLOOR_COUNT * FloorPlan.ROOMS_PER_FLOOR:
+		var loc := FloorPlan.locate(i)
+		match int(loc["kind"]):
+			FloorPlan.Kind.LOBBY:
+				lobbies += 1
+			FloorPlan.Kind.BOSS:
+				bosses += 1
+			_:
+				combats += 1
+		if int(loc["progress"]) < prev_progress:
+			monotonic = false
+		prev_progress = int(loc["progress"])
+		if int(loc["floor"]) != i / 6 + 1 or int(loc["slot"]) != i % 6 or int(loc["number"]) != i % 6 + 1 or int(loc["first"]) != (i / 6) * 6:
+			shape_ok = false
+		if bool(loc["last"]) != (i % 6 == 5):
+			shape_ok = false
+	check(lobbies == 18 and combats == 72 and bosses == 18, "18 lobi, 72 savaş, 18 Gölge odası (%d/%d/%d)" % [lobbies, combats, bosses])
+	check(monotonic, "tur ilerlemesi hiç geri gitmiyor")
+	check(shape_ok, "kat / sıra / numara / ilk oda / son oda tutarlı")
+	var l0 := FloorPlan.locate(0)
+	check(int(l0["floor"]) == 1 and int(l0["kind"]) == FloorPlan.Kind.LOBBY and int(l0["number"]) == 1 and int(l0["progress"]) == 0, "oda 0: kat 1 lobisi")
+	var l1 := FloorPlan.locate(1)
+	check(int(l1["kind"]) == FloorPlan.Kind.COMBAT and int(l1["number"]) == 2 and int(l1["progress"]) == 0, "oda 1: ilk savaş odası, tur 0")
+	check(int(FloorPlan.locate(4)["progress"]) == 3, "kat 1'in son savaş odası: tur 3")
+	var l5 := FloorPlan.locate(5)
+	check(int(l5["kind"]) == FloorPlan.Kind.BOSS and int(l5["number"]) == 6 and bool(l5["last"]) and int(l5["progress"]) == 4, "oda 5: Gölge odası, son oda")
+	var l6 := FloorPlan.locate(6)
+	check(int(l6["floor"]) == 2 and int(l6["kind"]) == FloorPlan.Kind.LOBBY and int(l6["progress"]) == 4, "oda 6: kat 2 lobisi, ilerleme sürüyor")
+	var l107 := FloorPlan.locate(107)
+	check(int(l107["floor"]) == 18 and int(l107["kind"]) == FloorPlan.Kind.BOSS and int(l107["progress"]) == 72, "son oda: kat 18 Gölge'si, tur 72")
+	check(FloorPlan.index_of(3, 2) == 14 and FloorPlan.first_index_of(18) == 102 and FloorPlan.index_of(1, 99) == 5 and FloorPlan.index_of(1, -4) == 0, "oda numarası <-> kat/sıra (kırpılır)")
+	check(FloorPlan.is_final_floor(18) and not FloorPlan.is_final_floor(17), "son kat 18")
+	check(FloorPlan.theme_of(1) == "kat1" and FloorPlan.theme_of(4) == "kat1" and FloorPlan.theme_of(5) == "kat2" and FloorPlan.theme_of(13) == "kat4" and FloorPlan.theme_of(17) == "kat5" and FloorPlan.theme_of(18) == "kat5", "tema her 4 katta bir değişir, son iki kat tutulma")
+	var old := FloorPlan.locate(7, false)
+	check(int(old["floor"]) == 1 and int(old["slot"]) == 7 and int(old["kind"]) == FloorPlan.Kind.COMBAT and int(old["number"]) == 8 and int(old["progress"]) == 7 and not bool(old["last"]), "katsız kip: tek sonsuz şerit, ilerleme = oda no")
+	check(FloorPlan.room_label(l0) == "LOBİ" and FloorPlan.room_label(l5) == "GÖLGE" and FloorPlan.room_label(FloorPlan.locate(3)) == "ODA 4", "oda adları")
+	check(RunController.progress_of(14, true) == int(FloorPlan.locate(14)["progress"]) and RunController.progress_of(14) == 14, "RunController.progress_of: katlı / katsız")
+
+
+func _test_shop_stock() -> void:
+	await _new_world("Dükkân rafı: tohumla aynı, sahip olunanı ve Umbra'nınkini içermez, satış kuralları")
+	var rng_a := RandomNumberGenerator.new()
+	rng_a.seed = 77
+	var rng_b := RandomNumberGenerator.new()
+	rng_b.seed = 77
+	var a := ShopStock.generate(rng_a, 1)
+	var b := ShopStock.generate(rng_b, 1)
+	check(a.size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS, "kat 1: %d eşya + %d yemek (%d)" % [ShopStock.GEAR_OFFERS, ShopStock.FOOD_OFFERS, a.size()])
+	var same := a.size() == b.size()
+	for i in mini(a.size(), b.size()):
+		if a.offers[i].item.id != b.offers[i].item.id or a.offers[i].price != b.offers[i].price:
+			same = false
+	check(same, "aynı tohum aynı raf")
+	var varied := false
+	for s in range(1, 30):
+		var r := RandomNumberGenerator.new()
+		r.seed = s
+		var other := ShopStock.generate(r, 1)
+		for i in mini(a.size(), other.size()):
+			if other.offers[i].item.id != a.offers[i].item.id:
+				varied = true
+	check(varied, "başka tohum başka raf")
+	var late_rng := RandomNumberGenerator.new()
+	late_rng.seed = 3
+	var late := ShopStock.generate(late_rng, 6)
+	check(late.size() == ShopStock.GEAR_OFFERS_LATE + ShopStock.FOOD_OFFERS, "kat 6: 4 eşya + 2 yemek (%d)" % late.size())
+	# Nadirlik sınırı: Lanetli hiç yok, Efsanevi yalnız 4. kattan sonra
+	var no_cursed := true
+	var epic_early := false
+	var epic_late := false
+	var food_count_ok := true
+	for f in [1, 2, 3, 4, 8, 18]:
+		for s in 40:
+			var r := RandomNumberGenerator.new()
+			r.seed = s * 31 + f
+			var st := ShopStock.generate(r, f)
+			var foods := 0
+			for o in st.offers:
+				if o.item.rarity == ItemData.Rarity.CURSED:
+					no_cursed = false
+				if o.item.rarity == ItemData.Rarity.EPIC:
+					if f < ShopStock.LATE_FLOOR:
+						epic_early = true
+					else:
+						epic_late = true
+				if o.item.is_food():
+					foods += 1
+			if foods != ShopStock.FOOD_OFFERS:
+				food_count_ok = false
+	check(no_cursed, "Lanetli eşya dükkânda yok")
+	check(not epic_early, "4. kattan önce Efsanevi yok")
+	check(epic_late, "4. kattan sonra Efsanevi çıkabiliyor")
+	check(food_count_ok, "her rafta tam %d yemek var" % ShopStock.FOOD_OFFERS)
+	# Sahip olunan ve Umbra'nın eşyaları çıkmaz
+	var gear := ItemDB.equipment()
+	var banned: Array = []
+	for i in mini(14, gear.size()):
+		banned.append(gear[i].id)
+	var clean := true
+	for s in 30:
+		var r := RandomNumberGenerator.new()
+		r.seed = s
+		var st := ShopStock.generate(r, 5, banned.slice(0, 7), banned.slice(7))
+		for o in st.offers:
+			if o.item.id in banned:
+				clean = false
+	check(clean, "sahip olunan ve Umbra'ya kalan eşyalar rafa konmuyor")
+	# Fiyat
+	var it := _item("watcher_band")
+	check(ShopStock.price_of(it, 1) == it.price and ShopStock.price_of(it, 10) > ShopStock.price_of(it, 1) and ShopStock.price_of(it, 1) >= 1, "fiyat kat arttıkça pahalanıyor (%d -> %d)" % [ShopStock.price_of(it, 1), ShopStock.price_of(it, 10)])
+	# Satın alma
+	var p := _spawn_player(500.0)
+	var inv := p.inventory
+	var stock := ShopStock.new()
+	stock._add(_item("watcher_band"), 1)
+	stock._add(_item("tower_bread"), 1)
+	stock._add(_item("viper_fang"), 1)
+	var bought := []
+	var on_buy := func(_actor: Node, item: ItemData, price: int) -> void: bought.append([item.id, price])
+	EventBus.item_purchased.connect(on_buy)
+	p.gold = 0
+	check(stock.buy(p, 0) == "YETERLİ ALTIN YOK" and p.gold == 0 and not stock.offers[0].sold and inv.owned_count("watcher_band") == 0, "altın yetmezse reddedilir, hiçbir şey değişmez")
+	check(stock.buy(p, 9) == "YOK" and stock.buy(p, -1) == "YOK", "olmayan teklif: YOK")
+	p.add_gold(500)
+	var price0 := stock.offers[0].price
+	check(stock.buy(p, 0) == "", "satın alındı")
+	check(p.gold == 500 - price0, "altın tam fiyat kadar düştü (%d)" % p.gold)
+	check(stock.offers[0].sold and inv.count("watcher_band") == 1, "eşya takıldı (slot boştu), teklif satıldı")
+	check(stock.buy(p, 0) == "SATILDI" and p.gold == 500 - price0, "satılan ikinci kez alınamaz, altın düşmez")
+	var price1 := stock.offers[1].price
+	check(stock.buy(p, 1) == "" and inv.bag_count("tower_bread") == 1 and p.gold == 500 - price0 - price1, "yemek çantaya gitti")
+	check(bought.size() == 2 and bought[0][0] == "watcher_band" and bought[0][1] == price0, "item_purchased olayı yayıldı")
+	EventBus.item_purchased.disconnect(on_buy)
+	check(stock.unsold_count() == 1, "rafta bir eşya kaldı")
+	# Çanta dolu: yemek (çantada olmayan) alınamaz, altın düşmez
+	for e in ItemDB.equipment():
+		if inv.bag.size() >= Inventory.BAG_SIZE:
+			break
+		if e.id != "viper_fang" and inv.owned_count(e.id) == 0:
+			inv.give(e)
+	var full := ShopStock.new()
+	full._add(_item("sweet_potato") if ItemDB.get_item("sweet_potato") != null else _item("tower_bread"), 1)
+	var gold_before := p.gold
+	if inv.bag_count(full.offers[0].item.id) == 0:
+		check(full.buy(p, 0) == "ÇANTA DOLU" and p.gold == gold_before and not full.offers[0].sold, "çanta doluysa reddedilir, altın düşmez")
+	# Ölü oyuncu
+	var dead := ShopStock.new()
+	dead._add(_item("viper_fang"), 1)
+	p.dead = true
+	check(dead.buy(p, 0) == "ÖLÜSÜN", "ölü oyuncu alışveriş yapamaz")
+	p.dead = false
+	# Kayıt
+	var data := stock.to_array()
+	var back := ShopStock.from_array(data)
+	check(back.size() == stock.size() and back.offers[0].sold and not back.offers[2].sold and back.offers[0].price == stock.offers[0].price and back.offers[2].item.id == "viper_fang", "raf kayda yazılıp geri okunuyor (satıldı bayrağı dahil)")
+	data.append({"id": "yok_boyle_esya", "price": 5, "sold": false})
+	check(ShopStock.from_array(data).size() == stock.size(), "tanınmayan eşya kimliği atlanıyor")
+	check(ShopStock.from_array("bozuk").size() == 0 and ShopStock.from_array(null).size() == 0, "bozuk veri boş raf verir")
+
+
+func _test_shop_menu() -> void:
+	await _new_world("Dükkân menüsü (tezgâhta E): duraklatma, gezinme, satın alma, reddetme, kapatma, fare")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	var run := _start_run(81)
+	await _frames(5)
+	var p := run.player
+	var menu := run.hud.shop_menu
+	check(menu != null and not menu.is_open and not menu.visible and not get_tree().paused, "menü HUD'da var, kapalı")
+	var stock := ShopStock.new()
+	for id in ["watcher_band", "viper_fang", "tower_bread"]:
+		stock._add(_item(id), 1)
+	check(menu.open_shop(p, stock) and menu.is_open and get_tree().paused and ItemView.active_menu == menu, "açıldı: oyun durdu, menü aktif")
+	check(menu.cell_count() == 3, "üç kutu")
+	var inside := true
+	for i in menu.cell_count():
+		if not ShopMenu.PANEL.encloses(menu.cell_rect(i)) or menu.cell_rect(i).intersects(ShopMenu.DETAIL):
+			inside = false
+	check(inside, "kutular panelin içinde, ayrıntı paneline taşmıyor")
+	check(not menu.cell_rect(0).intersects(menu.cell_rect(1)) and menu.cell_rect(2).position.y > menu.cell_rect(0).position.y, "eşyalar üst satırda, yemek alt satırda")
+	check(menu.cursor_index() == 0 and menu.cursor_offer().item.id == "watcher_band", "imleç ilk teklifte")
+	menu._unhandled_input(_ui_key(KEY_RIGHT))
+	check(menu.cursor_index() == 1, "sağ: yandaki eşya")
+	menu._unhandled_input(_ui_key(KEY_DOWN))
+	check(menu.cursor_index() == 2, "aşağı: yemek satırı")
+	menu._unhandled_input(_ui_key(KEY_UP))
+	check(menu.cursor_index() in [0, 1], "yukarı: eşya satırına döndü")
+	menu.focus(0)
+	# Altın yok: reddedilir
+	p.gold = 0
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(not stock.offers[0].sold and menu._msg == "YETERLİ ALTIN YOK" and not menu._msg_good and p.gold == 0, "altın yoksa Enter reddeder: " + menu._msg)
+	# Altın var: Enter satın alır
+	p.add_gold(300)
+	var g0 := p.gold
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(stock.offers[0].sold and p.gold == g0 - stock.offers[0].price and p.inventory.count("watcher_band") == 1, "Enter satın aldı ve taktı")
+	check(menu._msg == "SATIN ALINDI  " + _item("watcher_band").upper_name() and menu._msg_good, "mesaj: " + menu._msg)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu._msg == "SATILDI" and p.gold == g0 - stock.offers[0].price, "satılana tekrar basınca SATILDI, altın düşmez")
+	# E tuşu ve J de satın alır
+	menu.focus(1)
+	var g1 := p.gold
+	menu._unhandled_input(_ui_key(KEY_E))
+	check(stock.offers[1].sold and p.gold == g1 - stock.offers[1].price, "E tuşu da satın alır")
+	# Fare: ilk tık seçer, seçiliye ikinci tık satın alır
+	menu.focus(0)
+	var pos := menu.cell_rect(2).get_center()
+	var g2 := p.gold
+	menu._gui_input(_mouse_click(pos))
+	check(menu.cursor_index() == 2 and not stock.offers[2].sold and p.gold == g2, "fare: ilk tık yalnız seçer")
+	menu._gui_input(_mouse_click(pos))
+	check(stock.offers[2].sold and p.inventory.bag_count("tower_bread") == 1, "fare: seçiliye ikinci tık satın alır")
+	# Açıkken oyun tuşları alta geçmez; Esc kapatır
+	menu._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not menu.is_open and not get_tree().paused and ItemView.active_menu == null, "Esc kapattı, oyun akıyor")
+	check(not menu.open_shop(p, null), "raf yoksa açılmaz")
+	p.dead = true
+	check(not menu.open_shop(p, stock) and not menu.is_open, "ölüyken açılmaz")
+	p.dead = false
+	run.queue_free()
+	await _frames(2)
+
+
+func _test_floor_exit() -> void:
+	await _new_world("Kat geçidi: kapalıyken kullanılmaz, açılma süresi, E ve yürüyerek geçiş, bir kez kullanılır")
+	var p := _spawn_player(300.0)
+	var ex := FloorExit.new()
+	ex.position = Vector2(300.0, RoomLayouts.FLOOR_Y)
+	ex.next_floor = 2
+	_world.add_child(ex)
+	var used := [0]
+	ex.used.connect(func(_e: FloorExit) -> void: used[0] += 1)
+	p.global_position = Vector2(300.0, 612.0)
+	await _frames(3)
+	check(ex.state == FloorExit.State.CLOSED and ex.in_range and not ex.is_open(), "kapalı, oyuncu yakında")
+	check(not ex.try_use() and used[0] == 0, "kapalıyken kullanılamaz")
+	p.interacted.emit()
+	await _frames(15)
+	check(used[0] == 0, "kapalıyken E de işe yaramaz; yürüyerek içine girmek de")
+	ex.open_up()
+	check(ex.state == FloorExit.State.OPENING and not ex.is_open(), "açılıyor (henüz kullanılamaz)")
+	check(not ex.try_use(), "açılırken kullanılamaz")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(ex.state == FloorExit.State.OPEN and ex.is_open(), "açıldı")
+	# Oyuncu içine yürüdü (WALK_IN_X içinde): HOLD_TIME sonra geçilir
+	await _wait_until(func() -> bool: return used[0] > 0, 60)
+	check(used[0] == 1, "açık geçidin içinde durunca geçildi")
+	await _frames(30)
+	check(used[0] == 1 and not ex.try_use(), "bir geçit yalnız bir kez kullanılır")
+	# Yakında ama içinde değil: yalnız E geçirir
+	var ex2 := FloorExit.new()
+	ex2.position = Vector2(900.0, RoomLayouts.FLOOR_Y)
+	_world.add_child(ex2)
+	var used2 := [0]
+	ex2.used.connect(func(_e: FloorExit) -> void: used2[0] += 1)
+	ex2.open_up()
+	p.global_position = Vector2(900.0 - 70.0, 612.0)
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 25)
+	check(ex2.is_open() and ex2.in_range and used2[0] == 0, "yakında ama içinde değil: kendiliğinden geçmez")
+	p.interacted.emit()
+	check(used2[0] == 1, "E ile geçildi")
+	# Uzaktan E işe yaramaz
+	var ex3 := FloorExit.new()
+	ex3.position = Vector2(1500.0, RoomLayouts.FLOOR_Y)
+	_world.add_child(ex3)
+	var used3 := [0]
+	ex3.used.connect(func(_e: FloorExit) -> void: used3[0] += 1)
+	ex3.open_up()
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 5)
+	p.interacted.emit()
+	check(used3[0] == 0 and not ex3.in_range, "uzaktayken E geçirmez")
+
+
+## Odadan odaya yürümeden: oyuncuyu bir sonraki odaya götürür ve girildiğini bekler.
+func _walk_to_next_room(run: RunController) -> bool:
+	var p := run.player
+	var from := run.current
+	var room := run.rooms[from] as Room
+	p.global_position = Vector2(room.rect.end.x - 150.0, 612.0)
+	p.facing = 1
+	p.intent.move_x = 1.0
+	var ok := await _wait_until(func() -> bool: return run.current == from + 1, 200)
+	p.intent.move_x = 0.0
+	return ok
+
+
+func _test_floor_flow() -> void:
+	await _new_world("Kat akışı: lobi (dükkân) -> 4 savaş odası -> Gölge odası -> kat geçidi -> kararma -> Kat 2")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	var run := _start_run(2024, true)
+	var p := run.player
+	await _frames(5)
+	var lobby := run.rooms[0] as Room
+	check(run.current == 0 and lobby.kind == FloorPlan.Kind.LOBBY and lobby.floor_no == 1, "koşu kat 1'in lobisinde başladı")
+	check(lobby.waves.is_empty() and lobby.is_cleared() and lobby.alive_count() == 0, "lobide düşman yok, oda baştan temiz")
+	check(not lobby.door.is_blocking(), "lobinin kapısı açık")
+	check(lobby.rect.position.x == 0.0 and run.rooms.has(1) and (run.rooms[1] as Room).kind == FloorPlan.Kind.COMBAT, "kat x = 0'dan başlıyor, yanındaki oda savaş odası")
+	check(lobby.shop != null and lobby.shop.stock != null and lobby.shop.stock.size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS, "tezgâh kurulu, rafta %d teklif" % lobby.shop.stock.size())
+	check(run.hud.overlay.floor_number == 1 and run.hud.overlay.room_kind == FloorPlan.Kind.LOBBY and run.hud.overlay.room_number == 1, "HUD: KAT 1, LOBİ")
+	check(int(run.stats["rooms_cleared"]) == 0 and int(run.stats["floor"]) == 1 and int(run.stats["room"]) == 1, "lobi temizlenen oda sayılmaz (%s)" % str(run.stats))
+	check(run.camera.bounds.end.x >= (run.rooms[1] as Room).camera_rect().end.x - 0.5, "kamera lobiden yan odaya uzanabiliyor")
+	# Tezgâh
+	p.global_position = Vector2(lobby.rect.position.x + RoomLayouts.shop_x(RoomLayouts.LOBBY_ID), 612.0)
+	await _frames(3)
+	check(lobby.shop.in_range, "tezgâhın yanında")
+	p.interacted.emit()
+	check(run.hud.shop_menu.is_open and get_tree().paused, "E: dükkân menüsü açıldı")
+	p.add_gold(500)
+	run.hud.shop_menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(lobby.shop.stock.unsold_count() == lobby.shop.stock.size() - 1, "menüden bir şey alındı")
+	run.hud.shop_menu._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not run.hud.shop_menu.is_open and not get_tree().paused, "kapandı")
+	p.global_position = Vector2(60.0, 612.0)
+	await _frames(3)
+	p.interacted.emit()
+	check(not run.hud.shop_menu.is_open, "tezgâhtan uzakta E menü açmaz")
+	# Lobiden sağa geç
+	check(await _walk_to_next_room(run), "lobiden sağa geçince 1. odaya girildi")
+	await _frames(20)
+	var r1 := run.rooms[1] as Room
+	check(r1.state == Room.State.ACTIVE and run.hud.overlay.room_number == 2 and run.hud.overlay.room_kind == FloorPlan.Kind.COMBAT and run.hud.overlay.floor_number == 1, "savaş odası aktif; HUD KAT 1 ODA 2")
+	check(lobby.door.is_blocking() and not lobby.shop.in_range, "lobinin kapısı arkadan kapandı (dükkân geride kaldı)")
+	# 2-5. odalar: sırayla temizle ve geç
+	for slot in [1, 2, 3, 4]:
+		var room := run.current_room()
+		check(room.kind == FloorPlan.Kind.COMBAT and room.slot == slot, "oda %d savaş odası" % (slot + 1))
+		await _wait_until(func() -> bool: return room.alive_count() > 0 or room.pending_count() > 0, 300)
+		run.skip_room()
+		await _frames(4)
+		check(room.is_cleared() and int(run.stats["rooms_cleared"]) == slot, "oda %d temizlendi (temizlenen: %d)" % [slot + 1, int(run.stats["rooms_cleared"])])
+		check(await _walk_to_next_room(run), "oda %d'den sonrakine geçildi" % (slot + 1))
+		await _frames(10)
+	# Gölge odası
+	var boss_room := run.current_room()
+	check(boss_room.kind == FloorPlan.Kind.BOSS and boss_room.slot == 5 and run.current == 5, "6. oda: Gölge odası")
+	check(run.hud.overlay.room_kind == FloorPlan.Kind.BOSS and run.hud.overlay.room_number == 6, "HUD: GÖLGE")
+	check(boss_room.floor_exit != null and boss_room.floor_exit.state == FloorExit.State.CLOSED and boss_room.floor_exit.next_floor == 2, "kat geçidi kapalı, KAT 2'ye gidiyor")
+	check(not run.has_next_room(5) and not run.rooms.has(6), "Gölge odasının sağında oda yok")
+	check(boss_room.door.permanent, "sağ kapı hiç açılmaz (yerine geçit var)")
+	var spawned := await _wait_until(func() -> bool: return boss_room.alive_count() >= 1, 360)
+	check(spawned and boss_room.alive_count() == 1, "patron doğdu (tek düşman)")
+	var boss: ActorBase = null
+	for e in get_tree().get_nodes_in_group("enemies"):
+		boss = e as ActorBase
+	check(boss != null and boss.has_meta("floor") and int(boss.get_meta("floor")) == 1, "patron katını biliyor (meta floor = 1)")
+	check(boss_room.floor_exit.state == FloorExit.State.CLOSED, "patron yaşarken geçit kapalı")
+	run.skip_room()
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(boss_room.is_cleared() and int(run.stats["rooms_cleared"]) == 5, "Gölge yenildi, 5 oda temizlendi")
+	check(boss_room.floor_exit.is_open(), "kat geçidi açıldı")
+	# Gerçek yol: açık geçidin içine yürü
+	p.global_position = boss_room.floor_exit.global_position + Vector2(0.0, -12.0)
+	var started := await _wait_until(func() -> bool: return run.is_transitioning(), 60)
+	check(started, "geçidin içine yürüyünce geçiş başladı")
+	check(not run.descend(), "geçiş sürerken ikinci geçiş başlamaz")
+	check(not run.dev_next_floor() and run.current_floor() == 1, "geçiş sürerken F7 kısayolu karışmıyor")
+	check(p.input_locked, "kararırken oyuncu girişi kilitli")
+	var dark := await _wait_until(func() -> bool: return run.hud.overlay.fade >= 0.99, 120)
+	check(dark, "ekran karardı")
+	var swapped := await _wait_until(func() -> bool: return run.current_floor() == 2, 120)
+	check(swapped and run.current == 6, "yeni kata geçildi: kat 2, oda 6 (lobi)")
+	var lobby2 := run.rooms[6] as Room
+	check(lobby2.kind == FloorPlan.Kind.LOBBY and lobby2.floor_no == 2 and lobby2.rect.position.x == 0.0, "kat 2'nin lobisi x = 0'da")
+	await _frames(3)
+	check(not is_instance_valid(boss_room) or boss_room.is_queued_for_deletion(), "eski katın odaları silindi")
+	check(run.rooms.size() == 2 and run.rooms.has(6) and run.rooms.has(7), "yalnız yeni katın ilk iki odası kurulu")
+	check(is_equal_approx(p.global_position.x, lobby2.rect.position.x + RunController.START_OFFSET), "oyuncu yeni lobinin başında (x=%.0f)" % p.global_position.x)
+	check(run.hud.overlay.card_title == "KAT 2" and run.hud.overlay.card_k > 0.0, "karanlıkta 'KAT 2' kartı")
+	check(lobby2.shop != null and lobby2.shop.stock != null and lobby2.shop.stock.size() > 0, "yeni lobide yeni raf")
+	check(run.hud.overlay.floor_number == 2 and run.hud.overlay.room_kind == FloorPlan.Kind.LOBBY, "HUD: KAT 2, LOBİ")
+	var done := await _wait_until(func() -> bool: return not run.is_transitioning(), 400)
+	check(done and run.hud.overlay.fade == 0.0 and run.hud.overlay.card_k == 0.0 and not p.input_locked, "ekran açıldı, giriş serbest")
+	check(not run.descend(), "lobide (geçit yokken) geçiş başlatılamaz")
+	check(int(run.stats["floor"]) == 2 and int(run.stats["room"]) == 1, "istatistik: kat 2, oda 1")
+	# F7: kısayol
+	check(run.dev_next_floor() and run.current_floor() == 3 and run.current == 12, "F7: kat 3'ün lobisine ışınlandı")
+	run.queue_free()
+	await _frames(2)
+
+
+## Kayıttan (JSON) geri yüklenmiş bir koşu kurar: `data` GameState'in bekleyen devam koşusu olur.
+func _resume_run(data: Dictionary, floors: bool = true) -> RunController:
+	GameState.resume_run = data
+	var run := RUN.instantiate() as RunController
+	run.floors_enabled = floors
+	run.seed_value = 999  # kayıttaki tohum kazanmalı
+	var p := run.get_node("Player") as Player
+	p.scripted = true
+	_world.add_child(run)
+	(run.get_node("Camera") as ShakeCamera).set_process(false)
+	return run
+
+
+func _test_floor_save() -> void:
+	await _new_world("Kayıt (katlı yapı): lobide raf kaydı, devam, katın ortasından devam, eski kaydın taşınması")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	_clean_saves()
+	var slot := SaveSlot.create(0, "Kat", Difficulty.Level.NORMAL)
+	SaveStore.save_slot(slot)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run := _start_run(4242, true)
+	await _frames(5)
+	var p := run.player
+	var data := slot.run_of(GameMode.Kind.NORMAL)
+	check(int(data.get("v", 0)) == 2 and int(data.get("floor", 0)) == 1 and int(data.get("room", -1)) == 0, "kayıt: sürüm 2, kat 1, oda 0 (lobi)")
+	check(data.get("shop") is Array and (data["shop"] as Array).size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS, "lobide raf kayda yazıldı")
+	check(slot.progress_text(GameMode.Kind.NORMAL) == "KAT 1  ODA 1", "kaldığımız yer: " + slot.progress_text(GameMode.Kind.NORMAL))
+	# Bir şey satın al ve kaydet
+	p.add_gold(500)
+	var stock := run.shop_stock
+	check(stock != null and stock.buy(p, 0) == "", "bir şey satın alındı")
+	var ids: Array = []
+	for o in stock.offers:
+		ids.append(o.item.id)
+	var gold_then := p.gold
+	check(run.save_checkpoint(), "kayıt yazıldı")
+	run.queue_free()
+	await _frames(3)
+	# Devam: aynı raf, satılan satılmış, altın aynı
+	var slot2 := SaveStore.load_slot(0)
+	GameState.begin_session(slot2, GameMode.Kind.NORMAL)
+	var base := slot2.run_of(GameMode.Kind.NORMAL).duplicate(true)
+	var run2 := _resume_run(slot2.run_of(GameMode.Kind.NORMAL))
+	await _frames(5)
+	var p2 := run2.player
+	check(GameState.resume_run.is_empty() and run2.run_seed == 4242 and run2.current == 0, "devam: kayıttaki tohum, kat 1 lobisi")
+	var lobby := run2.rooms[0] as Room
+	var got: Array = []
+	var sold: Array = []
+	for o in lobby.shop.stock.offers:
+		got.append(o.item.id)
+		sold.append(o.sold)
+	check(got == ids, "aynı raf geri geldi")
+	check(sold[0] and not sold[1] and not sold[2], "satılan eşya satılmış kaldı (%s)" % str(sold))
+	check(p2.gold == gold_then and p2.inventory.owned_count(ids[0]) == 1, "altın ve satın alınan eşya geri geldi (%d)" % p2.gold)
+	# Yeniden girince yeni raf üretilmez: aynı lobiye tekrar kurulum raf değiştirmez
+	check(run2.shop_stock == lobby.shop.stock, "koşu denetleyicisi aynı rafı tutuyor")
+	run2.queue_free()
+	await _frames(3)
+	# --- Katın ortasından devam: kat 4, 4. oda (sıra 3)
+	var mid := base.duplicate(true)
+	mid["floor"] = 4
+	mid["room"] = 3
+	mid.erase("shop")
+	var run3 := _resume_run(mid)
+	await _frames(5)
+	var idx := FloorPlan.index_of(4, 3)
+	check(run3.current == idx and run3.current_floor() == 4, "devam: kat 4, 4. oda (oda no %d)" % run3.current)
+	check(run3.rooms.has(idx - 1) and run3.rooms.has(idx) and run3.rooms.has(idx + 1) and not run3.rooms.has(idx - 2), "önceki (sol sınır), mevcut ve sonraki oda kurulu")
+	var rr := run3.rooms[idx] as Room
+	check(rr.kind == FloorPlan.Kind.COMBAT and rr.slot == 3 and rr.floor_no == 4, "savaş odası, kat 4")
+	check(rr.rect.position.x > 0.0 and is_equal_approx(rr.rect.position.x, run3.x_left_of(idx)), "oda katın içinde doğru x'te (%.0f)" % rr.rect.position.x)
+	check(rr.rect.has_point(p3_pos(run3)) and run3.player.global_position.x < rr.rect.position.x + 400.0, "oyuncu odanın başında")
+	check(rr.tuning.progress == 14, "düşman ayarı: tur 14 (kat 4 üçüncü savaş odası): %d" % rr.tuning.progress)
+	check(run3.hud.overlay.floor_number == 4 and run3.hud.overlay.room_number == 4, "HUD: KAT 4 ODA 4")
+	check(run3.shop_stock == null and rr.shop == null, "lobi dışında raf yok")
+	var again := run3.snapshot()
+	check(int(again["floor"]) == 4 and int(again["room"]) == 3 and not again.has("shop"), "kayıt aynı yeri gösteriyor, raf yok")
+	# Ölünce en iyi konum: KAT 4  ODA 4
+	run3.player.health = 1
+	run3.player.take_damage(99, null)
+	await _frames(3)
+	var after := SaveStore.load_slot(0)
+	check(int(after.records["best_floor"]) == 4 and int(after.records["best_room"]) == 4 and after.best_text(GameMode.Kind.NORMAL) == "EN İYİ KAT 4  ODA 4", "en iyi konum: " + after.best_text(GameMode.Kind.NORMAL))
+	check(int(run3.hud.overlay.summary.get("floor", 0)) == 4 and int(run3.hud.overlay.summary.get("room", 0)) == 4, "ölüm özeti: KAT 4 ODA 4")
+	run3.queue_free()
+	await _frames(3)
+	# --- Eski (tek şeritli) kayıt: aynı ilerleme için uygun katın lobisine taşınır
+	var legacy := base.duplicate(true)
+	legacy.erase("v")
+	legacy.erase("shop")
+	legacy["floor"] = 1
+	legacy["room"] = 17
+	var run4 := _resume_run(legacy)
+	await _frames(5)
+	check(run4.current == FloorPlan.index_of(5, 0) and run4.current_room().kind == FloorPlan.Kind.LOBBY, "eski kayıt (oda 18) -> kat 5'in lobisi")
+	check(run4.player.gold == gold_then, "eski kayıttaki altın korundu")
+	check(run4.shop_stock != null and run4.shop_stock.size() > 0, "taşınan lobide yeni raf var")
+	run4.queue_free()
+	await _frames(3)
+	var legacy2 := legacy.duplicate(true)
+	legacy2["v"] = 1
+	legacy2["room"] = 3
+	var run5 := _resume_run(legacy2)
+	await _frames(5)
+	check(run5.current == 0, "eski kayıt (oda 4) -> kat 1'in lobisi")
+	run5.queue_free()
+	await _frames(3)
+	# Katsız (eski) kip sürümsüz yazar ve kayıttaki oda no'yu doğrudan kullanır
+	var run6 := _start_run(7, false)
+	await _frames(3)
+	check(int(run6.snapshot()["v"]) == 1, "katsız kip: kayıt sürümü 1")
+	run6.queue_free()
+	await _frames(3)
+	_end_saves()
+
+
+func p3_pos(run: RunController) -> Vector2:
+	return run.player.global_position
+
+
+func _test_final_floor() -> void:
+	await _new_world("Son kat: Gölge yenilince zafer (geçit yok), zafer ekranı, rekor ve kayıt")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	_clean_saves()
+	var slot := SaveSlot.create(0, "Zafer", Difficulty.Level.NORMAL)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run := _start_run(555, true)
+	var p := run.player
+	await _frames(5)
+	# 18. katın lobisine ışınla
+	run.current = FloorPlan.index_of(17, 5)
+	check(run.dev_next_floor() and run.current_floor() == 18 and run.current == FloorPlan.index_of(18, 0), "kat 18'e geçildi")
+	check(not run.dev_next_floor() and not run.descend(), "son katın ötesi yok")
+	var wins := []
+	run.run_won.connect(func() -> void: wins.append(true))
+	# Gölge odasına git
+	for k in 5:
+		await _frames(3)
+		if k > 0:
+			var room := run.current_room()
+			await _wait_until(func() -> bool: return room.alive_count() > 0 or room.pending_count() > 0, 300)
+			run.skip_room()
+			await _frames(3)
+		check(await _walk_to_next_room(run), "kat 18: %d. odadan geçildi" % (k + 1))
+	var boss_room := run.current_room()
+	check(boss_room.kind == FloorPlan.Kind.BOSS and FloorPlan.is_final_floor(boss_room.floor_no), "kat 18'in Gölge odası")
+	check(boss_room.floor_exit == null and boss_room.door.permanent, "son katta geçit yok, kapı mühürlü")
+	await _wait_until(func() -> bool: return boss_room.alive_count() > 0, 360)
+	var kills_before := int(run.stats["kills"])
+	run.skip_room()
+	await _frames(5)
+	check(run.won and wins.size() == 1, "son Gölge yenildi: zafer (run_won bir kez)")
+	check(not run.victory_shown, "zafer ekranı hemen değil, kısa bir gecikmeyle")
+	check(int(slot.records["wins"]) == 1 and int(slot.records["runs"]) == 1 and int(slot.records["deaths"]) == 0, "rekorlar: 1 zafer, 1 koşu, 0 ölüm (%s)" % str(slot.records))
+	check(int(slot.records["best_floor"]) == 18 and int(slot.records["best_room"]) == 6, "en iyi: KAT 18 ODA 6")
+	check(slot.run_of(GameMode.Kind.NORMAL).is_empty(), "yarım koşu silindi")
+	var shown := await _wait_until(func() -> bool: return run.victory_shown, int(RunController.VICTORY_DELAY * 60.0) + 60)
+	check(shown and run.hud.overlay.victory and p.input_locked, "zafer ekranı açıldı, oyuncu kilitli")
+	check(int(run.hud.overlay.summary.get("floor", 0)) == 18 and int(run.hud.overlay.summary.get("kills", 0)) >= kills_before, "özet 18. katı gösteriyor")
+	await _frames(30)
+	check(int(slot.records["wins"]) == 1, "zafer iki kez sayılmadı")
+	# R ile yeniden başlamak (terk) zaferi bozmaz: koşu zaten bitmişti, tekrar sayılmaz
+	run._finish_run(false)
+	run._finish_run(true)
+	check(int(slot.records["runs"]) == 1 and int(slot.records["deaths"]) == 0, "zaferden sonra terk/ölüm: koşu tekrar sayılmadı")
+	GameState.end_session()
+	_end_saves()
+	await _frames(3)
 
 
 ## Sahneyi değiştiren bir tuş menüyü ağaçtan çıkarır; tuş ONDAN ÖNCE "işlendi" işaretlenmiş olmalı

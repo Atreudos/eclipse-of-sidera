@@ -51,7 +51,8 @@ static func draw_cell(ci: CanvasItem, rect: Rect2, item: ItemData, count: int, f
 
 
 ## Ayrıntı paneli: ad, nadirlik + slot, açıklama, "Gölge alırsa", etiketler, fiyat. `item` null ise `empty_text` yazılır.
-static func draw_detail(ci: CanvasItem, rect: Rect2, item: ItemData, empty_text: String = "") -> void:
+## `price_override` >= 0 ise fiyat satırında eşyanın kendi fiyatı yerine o yazılır (dükkânda kata göre fiyat).
+static func draw_detail(ci: CanvasItem, rect: Rect2, item: ItemData, empty_text: String = "", price_override: int = -1) -> void:
 	draw_panel(ci, rect)
 	var x := rect.position.x + 18.0
 	var w := rect.size.x - 36.0
@@ -83,8 +84,9 @@ static func draw_detail(ci: CanvasItem, rect: Rect2, item: ItemData, empty_text:
 		y += 14.0
 		GameFont.draw_left(ci, "ETİKET  " + "  ".join(item.tags), Vector2(x, y), 14, DIM)
 		y += 22.0
-	if item.price > 0:
+	var price := price_override if price_override >= 0 else item.price
+	if price > 0:
 		var py := rect.end.y - 26.0
 		ci.draw_circle(Vector2(x + 9.0, py), 8.0, Color(0.55, 0.36, 0.05))
 		ci.draw_circle(Vector2(x + 9.0, py), 6.6, Color(1.0, 0.82, 0.2))
-		GameFont.draw_left(ci, "FİYAT  %d" % item.price, Vector2(x + 26.0, py), 17, GameFont.YELLOW)
+		GameFont.draw_left(ci, "FİYAT  %d" % price, Vector2(x + 26.0, py), 17, GameFont.YELLOW)
