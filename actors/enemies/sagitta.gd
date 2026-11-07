@@ -52,6 +52,11 @@ func _apply_tuning() -> void:
 	if gold_every > 0 and not is_zero_approx(tuning.red):
 		var share := clampf(1.0 - 1.0 / float(gold_every) + tuning.red, 0.0, 0.9)
 		gold_every = clampi(roundi(1.0 / (1.0 - share)), 2, 10)
+	# Öğretici dersi: her mermi altın (1) ya da hiçbiri altın değil (0).
+	if tuning.gold_only:
+		gold_every = 1
+	elif tuning.red_only:
+		gold_every = 0
 
 
 func pick_animation() -> String:

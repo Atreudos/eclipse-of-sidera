@@ -18,6 +18,8 @@ var wave := 0:
 var overlay: RunOverlay
 ## Ekranın üstünde kısa süre görünen büyük duyurular.
 var announcer: Announcer
+## Kat 1 öğretici ipucu paneli (tuş ikonlu).
+var tutorial_hint: TutorialHint
 ## Ritim (agresiflik) çubuğu.
 var rhythm_bar: RhythmBar
 ## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
@@ -134,6 +136,9 @@ func _build() -> void:
 	announcer = Announcer.new()
 	announcer.name = "Announcer"
 	root.add_child(announcer)
+	tutorial_hint = TutorialHint.new()
+	tutorial_hint.name = "TutorialHint"
+	root.add_child(tutorial_hint)
 	inventory_screen = InventoryScreen.new()
 	inventory_screen.name = "InventoryScreen"
 	root.add_child(inventory_screen)

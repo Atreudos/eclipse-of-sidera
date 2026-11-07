@@ -77,3 +77,6 @@ signal floor_entered(floor_no: int)
 ## Oyuncu dükkândan bir şey satın aldı (price kadar altın verdi).
 @warning_ignore("unused_signal")
 signal item_purchased(actor: Node, item: ItemData, price: int)
+## Bir düşman saldırı uyarısı verdi (mode: EnemyBase.Tell.GOLD = parry'lenebilir, RED = kaçılacak). Öğretici dinler.
+@warning_ignore("unused_signal")
+signal enemy_tell(enemy: Node, mode: int)

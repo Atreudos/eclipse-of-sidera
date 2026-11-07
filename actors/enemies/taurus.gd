@@ -68,6 +68,11 @@ func _apply_tuning() -> void:
 	telegraph_time = tuning.warn(telegraph_time, TELEGRAPH_FLOOR)
 	recover_time = tuning.open_time(recover_time, RECOVER_FLOOR)
 	red_chance = clampf(red_chance + tuning.red, 0.0, EnemyScaling.MAX_RED_SHARE)
+	# Öğretici dersi: yalnız altın (parry) ya da yalnız kırmızı (dash).
+	if tuning.gold_only:
+		red_chance = 0.0
+	elif tuning.red_only:
+		red_chance = 1.0
 
 
 func _ai(delta: float) -> void:

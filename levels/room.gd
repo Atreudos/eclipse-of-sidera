@@ -82,6 +82,8 @@ var wave_number := 0
 
 ## Bu odada doğan düşmanların zorluk/tur ayarı (null = ayarsız).
 var tuning: EnemyTuning = null
+## Dalga başına ayar (kat 1 öğretici dersleri: tempo, yalnız altın/kırmızı). Boşsa ya da eksikse `tuning` geçerlidir.
+var wave_tunings: Array = []
 ## Doğan düşmanlara `set_meta` ile verilecek bilgiler (Gölge odasında {"floor": kat}).
 var spawn_meta: Dictionary = {}
 
@@ -281,14 +283,22 @@ func _kill_stragglers() -> void:
 			n.die()
 
 
+## `i`. dalganın (0'dan) düşman ayarı.
+func tuning_for_wave(i: int) -> EnemyTuning:
+	if i >= 0 and i < wave_tunings.size() and wave_tunings[i] is EnemyTuning:
+		return wave_tunings[i]
+	return tuning
+
+
 func _start_wave() -> void:
 	var wave: Array = waves[wave_number]
 	wave_number += 1
 	var points := _pick_spawn_points(wave.size())
+	var wave_tuning := tuning_for_wave(wave_number - 1)
 	for i in wave.size():
 		_pending += 1
 		var m := SpawnMarker.spawn(self, points[i], wave[i], _enemies_root, SPAWN_DELAY + 0.12 * float(i))
-		m.tuning = tuning
+		m.tuning = wave_tuning
 		m.meta = spawn_meta
 		if kind == FloorPlan.Kind.BOSS:
 			m.color = Color(0.7, 0.45, 1.0)

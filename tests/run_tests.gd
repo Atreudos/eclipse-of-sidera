@@ -147,6 +147,12 @@ func _run_all() -> void:
 		"kat_akisi": _test_floor_flow,
 		"kat_son": _test_final_floor,
 		"kat_kayit": _test_floor_save,
+		"ogretici_mufredat": _test_tutorial_curriculum,
+		"ogretici_ipucu": _test_tutorial_hints,
+		"ogretici_savas": _test_tutorial_combat,
+		"ogretici_kayit": _test_tutorial_save,
+		"ogretici_panel": _test_tutorial_view,
+		"ogretici_gercek": _test_tutorial_real_parry,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -5915,3 +5921,476 @@ func _test_menu_scene() -> void:
 	check(went[0] == SceneRouter.MENU and GameState.slot == null and not get_tree().paused, "go_menu: oturum kapanır, duraklama kalkar")
 	SceneRouter.hook = Callable()
 	_end_saves()
+
+
+# ------------------------------------------------------------------ öğretici (kat 1)
+
+## `cond` doğru olana kadar en fazla `seconds` GERÇEK saniye bekler (gerçek zamanla akan arayüz animasyonları için).
+func _wait_until_real(cond: Callable, seconds: float) -> bool:
+	var end := Time.get_ticks_msec() + int(seconds * 1000.0)
+	while Time.get_ticks_msec() < end:
+		if cond.call():
+			return true
+		await get_tree().physics_frame
+	return cond.call()
+
+
+## İpucu panelindeki tuş ikonlarının etiketleri (satırlar sırasıyla, soldan sağa).
+func _hint_keys(hint: TutorialHint) -> Array:
+	var keys: Array = []
+	for row: Dictionary in hint.rows:
+		for part: Dictionary in row["parts"]:
+			if part.has("k"):
+				keys.append(String(part["k"]))
+	return keys
+
+
+## İpucu panelindeki bütün yazılar (başlık dahil) tek dizgede.
+func _hint_text(hint: TutorialHint) -> String:
+	var s := hint.title
+	for row: Dictionary in hint.rows:
+		for part: Dictionary in row["parts"]:
+			if part.has("t"):
+				s += " " + String(part["t"])
+	return s
+
+
+func _test_tutorial_curriculum() -> void:
+	await _new_world("Öğretici müfredatı: kat 1'de düşmanlar tek tek, yavaş, önce yalnız altın")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	check(Tutorial.applies({"floor": 1, "kind": FloorPlan.Kind.COMBAT}), "kat 1'in savaş odaları müfredatı kullanır")
+	check(not Tutorial.applies({"floor": 2, "kind": FloorPlan.Kind.COMBAT}), "kat 2'nin savaş odaları normal")
+	check(not Tutorial.applies({"floor": 1, "kind": FloorPlan.Kind.LOBBY}) and not Tutorial.applies({"floor": 1, "kind": FloorPlan.Kind.BOSS}), "lobi ve Gölge odası müfredatsız")
+	check(Tutorial.lessons(0).is_empty() and Tutorial.lessons(5).is_empty(), "savaş odası olmayan sıralarda ders yok")
+	var single := true
+	var scorpius := false
+	var total := 0
+	for slot in [1, 2, 3, 4]:
+		for l: Dictionary in Tutorial.lessons(slot):
+			var en: Array = l["enemies"]
+			total += en.size()
+			if slot < 4 and en.size() != 1:
+				single = false
+			if en.has(SCORPIUS):
+				scorpius = true
+	check(single, "2-4. odalar: her dalgada tek düşman (tek tek gelir)")
+	check(not scorpius, "kat 1'de Scorpius yok (kat 2'de başlar)")
+	var last := Tutorial.lessons(4)
+	check((last[0]["enemies"] as Array).size() == 2 and (last[last.size() - 1]["enemies"] as Array).size() == 2, "ilk ikili dalga yalnız 5. odada")
+	check(total >= 10 and total <= 16, "kat 1'de toplam %d düşman" % total)
+	# Ayarlar
+	var base := EnemyScaling.tuning(Difficulty.Level.NORMAL, 0)
+	var speed0 := base.speed
+	var tel0 := base.telegraph
+	var ts := Tutorial.wave_tunings(1, base)
+	var t0 := ts[0] as EnemyTuning
+	check(ts.size() == 2 and t0.gold_only and not t0.red_only, "oda 2: yalnız altın saldırı (parry dersi)")
+	check(t0.speed < base.speed and t0.telegraph > base.telegraph and t0.cooldown > base.cooldown and t0.recover > base.recover and t0.stun > base.stun, "oda 2: yavaş tempo (hız düşük; uyarı, bekleme, açık kalma uzun)")
+	check(is_equal_approx(base.speed, speed0) and is_equal_approx(base.telegraph, tel0) and not base.gold_only and not base.red_only, "odanın kendi ayarı değişmedi (kopya üstünde çalışıldı)")
+	check(not t0.is_identity() and base.copy() != base and is_equal_approx(base.copy().hp, base.hp), "ayar kopyası bağımsız")
+	var t3 := Tutorial.wave_tunings(2, base)
+	check(t3.size() == 3 and (t3[0] as EnemyTuning).gold_only and (t3[1] as EnemyTuning).red_only and not (t3[2] as EnemyTuning).gold_only and not (t3[2] as EnemyTuning).red_only, "oda 3: altın mermi -> kırmızı (dash) -> karışık")
+	var t5 := Tutorial.wave_tunings(4, base)
+	check(is_equal_approx((t5[t5.size() - 1] as EnemyTuning).speed, base.speed) and is_equal_approx((t5[t5.size() - 1] as EnemyTuning).telegraph, base.telegraph), "son ders normal tempoda")
+	# Düşmanlar bayrakları uyguluyor
+	var tg := TAURUS.instantiate() as Taurus
+	tg.tuning = Tutorial.lesson_tuning(base, Tutorial.Style.GOLD, Tutorial.Pace.SLOW)
+	var tr := TAURUS.instantiate() as Taurus
+	tr.tuning = Tutorial.lesson_tuning(base, Tutorial.Style.RED, Tutorial.Pace.SLOW)
+	var sg := SAGITTA.instantiate() as Sagitta
+	sg.tuning = Tutorial.lesson_tuning(base, Tutorial.Style.GOLD, Tutorial.Pace.SLOW)
+	var sr := SAGITTA.instantiate() as Sagitta
+	sr.tuning = Tutorial.lesson_tuning(base, Tutorial.Style.RED, Tutorial.Pace.SLOW)
+	for e: Node in [tg, tr, sg, sr]:
+		_world.add_child(e)
+	await _frames(2)
+	check(is_equal_approx(tg.red_chance, 0.0) and is_equal_approx(tr.red_chance, 1.0), "Taurus: yalnız altın -> kırmızı şansı 0; yalnız kırmızı -> 1")
+	check(sg.gold_every == 1 and sr.gold_every == 0, "Sagitta: yalnız altın -> her mermi altın; yalnız kırmızı -> hiçbiri altın")
+	for e: Node in [tg, tr, sg, sr]:
+		e.queue_free()
+	check(GameFont._prep("DÜKKÂN TEZGÂH") == "DÜKKAN TEZGAH", "font: fontta olmayan şapkalı A düz A çizilir")
+	# Gerçek koşu: kat 1'in 2. odası
+	var run := _start_run(11, true)
+	await _frames(5)
+	var room := run.rooms[1] as Room
+	check(room.waves.size() == 2 and (room.waves[0] as Array).size() == 1 and (room.waves[0] as Array)[0] == TAURUS, "oda 2: iki tek-Taurus dalgası")
+	check(room.wave_tunings.size() == 2 and room.tuning_for_wave(0).gold_only and room.tuning_for_wave(1).gold_only, "oda 2: dalga ayarları kurulu")
+	check(room.tuning_for_wave(7) == room.tuning and room.tuning_for_wave(-1) == room.tuning, "olmayan dalga odanın ayarını kullanır")
+	check((run.rooms[0] as Room).wave_tunings.is_empty(), "lobide ders yok")
+	var floor2 := run.make_waves(FloorPlan.index_of(2, 1))
+	check(not floor2.is_empty() and (floor2[0] as Array).size() >= 2, "kat 2: normal dalgalar (ikili ve fazlası)")
+	check(await _walk_to_next_room(run), "lobiden 2. odaya girildi")
+	var p := run.player
+	var max_alive := 0
+	var kills := 0
+	var tuned := true
+	var guard := 0
+	while not room.is_cleared() and guard < 2400:
+		await get_tree().physics_frame
+		guard += 1
+		var alive := room.alive_count()
+		max_alive = maxi(max_alive, alive)
+		if alive >= 1:
+			for e in get_tree().get_nodes_in_group("enemies"):
+				var eb := e as EnemyBase
+				if eb != null and not eb.dead and not (eb.tuning != null and eb.tuning.gold_only and eb is Taurus and is_equal_approx((eb as Taurus).red_chance, 0.0)):
+					tuned = false
+			kills += _kill_all_enemies(p)
+	check(room.is_cleared() and kills == 2, "oda 2: iki düşman tek tek öldürüldü, oda temizlendi (öldürülen %d)" % kills)
+	check(max_alive == 1, "aynı anda en fazla 1 düşman (%d)" % max_alive)
+	check(tuned, "doğan Taurus'lar yalnız-altın ayarlı (kırmızı şansı 0)")
+	run.queue_free()
+	await _frames(3)
+
+
+func _test_tutorial_hints() -> void:
+	await _new_world("Öğretici ipuçları (lobi): hareket -> zıplama -> dash -> saldırı -> ilerle")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.end_session()
+	var run := _start_run(31, true)
+	await _frames(5)
+	var p := run.player
+	var g := run.tutorial
+	var hint := run.hud.tutorial_hint
+	check(g != null and hint != null and not g.finished_flag, "rehber ve ipucu paneli kuruldu (kayıtsız oturum)")
+	check(g.active == Tutorial.STEP_MOVE and hint.is_showing() and hint.hint_id == "move" and hint.title == "HAREKET", "ilk ipucu: HAREKET")
+	check(_hint_keys(hint) == ["A", "D"], "ipucu A ve D tuşlarını gösteriyor (%s)" % str(_hint_keys(hint)))
+	check(hint.occupied_height() > 60.0 and hint.occupied_height() <= 140.0, "panel üstte, duyuru bandının üstünde kalıyor (%.0f px)" % hint.occupied_height())
+	# Yürümeden hareket adımı tamamlanmaz
+	await _frames(30)
+	check(not g.done.has("move") and g.moved < 5.0, "yerinde dururken adım tamamlanmaz")
+	# Hareket
+	p.intent.move_x = 1.0
+	var moved := await _wait_until(func() -> bool: return g.done.has("move"), 300)
+	p.intent.move_x = 0.0
+	check(moved and g.moved >= TutorialGuide.MOVE_DISTANCE, "yürüyünce HAREKET tamamlandı (%.0f px)" % g.moved)
+	check(hint.is_done_flashing(), "tamamlanınca tik/yeşil geçiş")
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_JUMP, 5.0), "ardından ZIPLAMA ipucu")
+	check(hint.title == "ZIPLAMA" and _hint_keys(hint) == ["W", "SPACE"], "ZIPLAMA: W ve SPACE (%s)" % str(_hint_keys(hint)))
+	# Zıplama (gerçek zıplama)
+	await get_tree().physics_frame
+	p.intent.jump_pressed = true
+	p.intent.jump_held = true
+	await _frames(6)
+	p.intent.jump_held = false
+	check(g.done.has("jump"), "zıplayınca ZIPLAMA tamamlandı")
+	await _frames(40)
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_DASH, 5.0), "ardından DASH ipucu")
+	check(_hint_keys(hint) == ["SHIFT"], "DASH: SHIFT tuşu")
+	await get_tree().physics_frame
+	p.intent.move_x = 1.0
+	p.intent.dash_pressed = true
+	await _frames(3)
+	p.intent.move_x = 0.0
+	check(g.done.has("dash"), "dash yapınca DASH tamamlandı")
+	await _frames(30)
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_ATTACK, 5.0), "ardından SALDIRI ipucu")
+	check(_hint_keys(hint) == ["J"] and _hint_text(hint).contains("0/3"), "SALDIRI: J tuşu, sayaç 0/3")
+	p.facing = 1
+	p.intent.attack_pressed = true
+	await _frames(25)
+	check(g.attacks == 1 and _hint_text(hint).contains("1/3") and not g.done.has("attack"), "ilk vuruş: sayaç 1/3")
+	p.intent.attack_pressed = true
+	await _frames(25)
+	p.intent.attack_pressed = true
+	await _frames(25)
+	check(g.attacks == 3 and g.done.has("attack"), "3 vuruşta SALDIRI tamamlandı")
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_GO, 5.0), "ardından İLERLE ipucu")
+	check(_hint_keys(hint) == ["D"] and _hint_text(hint).contains("DÜKKÂN"), "İLERLE: D tuşu, tezgâh hatırlatması (%s)" % str(_hint_keys(hint)))
+	check(not g.finished_flag and not g.done.has("parry"), "savaş dersleri bekliyor: öğretici henüz bitmedi")
+	# Sağa geçince lobi ipuçları kapanır
+	check(await _walk_to_next_room(run), "lobiden sağa geçildi")
+	await _frames(5)
+	check(g.active == "" and not hint.is_showing(), "savaş odasında (uyarı yokken) ipucu yok")
+	run.queue_free()
+	await _frames(3)
+	# Sırası gelmeden yapılan beceri: ipucu hiç gösterilmez
+	await _new_world("Öğretici: sırası gelmeden yapılan beceri atlanır")
+	var run2 := _start_run(32, true)
+	await _frames(5)
+	var g2 := run2.tutorial
+	run2.player.jumped.emit(false)
+	check(g2.done.has("jump") and g2.active == "move" and not run2.hud.tutorial_hint.is_done_flashing(), "önce zıplayan oyuncuya ZIPLAMA gösterilmez, HAREKET sürer")
+	g2._complete("move")
+	check(await _wait_until_real(func() -> bool: return g2.active == Tutorial.STEP_DASH, 5.0), "HAREKET sonrası ZIPLAMA atlanıp DASH gelir")
+	run2.queue_free()
+	await _frames(3)
+
+
+func _test_tutorial_combat() -> void:
+	await _new_world("Öğretici ipuçları (savaş): altın -> PARRY, kaçırma, vur, kırmızı -> DASH")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.end_session()
+	var run := _start_run(41, true)
+	await _frames(5)
+	var p := run.player
+	var g := run.tutorial
+	var hint := run.hud.tutorial_hint
+	check(await _walk_to_next_room(run), "2. odaya girildi")
+	await _wait_until(func() -> bool: return run.current_room().alive_count() > 0 or run.current_room().pending_count() > 0, 300)
+	run.skip_room()
+	await _frames(6)
+	var room := run.current_room()
+	check(room.kind == FloorPlan.Kind.COMBAT and room.is_cleared() and g.active == "", "savaş odası temiz; ipucu yok")
+	# Kendi düşmanlarımız (yapay zekâsız): uyarıyı biz veririz
+	var t := TAURUS.instantiate() as Taurus
+	run.enemies_root.add_child(t)
+	t.global_position = Vector2(room.rect.position.x + 900.0, 612.0)
+	t.process_mode = Node.PROCESS_MODE_DISABLED
+	var s := SAGITTA.instantiate() as Sagitta
+	run.enemies_root.add_child(s)
+	s.global_position = Vector2(room.rect.position.x + 1000.0, 612.0)
+	s.process_mode = Node.PROCESS_MODE_DISABLED
+	# 1) Altın uyarı -> PARRY
+	t.set_tell(EnemyBase.Tell.GOLD)
+	check(g.active == Tutorial.STEP_PARRY and hint.hint_id == "parry" and hint.title == "PARRY", "altın uyarı: PARRY ipucu")
+	check(_hint_keys(hint) == ["K"] and _hint_text(hint).contains("ALTIN"), "K tuşu ve 'ALTIN İŞARET' yazısı")
+	# Sagitta'nın altın mermisi
+	s.set_tell(EnemyBase.Tell.GOLD)
+	check(g.active == Tutorial.STEP_PARRY_SHOT and _hint_text(hint).contains("MERMİ"), "Sagitta altın uyarısı: 'ALTIN MERMİ' ipucu")
+	# 2) Uyarı bitti, parry denendi ve kaçırıldı
+	t.set_tell(EnemyBase.Tell.NONE)
+	s.set_tell(EnemyBase.Tell.NONE)
+	EventBus.parry_failed.emit(p)
+	check(g.active == Tutorial.STEP_PARRY_MISS and _hint_text(hint).contains("KAÇIRDIN"), "kaçırınca 'KAÇIRDIN, tekrar dene'")
+	# Altın uyarıdan çok sonra boşa K: ipucu çıkmaz
+	g._miss_t = 0.0
+	g._hold_t = 0.0
+	g._since_gold = 9.0
+	g._refresh()
+	check(g.active == "", "uyarı yokken basılan K 'kaçırdın' göstermez")
+	EventBus.parry_failed.emit(p)
+	check(g.active == "" and g._miss_t == 0.0, "altın uyarıdan çok sonra gelen başarısız parry yok sayılır")
+	# 3) Parry başarılı -> tik -> "VUR"
+	t.set_tell(EnemyBase.Tell.GOLD)
+	check(g.active == Tutorial.STEP_PARRY, "altın uyarı yine PARRY gösteriyor")
+	EventBus.parry_success.emit(p, null)
+	check(g.done.has("parry") and hint.is_done_flashing(), "parry yapılınca tik")
+	t.set_tell(EnemyBase.Tell.NONE)
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_STRIKE, 5.0), "ardından 'VUR' ipucu")
+	check(_hint_keys(hint) == ["J"] and hint.title == "SERSEMLEDİ", "SERSEMLEDİ: J tuşu")
+	EventBus.damage_dealt.emit(t, 1, p)
+	check(g.done.has("strike") and hint.is_done_flashing(), "sersemlemiş düşmana vurunca tik")
+	check(await _wait_until_real(func() -> bool: return g.active == "" and not hint.is_showing(), 5.0), "ipucu kapandı")
+	# Parry öğrenildi: altın uyarı artık ipucu göstermez
+	t.set_tell(EnemyBase.Tell.GOLD)
+	check(g.active == "", "parry yapılmışsa altın uyarıda ipucu yok")
+	t.set_tell(EnemyBase.Tell.NONE)
+	# 4) Kırmızı uyarı -> DASH
+	t.set_tell(EnemyBase.Tell.RED)
+	check(g.active == Tutorial.STEP_RED and hint.title == "KIRMIZI İŞARET" and _hint_keys(hint) == ["SHIFT"], "kırmızı uyarı: SHIFT = DASH ipucu")
+	check(_hint_text(hint).contains("PARRY'LENEMEZ"), "'PARRY'LENEMEZ' yazıyor")
+	# Gerçekten dash'le savuşturma: altın saldırıyı savuşturmak yetmez, kırmızı gerekir
+	var gold_hb := Hitbox.new()
+	gold_hb.parryable = true
+	EventBus.dodge_success.emit(p, gold_hb)
+	check(not g.done.has("red"), "altın saldırıyı dash'le savuşturmak kırmızı dersini bitirmez")
+	var red_hb := Hitbox.new()
+	red_hb.parryable = false
+	EventBus.dodge_success.emit(p, red_hb)
+	check(g.done.has("red") and hint.is_done_flashing(), "kırmızı saldırıyı dash'le savuşturunca tik")
+	gold_hb.free()
+	red_hb.free()
+	run.queue_free()
+	await _frames(3)
+	# Kırmızı ipucu 3 kez gösterilince (savuşturulmasa da) bir daha çıkmaz
+	await _new_world("Öğretici: kırmızı ipucu en fazla 3 kez gösterilir")
+	var runb := _start_run(42, true)
+	await _frames(5)
+	var gb := runb.tutorial
+	check(await _walk_to_next_room(runb), "2. odaya girildi")
+	await _wait_until(func() -> bool: return runb.current_room().alive_count() > 0 or runb.current_room().pending_count() > 0, 300)
+	runb.skip_room()
+	await _frames(6)
+	var tb := TAURUS.instantiate() as Taurus
+	runb.enemies_root.add_child(tb)
+	tb.process_mode = Node.PROCESS_MODE_DISABLED
+	var shown := 0
+	for i in 5:
+		tb.set_tell(EnemyBase.Tell.RED)
+		if gb.active == Tutorial.STEP_RED:
+			shown += 1
+		tb.set_tell(EnemyBase.Tell.NONE)
+		gb._hold_t = 0.0
+		gb._refresh()
+	check(shown == TutorialGuide.RED_HINT_LIMIT and gb.done.has("red"), "kırmızı ipucu %d kez gösterildi, sonra bırakıldı" % shown)
+	runb.queue_free()
+	await _frames(3)
+
+
+func _test_tutorial_save() -> void:
+	await _new_world("Öğretici kaydı: profil bayrağı, bitince ipucu çıkmaz, kat 1'den çıkınca biter")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	_clean_saves()
+	var slot := SaveSlot.create(0, "Ogr", Difficulty.Level.NORMAL)
+	check(not slot.tutorial_done and not (slot.to_dict()["tutorial_done"] as bool), "yeni profil: öğretici yapılmadı")
+	var d := slot.to_dict()
+	d["tutorial_done"] = true
+	check(SaveSlot.from_dict(d, 0).tutorial_done, "bayrak kayıttan okunuyor")
+	d.erase("tutorial_done")
+	check(not SaveSlot.from_dict(d, 0).tutorial_done, "eski kayıtta (bayraksız) öğretici yapılmamış sayılır")
+	d["tutorial_done"] = "evet"
+	check(not SaveSlot.from_dict(d, 0).tutorial_done, "bozuk değer yok sayılır")
+	check(Tutorial.hints_wanted(null) and Tutorial.hints_wanted(slot), "kayıtsız oturumda ve yeni profilde ipuçları açık")
+	SaveStore.save_slot(slot)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run := _start_run(51, true)
+	await _frames(5)
+	var g := run.tutorial
+	check(g != null and run.hud.tutorial_hint.is_showing(), "profilde öğretici bitmemiş: rehber kuruldu")
+	var finished := [false]
+	g.finished.connect(func() -> void: finished[0] = true)
+	var steps_done: Array = []
+	g.step_done.connect(func(id: String) -> void: steps_done.append(id))
+	for id: String in Tutorial.REQUIRED:
+		check(not slot.tutorial_done, "'%s' öncesinde profil işaretli değil" % id)
+		g._complete(id)
+	check(finished[0] and g.finished_flag, "hepsi yapılınca rehber bitti")
+	check(steps_done == Tutorial.REQUIRED, "adımlar sırayla bildirildi (%s)" % str(steps_done))
+	check(slot.tutorial_done and SaveStore.load_slot(0).tutorial_done, "profil 'öğretici tamam' diye kaydedildi")
+	check(run.hud.announcer.count() >= 1, "'ÖĞRETİCİ TAMAM' duyurusu")
+	g._complete("go")
+	run.queue_free()
+	await _frames(3)
+	# Bitmiş profilde yeni koşu: ipucu yok (kat 1'in tek tek akışı yine de var)
+	GameState.begin_session(SaveStore.load_slot(0), GameMode.Kind.NORMAL)
+	var run2 := _start_run(52, true)
+	await _frames(5)
+	check(run2.tutorial == null and not run2.hud.tutorial_hint.is_showing(), "öğretici bitmiş profilde ipucu çıkmaz")
+	check((run2.rooms[1] as Room).waves.size() == 2 and (run2.rooms[1] as Room).tuning_for_wave(0).gold_only, "kat 1'in müfredatı (tek tek, yavaş) yine de var")
+	run2.queue_free()
+	await _frames(3)
+	# Yarım kalan öğretici: kat 1'den çıkınca (kat 2) biter ve profil işaretlenir
+	var slot3 := SaveSlot.create(1, "Yarim", Difficulty.Level.NORMAL)
+	SaveStore.save_slot(slot3)
+	GameState.begin_session(slot3, GameMode.Kind.NORMAL)
+	var run3 := _start_run(53, true)
+	await _frames(5)
+	var g3 := run3.tutorial
+	check(g3 != null and not slot3.tutorial_done, "yeni profil: rehber açık")
+	run3.dev_next_floor()
+	await _frames(3)
+	check(run3.current_floor() == 2 and g3.finished_flag and slot3.tutorial_done and not run3.hud.tutorial_hint.is_showing(), "kat 2'ye geçince öğretici biter, profil işaretlenir")
+	run3.queue_free()
+	await _frames(3)
+	# Katın ortasından devam (kat 3): rehber yok
+	var mid := slot3.run_of(GameMode.Kind.NORMAL).duplicate(true)
+	if mid.is_empty():
+		mid = {"v": 2, "floor": 3, "room": 2, "seed": 77}
+	mid["floor"] = 3
+	mid["room"] = 2
+	var slot4 := SaveSlot.create(2, "Orta", Difficulty.Level.NORMAL)
+	GameState.begin_session(slot4, GameMode.Kind.NORMAL)
+	var run4 := _resume_run(mid)
+	await _frames(5)
+	check(run4.current_floor() == 3 and run4.tutorial == null, "kat 3'ten devam: rehber kurulmaz")
+	run4.queue_free()
+	await _frames(3)
+	_end_saves()
+
+
+func _test_tutorial_view() -> void:
+	await _new_world("Öğretici paneli: tüm ipuçları sığıyor, fontta olmayan harf yok")
+	var hint := TutorialHint.new()
+	_world.add_child(hint)
+	await _frames(2)
+	var ids := [Tutorial.STEP_MOVE, Tutorial.STEP_JUMP, Tutorial.STEP_DASH, Tutorial.STEP_ATTACK, Tutorial.STEP_GO, Tutorial.STEP_PARRY, Tutorial.STEP_PARRY_SHOT, Tutorial.STEP_PARRY_MISS, Tutorial.STEP_STRIKE, Tutorial.STEP_RED]
+	var complete := true
+	var fits := true
+	var worst := 0.0
+	var missing := ""
+	var font := GameFont.get_font()
+	for id: String in ids:
+		var data := Tutorial.hint(id, 1)
+		if data.is_empty() or String(data["title"]) == "" or (data["rows"] as Array).is_empty() or String(data["id"]) != id:
+			complete = false
+			continue
+		hint.show_hint(data)
+		var r := hint._panel_rect()
+		worst = maxf(worst, r.end.y)
+		if r.size.x > TutorialHint.PANEL_MAX_W + 0.5 or r.end.y > 142.0 or r.position.x < 0.0:
+			fits = false
+		# İçerik panelin içinde kalmalı (panel genişliği kırpılmamalı)
+		for row: Dictionary in hint.rows:
+			if hint._row_width(row) + TutorialHint.PAD_X * 2.0 > TutorialHint.PANEL_MAX_W:
+				fits = false
+		var all := hint.title
+		for row: Dictionary in hint.rows:
+			for part: Dictionary in row["parts"]:
+				if part.has("t"):
+					all += String(part["t"])
+				elif part.has("k"):
+					all += String(part["k"])
+		for ch in GameFont._prep(all):
+			if ch != " " and not font.has_char(ch.unicode_at(0)):
+				missing += ch
+	check(complete, "10 ipucunun hepsinin başlığı ve satırları var")
+	check(fits, "paneller 700 px'e ve üstteki 142 px'e sığıyor, içerik kırpılmıyor (en alt %.0f)" % worst)
+	check(missing == "", "ipucu yazılarında fontun çizemediği harf yok ('%s')" % missing)
+	check(Tutorial.hint("yok").is_empty(), "bilinmeyen ipucu boş döner")
+	hint.hide_hint()
+	check(not hint.is_showing() and hint.occupied_height() == 0.0, "gizlenince yer kaplamaz")
+	# Aynı ipucunu tekrar göstermek animasyonu baştan başlatmaz, yalnız satırları yeniler
+	hint.show_hint(Tutorial.hint(Tutorial.STEP_ATTACK, 0))
+	await _frames(10)
+	var age := hint._age
+	hint.show_hint(Tutorial.hint(Tutorial.STEP_ATTACK, 2))
+	check(hint._age == age and _hint_text(hint).contains("2/3"), "sayaç güncellenince panel yeniden belirmez")
+	hint.mark_done()
+	check(hint.is_done_flashing(), "tamamlanma geçişi başladı")
+	var fin := [false]
+	hint.flash_finished.connect(func() -> void: fin[0] = true)
+	check(await _wait_until_real(func() -> bool: return fin[0], 4.0) and not hint.is_showing(), "geçiş bitince panel kapanır ve haber verir")
+
+
+## Gerçek fizikle: kat 1'in ilk Taurus'u (yavaş, yalnız altın) uyarı verir -> PARRY ipucu; gerçek parry -> tik -> vur -> tik.
+func _test_tutorial_real_parry() -> void:
+	await _new_world("Öğretici (gerçek akış): ilk Taurus altın uyarır, gerçek parry ve vuruşla ipuçları ilerler")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.end_session()
+	var run := _start_run(61, true)
+	await _frames(5)
+	var p := run.player
+	var g := run.tutorial
+	var hint := run.hud.tutorial_hint
+	var hp0 := p.health
+	check(await _walk_to_next_room(run), "2. odaya girildi")
+	p.global_position.x = run.current_room().rect.position.x + 120.0
+	p.facing = 1
+	var parry_hint := await _wait_until(func() -> bool: return g.active == Tutorial.STEP_PARRY, 1500)
+	check(parry_hint, "Taurus altın uyarı verince PARRY ipucu çıktı")
+	var taurus: Taurus = null
+	for e in get_tree().get_nodes_in_group("enemies"):
+		taurus = e as Taurus
+	check(taurus != null and taurus.tuning != null and taurus.tuning.gold_only and taurus.tell_mode() == EnemyBase.Tell.GOLD, "uyarı veren: yalnız-altın ayarlı Taurus")
+	# Gerçek parry: atılma yaklaşınca K
+	var pressed := false
+	for i in 400:
+		await get_tree().physics_frame
+		if not pressed and taurus._phase == Taurus.Phase.LUNGE and absf(taurus.global_position.x - p.global_position.x) < 120.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if g.done.has("parry"):
+			break
+	check(pressed and g.done.has("parry") and p.health == hp0, "gerçek parry yapıldı, can kaybı yok (rehber bunu gördü)")
+	check(taurus.is_stunned(), "Taurus sersemledi")
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_STRIKE, 5.0), "tikten sonra 'VUR' ipucu")
+	# Gerçek vuruş
+	p.global_position.x = taurus.global_position.x - 50.0
+	await _frames(3)
+	p.intent.attack_pressed = true
+	var hit := await _wait_until(func() -> bool: return g.done.has("strike"), 40)
+	check(hit, "sersemlemiş Taurus'a gerçek vuruş: VUR adımı tamamlandı")
+	check(hint.is_done_flashing() or not hint.is_showing(), "tik gösterildi")
+	run.queue_free()
+	await _frames(3)

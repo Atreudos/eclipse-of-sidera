@@ -64,6 +64,8 @@ var shop_stock: ShopStock = null
 var won := false
 ## Zafer ekranı açıldı.
 var victory_shown := false
+## Kat 1 öğretici rehberi (yalnız kat 1'de ve profilde öğretici bitmemişse; yoksa null).
+var tutorial: TutorialGuide = null
 
 var _trans: Trans = Trans.NONE
 var _trans_t := 0.0
@@ -186,6 +188,8 @@ func make_waves(room_index: int) -> Array:
 		return []
 	if kind == FloorPlan.Kind.BOSS:
 		return boss_waves(int(loc["floor"]))
+	if floors_enabled and Tutorial.applies(loc):
+		return Tutorial.waves(int(loc["slot"]))  # kat 1: elle yazılmış müfredat (tek tek, yavaş)
 	var n := int(loc["progress"])
 	var r := rng_for(room_index, "waves")
 	var waves: Array = []
@@ -250,6 +254,17 @@ func _ready() -> void:
 	if not restore.is_empty():
 		_apply_restore(start)
 	_enter_room(start, true)
+	_setup_tutorial()
+
+
+## Kat 1'de, profilde öğretici daha bitmediyse ekrandaki ipuçlarını başlatır.
+func _setup_tutorial() -> void:
+	if not floors_enabled or current_floor() != 1 or not Tutorial.hints_wanted(GameState.slot):
+		return
+	tutorial = TutorialGuide.new()
+	tutorial.name = "Tutorial"
+	add_child(tutorial)
+	tutorial.setup(self, player, hud.tutorial_hint)
 
 
 func _exit_tree() -> void:
@@ -267,6 +282,8 @@ func _build_room(index: int) -> Room:
 	var room := Room.new()
 	rooms_root.add_child(room)
 	room.tuning = tuning_for(index)
+	if floors_enabled and Tutorial.applies(loc):
+		room.wave_tunings = Tutorial.wave_tunings(int(loc["slot"]), room.tuning)
 	var opts := {}
 	if floors_enabled:
 		var kind := int(loc["kind"])

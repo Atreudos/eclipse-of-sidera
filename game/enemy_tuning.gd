@@ -27,6 +27,36 @@ var patience := 0.0
 var punish := 0.0
 var lead := 0.0
 var feint := 0.0
+# Öğretici dersleri: saldırıların rengi zorlanır. Aynı anda ikisi açıksa yalnız altın geçerlidir.
+## true: bütün saldırılar ALTIN (parry'lenebilir). Parry'yi öğretirken.
+var gold_only := false
+## true: bütün saldırılar KIRMIZI (kaçılacak). Dash'i öğretirken.
+var red_only := false
+
+
+## Aynı ayarın bağımsız kopyası (öğretici dersleri bir odanın ayarını bozmadan değiştirir).
+func copy() -> EnemyTuning:
+	var t := EnemyTuning.new()
+	t.level = level
+	t.progress = progress
+	t.hp = hp
+	t.damage = damage
+	t.speed = speed
+	t.gold = gold
+	t.cooldown = cooldown
+	t.telegraph = telegraph
+	t.recover = recover
+	t.stun = stun
+	t.red = red
+	t.reach = reach
+	t.kite = kite
+	t.patience = patience
+	t.punish = punish
+	t.lead = lead
+	t.feint = feint
+	t.gold_only = gold_only
+	t.red_only = red_only
+	return t
 
 
 func scale_hp(base: int) -> int:
@@ -69,7 +99,7 @@ func is_identity() -> bool:
 		and is_equal_approx(gold, 1.0) and is_equal_approx(cooldown, 1.0) and is_equal_approx(telegraph, 1.0) \
 		and is_equal_approx(recover, 1.0) and is_equal_approx(stun, 1.0) and is_zero_approx(red) \
 		and is_equal_approx(reach, 1.0) and is_equal_approx(kite, 1.0) and is_zero_approx(patience) \
-		and is_zero_approx(punish) and is_zero_approx(lead) and is_zero_approx(feint)
+		and is_zero_approx(punish) and is_zero_approx(lead) and is_zero_approx(feint) and not gold_only and not red_only
 
 
 ## Hata ayıklama / belge için tek satırlık özet.

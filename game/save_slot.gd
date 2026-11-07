@@ -25,6 +25,8 @@ var records: Dictionary = default_records()
 var runs: Dictionary = {}
 ## Ana dosya bozuktu, yedekten okundu (menü bir uyarı gösterebilir).
 var recovered := false
+## Kat 1 öğreticisi bu profilde tamamlandı (ipuçları bir daha gösterilmez; kat 1'in tek tek ve yavaş akışı kalır).
+var tutorial_done := false
 
 
 static func default_records() -> Dictionary:
@@ -175,6 +177,7 @@ func to_dict() -> Dictionary:
 		"playtime": snappedf(playtime, 0.1),
 		"records": records.duplicate(),
 		"runs": runs.duplicate(true),
+		"tutorial_done": tutorial_done,
 	}
 
 
@@ -192,6 +195,8 @@ static func from_dict(data: Variant, slot_index: int) -> SaveSlot:
 	s.created = maxi(_int(d.get("created", 0)), 0)
 	s.last_played = maxi(_int(d.get("last_played", s.created)), 0)
 	s.playtime = maxf(_num(d.get("playtime", 0.0)), 0.0)
+	var tut: Variant = d.get("tutorial_done", false)
+	s.tutorial_done = tut is bool and tut
 	var rec: Variant = d.get("records", {})
 	if rec is Dictionary:
 		for k in s.records.keys():

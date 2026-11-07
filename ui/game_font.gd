@@ -45,10 +45,18 @@ static func wrap(text: String, size: int, max_width: float) -> Array[String]:
 	return lines
 
 
-## Fontun '%' işareti boş çiziliyor. Türkçede "%15" zaten "yüzde 15" diye okunur: çizmeden önce yazıya çevrilir
-## (ölçme de aynı yazıyı kullanır, hizalar şaşmaz).
+## Fontun çizemediği karakterlerin yerine konanlar: '%' boş çiziliyor ("%15" Türkçede zaten "yüzde 15" diye okunur);
+## şapkalı A (DÜKKÂN, TEZGÂH), uzun tireler ve oklar fontta yok.
+const _SUBSTITUTES := {"%": "yüzde ", "Â": "A", "â": "a", "—": "-", "–": "-", "←": "<", "→": ">"}
+
+
+## Çizmeden önce yazıdaki çizilemeyen karakterler değiştirilir (ölçme de aynı yazıyı kullanır, hizalar şaşmaz).
 static func _prep(text: String) -> String:
-	return text.replace("%", "yüzde ") if text.contains("%") else text
+	var out := text
+	for k: String in _SUBSTITUTES:
+		if out.contains(k):
+			out = out.replace(k, _SUBSTITUTES[k])
+	return out
 
 
 ## Yazının piksel genişliği.

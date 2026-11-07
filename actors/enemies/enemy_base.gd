@@ -283,7 +283,13 @@ func set_tell(mode: Tell) -> void:
 		tell_glow.color = GOLD if mode == Tell.GOLD else RED
 	if changed and mode != Tell.NONE:
 		Sfx.play("tell_gold" if mode == Tell.GOLD else "tell_red")
+		EventBus.enemy_tell.emit(self, mode)
 	queue_redraw()
+
+
+## Şu anki uyarı türü (Tell.NONE / GOLD / RED).
+func tell_mode() -> Tell:
+	return _tell
 
 
 ## Başın üstündeki sarı sembol sadece parry'lenebilir (altın) saldırıda görünür.

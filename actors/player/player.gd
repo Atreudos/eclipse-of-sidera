@@ -18,6 +18,10 @@ signal immunity_changed(value: int)
 signal statuses_changed
 ## Altın miktarı değişti (toplam).
 signal gold_changed(total: int)
+## Oyuncu zıpladı (air: havada ikinci zıplama). Öğretici dinler.
+signal jumped(air: bool)
+## Bir saldırı başladı (combo_index: kombonun kaçıncı vuruşu, 0'dan). Öğretici dinler.
+signal attack_started(combo_index: int)
 
 enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
 
@@ -395,9 +399,11 @@ func _handle_jump() -> void:
 	if _jump_buffer > 0.0:
 		if _coyote > 0.0:
 			_do_jump()
+			jumped.emit(false)
 		elif _air_jumps_left > 0:
 			_air_jumps_left -= 1
 			_do_jump()
+			jumped.emit(true)
 	if not intent.jump_held and velocity.y < 0.0 and not _jump_cut_done:
 		velocity.y *= stats.value("jump_cut")
 		_jump_cut_done = true
@@ -576,6 +582,7 @@ func _start_attack() -> void:
 	melee.active = false
 	anim.trigger("attack%d" % (_attack_cur + 1), float(a["startup"]) + float(a["active"]) + float(a["recovery"]))
 	Sfx.play("slash", -4.0, 1.0 + 0.08 * _attack_cur, 0.04)
+	attack_started.emit(_attack_cur)
 
 
 func _state_attack(delta: float) -> void:
