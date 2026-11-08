@@ -1703,15 +1703,23 @@ func _count_numbers() -> int:
 
 
 func _test_font() -> void:
-	print("\nFont (AGENTORANGE)")
+	print("\nFont (Fraunces)")
 	check(ResourceLoader.exists(GameFont.PATH), "font dosyası projede ve içe aktarılmış")
 	var f := GameFont.get_font()
-	check(f != null and f != ThemeDB.fallback_font, "oyun fontu yüklendi (yedek font değil)")
+	check(f is FontFile and f.resource_path == GameFont.PATH, "oyun fontu yüklendi (yedek font değil)")
+	check(ThemeDB.fallback_font != null and ThemeDB.fallback_font.resource_path == GameFont.PATH, "proje teması da aynı fontu kullanıyor (gui/theme/custom_font)")
 	var tr_ok := true
 	for ch in "çğıöşüÇĞİÖŞÜ":
 		if not f.has_char(ch.unicode_at(0)):
 			tr_ok = false
 	check(tr_ok, "Türkçe harflerin hepsi fontta var")
+	var sym_ok := true
+	for ch in "ÂâçÇ·×—–%…":
+		if not f.has_char(ch.unicode_at(0)):
+			sym_ok = false
+	check(sym_ok, "şapkalı A, tireler, yüzde ve · × işaretleri fontta var")
+	check(GameFont._prep("A%20 — Â") == "A%20 — Â", "çizilebilen karakterler olduğu gibi çizilir (değiştirilmez)")
+	check(GameFont._prep("← →") == "< >", "fontta olmayan oklar < > olarak çizilir")
 	check(GameFont.width("COMBO", 34) > GameFont.width("COMBO", 17), "yazı genişliği boyutla büyüyor")
 	check(GameFont.YELLOW.r > 0.9 and GameFont.YELLOW.g > 0.7 and GameFont.YELLOW.b < 0.4, "sarı renk sarı")
 
@@ -3738,7 +3746,7 @@ func _test_inventory_screen() -> void:
 		msg_w = maxf(msg_w, GameFont.width("TAKILDI  " + it.upper_name(), 24))
 		msg_w = maxf(msg_w, GameFont.width("ÇANTAYA  " + it.upper_name(), 24))
 	check(msg_w < InventoryScreen.MESSAGE_MAX_W, "en uzun işlem mesajı bile alt şeride tam boyda sığıyor (%.0f < %.0f)" % [msg_w, InventoryScreen.MESSAGE_MAX_W])
-	check(GameFont.width("Yürüme hızın %20 artar.", 17) > GameFont.width("Yürüme hızın 20 artar.", 17), "'%' yazıya çevriliyor (yüzde), boş çizilmiyor")
+	check(GameFont.width("Yürüme hızın %20 artar.", 17) > GameFont.width("Yürüme hızın 20 artar.", 17), "'%' fontta var, boş çizilmiyor (yazıya genişlik katıyor)")
 	# İlk imleç: çantadaki ilk eşya
 	var bag0 := scr.cursor_index()
 	check(scr.cursor_item() != null and scr.cursor_item().id == "watcher_band" and scr._cells[bag0]["kind"] == "bag" and scr._cells[bag0]["idx"] == 0, "imleç çantadaki ilk eşyada")
@@ -6010,7 +6018,7 @@ func _test_tutorial_curriculum() -> void:
 	check(sg.gold_every == 1 and sr.gold_every == 0, "Sagitta: yalnız altın -> her mermi altın; yalnız kırmızı -> hiçbiri altın")
 	for e: Node in [tg, tr, sg, sr]:
 		e.queue_free()
-	check(GameFont._prep("DÜKKÂN TEZGÂH") == "DÜKKAN TEZGAH", "font: fontta olmayan şapkalı A düz A çizilir")
+	check(GameFont._prep("DÜKKÂN TEZGÂH") == "DÜKKÂN TEZGÂH" and GameFont.get_font().has_char("Â".unicode_at(0)), "font: şapkalı A (DÜKKÂN) fontta var, olduğu gibi çizilir")
 	# Gerçek koşu: kat 1'in 2. odası
 	var run := _start_run(11, true)
 	await _frames(5)

@@ -14,7 +14,7 @@ const LINES: Array = [
 	["name", "CLAUDE (ANTHROPIC)"],
 	["gap", ""],
 	["role", "YAZI TİPİ"],
-	["name", "AGENTORANGE"],
+	["name", "FRAUNCES  (SIL OFL)"],
 	["gap", ""],
 	["role", "OYUN MOTORU"],
 	["name", "GODOT 4"],

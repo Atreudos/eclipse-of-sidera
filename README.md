@@ -51,6 +51,8 @@ Vuruş sersemletmesi: kombo yediği sırada düşman saldıramaz (hazırlığı 
 
 Sıradaki: Umbra patronu (her katta yeni bir yetenek), ödül mezatı (2 eşya, seçmediğin Umbra'ya), silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
 
+**Yazı tipi**: oyun **Fraunces** (SIL OFL) kullanıyor: Times'ın klasik "Roman" serif iskeleti ama yumuşak/tombul, biraz çizgi film afişi gibi. Türkçe harflerin tamamı var (Ğ ğ Ş ş İ fontun kendi parçalarından eklendi). Tek yerden okunur: `ui/game_font.gd` `PATH` + proje ayarı `gui/theme/custom_font`; ayrıntı ve değiştirme adımları `assets/fonts/README.md`. Eski AGENTORANGE projeden çıkarıldı (lisansı belirsizdi; artık depoyu bu açıdan herkese açmak engel değil).
+
 ## Sprite eklemek
 
 Çizimleri `assets/sprites/<karakter>/` klasörüne koymak yeterli, kod değişmez. İsimler, boyutlar ve hizalama kuralları: [`docs/SPRITES.md`](docs/SPRITES.md)

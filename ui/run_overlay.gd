@@ -1,6 +1,6 @@
 class_name RunOverlay
 extends Control
-## Koşu bilgileri, oyunun fontuyla (AGENTORANGE): oda numarası, dalga, "ilerle" oku, ölüm özeti.
+## Koşu bilgileri, oyunun fontuyla: oda numarası, dalga, "ilerle" oku, ölüm özeti.
 ## Gerçek zamanla akar (hitstop sırasında da düzgün görünür).
 ##
 ## Yazı tipinde ok ve "·" karakterleri yok; oklar çizgiyle çizilir.

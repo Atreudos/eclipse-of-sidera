@@ -1,7 +1,7 @@
 class_name RhythmBar
 extends Control
 ## Ritim (agresiflik) çubuğu: 4 kademeli, kademeye göre renk değiştirir; kademe atlayınca isim pat diye büyür,
-## kademe düşünce titrer. Yazılar oyunun fontuyla (AGENTORANGE). Gerçek zamanla akar.
+## kademe düşünce titrer. Yazılar oyunun fontuyla. Gerçek zamanla akar.
 
 const BAR_SIZE := Vector2(224.0, 12.0)
 const SEGMENT_GAP := 3.0

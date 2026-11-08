@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://c1ag3sqtyfn2l"
-path="res://.godot/imported/AGENTORANGE.ttf-03001fb99865ddfb7c712a4b6dba26f6.fontdata"
+uid="uid://b8x5t84wuqtx0"
+path="res://.godot/imported/FrauncesTR-SemiBold.ttf-947c4c2b852632dd7fea8616fb37aa8c.fontdata"
 
 [deps]
 
-source_file="res://assets/fonts/AGENTORANGE.ttf"
-dest_files=["res://.godot/imported/AGENTORANGE.ttf-03001fb99865ddfb7c712a4b6dba26f6.fontdata"]
+source_file="res://assets/fonts/FrauncesTR-SemiBold.ttf"
+dest_files=["res://.godot/imported/FrauncesTR-SemiBold.ttf-947c4c2b852632dd7fea8616fb37aa8c.fontdata"]
 
 [params]
 

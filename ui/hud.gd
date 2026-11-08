@@ -14,7 +14,7 @@ var wave := 0:
 		wave = value
 		if overlay != null:
 			overlay.arena_wave = value
-## Oda/dalga/ilerle oku/ölüm özeti (AGENTORANGE ile çizilir).
+## Oda/dalga/ilerle oku/ölüm özeti (oyunun fontuyla çizilir).
 var overlay: RunOverlay
 ## Ekranın üstünde kısa süre görünen büyük duyurular.
 var announcer: Announcer
@@ -190,6 +190,7 @@ func set_summary(data: Dictionary) -> void:
 func _make_label(parent: Control, pos: Vector2, font_size: int) -> Label:
 	var l := Label.new()
 	l.position = pos
+	l.add_theme_font_override("font", GameFont.get_font())
 	l.add_theme_font_size_override("font_size", font_size)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(l)

@@ -1,6 +1,6 @@
 class_name Announcer
 extends Control
-## Ekranın üstünde kısa süre görünen büyük duyurular ("ODA TEMİZ", "ODA 3"). AGENTORANGE fontuyla çizilir.
+## Ekranın üstünde kısa süre görünen büyük duyurular ("ODA TEMİZ", "ODA 3"). Oyunun fontuyla çizilir.
 ## Gerçek zamanla akar (hitstop sırasında da düzgün görünür). Üst üste gelenler alt alta dizilir.
 ##   push("ODA TEMİZ", GameFont.YELLOW, 58)
 ##   push_runs([["ODA ", GameFont.WHITE], ["3", GameFont.YELLOW]], 58)

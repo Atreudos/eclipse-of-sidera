@@ -2,7 +2,7 @@ class_name TutorialHint
 extends Control
 ## Ekranın üstünde duran öğretici ipucu paneli: başlık + tuş ikonlu satırlar ("[A] [D]  KOŞ").
 ## İçerik Tutorial.hint() ile gelir; ne zaman hangi ipucunun görüneceğini TutorialGuide seçer.
-## AGENTORANGE fontuyla ve kodla çizilir (tuş ikonları dahil); gerçek zamanla akar (duraklatınca da canlı kalır).
+## Oyunun fontuyla ve kodla çizilir (tuş ikonları dahil); gerçek zamanla akar (duraklatınca da canlı kalır).
 ##
 ## Adım yapılınca `mark_done()`: panel yeşile döner, tik çıkar, kısa süre sonra kapanır ve `flash_finished` gelir.
 

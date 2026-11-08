@@ -1,11 +1,12 @@
 class_name GameFont
 extends RefCounted
-## Oyunun yazı tipi (AGENTORANGE). Dosya yoksa ya da henüz içe aktarılmadıysa Godot'un
-## varsayılan fontuna düşer, yani oyun fontsuz da çalışır.
+## Oyunun yazı tipi: Fraunces SemiBold (SIL OFL; ayrıntı assets/fonts/README.md). Times'ın klasik "Roman" serif iskeleti,
+## ama yumuşak ve tombul: eski çizgi film afişi tadı. Dosya yoksa ya da henüz içe aktarılmadıysa Godot'un varsayılan
+## fontuna düşer, yani oyun fontsuz da çalışır.
 ##
-## Font içi boş (kontür) harflerden oluşur. Okunurluk için her yazının arkasına koyu bir hale çizilir.
+## Harfler dolu. Okunurluk için her yazının arkasına koyu bir kontür (hale) çizilir; kontür kalınlığı yazı boyuna göre ayarlanır.
 
-const PATH := "res://assets/fonts/AGENTORANGE.ttf"
+const PATH := "res://assets/fonts/FrauncesTR-SemiBold.ttf"
 
 const YELLOW := Color(1.0, 0.84, 0.2)
 const WHITE := Color(1.0, 1.0, 1.0)
@@ -45,9 +46,8 @@ static func wrap(text: String, size: int, max_width: float) -> Array[String]:
 	return lines
 
 
-## Fontun çizemediği karakterlerin yerine konanlar: '%' boş çiziliyor ("%15" Türkçede zaten "yüzde 15" diye okunur);
-## şapkalı A (DÜKKÂN, TEZGÂH), uzun tireler ve oklar fontta yok.
-const _SUBSTITUTES := {"%": "yüzde ", "Â": "A", "â": "a", "—": "-", "–": "-", "←": "<", "→": ">"}
+## Fontun çizemediği karakterlerin yerine konanlar: yalnız oklar fontta yok (Türkçe harfler, şapkalı A, tireler, % var).
+const _SUBSTITUTES := {"←": "<", "→": ">"}
 
 
 ## Çizmeden önce yazıdaki çizilemeyen karakterler değiştirilir (ölçme de aynı yazıyı kullanır, hizalar şaşmaz).
