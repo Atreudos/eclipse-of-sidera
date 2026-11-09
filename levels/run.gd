@@ -20,6 +20,7 @@ signal run_won
 const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
 const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
+const UMBRA := preload("res://actors/enemies/umbra.tscn")
 
 ## Scorpius ilk kez bu tur ilerlemesinde (0'dan sayılır) görünür: 3. savaş odası, 2. dalga.
 const SCORPIUS_FIRST_ROOM := 2
@@ -120,9 +121,9 @@ static func enemy_title(scene: PackedScene) -> String:
 	return scene.resource_path.get_file().get_basename().to_upper()
 
 
-## Katın Gölge odasındaki patron.
+## Katın Gölge odasındaki patron: hep Umbra; kata göre yeteneği ve gücü `Room.spawn_meta["floor"]` ile belirlenir (UmbraKit).
 static func boss_scene_for(_floor_no: int) -> PackedScene:
-	return TAURUS  # yer tutucu: Umbra sahnesi gelince burası değişir
+	return UMBRA
 
 
 ## Gölge odasının dalgaları: tek dalga, tek patron.
@@ -434,8 +435,18 @@ func _on_wave_started(wave_number: int, wave_total: int) -> void:
 	_set_hud_room(room, wave_number, wave_total, false)
 	if wave_number >= 2:
 		hud.announcer.push_runs([["DALGA ", GameFont.WHITE], [str(wave_number), GameFont.YELLOW]], 44, 1.1)
-	if room.kind != FloorPlan.Kind.BOSS:
+	if room.kind == FloorPlan.Kind.BOSS:
+		_announce_boss_ability(room.floor_no)
+	else:
 		_announce_new_enemies(room.waves[wave_number - 1])
+
+
+## Gölge'nin bu kattaki YENİ yeteneği duyurulur ("YENİ YETENEK  DUVAR TIRMANIŞI"); son katta "GERÇEK DÖVÜŞ".
+func _announce_boss_ability(floor_no: int) -> void:
+	if FloorPlan.is_final_floor(floor_no):
+		hud.announcer.push("GERÇEK DÖVÜŞ", Color(1.0, 0.4, 0.4), 60, 2.6)
+	else:
+		hud.announcer.push_runs([["YENİ YETENEK  ", GameFont.WHITE], [UmbraKit.ability_name(floor_no), GameFont.YELLOW]], 42, 2.4)
 
 
 ## Koşuda ilk kez karşılaşılan düşman türü duyurulur ("YENİ DÜŞMAN  SCORPIUS").

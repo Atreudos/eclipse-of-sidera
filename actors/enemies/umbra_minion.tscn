@@ -1,0 +1,70 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://actors/enemies/umbra_minion.gd" id="1_minion"]
+[ext_resource type="Script" path="res://combat/hurtbox.gd" id="2_hurt"]
+[ext_resource type="Script" path="res://combat/hitbox.gd" id="3_hit"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(22, 36)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_hurt"]
+size = Vector2(26, 40)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_attack"]
+size = Vector2(44, 36)
+
+[node name="UmbraMinion" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 131
+script = ExtResource("1_minion")
+max_hp = 2
+gold_min = 0
+gold_max = 1
+jump_velocity = 780.0
+
+[node name="Body" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="Visual" type="Node2D" parent="."]
+
+[node name="Placeholder" type="Node2D" parent="Visual"]
+
+[node name="Rect" type="ColorRect" parent="Visual/Placeholder"]
+offset_left = -11.0
+offset_top = -18.0
+offset_right = 11.0
+offset_bottom = 18.0
+mouse_filter = 2
+color = Color(0.3, 0.16, 0.48, 1)
+
+[node name="Eye" type="ColorRect" parent="Visual/Placeholder"]
+offset_left = 1.0
+offset_top = -11.0
+offset_right = 9.0
+offset_bottom = -6.0
+mouse_filter = 2
+color = Color(0.9, 0.8, 1, 1)
+
+[node name="Glow" type="ColorRect" parent="Visual"]
+visible = false
+offset_left = -14.0
+offset_top = -22.0
+offset_right = 14.0
+offset_bottom = 22.0
+mouse_filter = 2
+color = Color(1, 0.8, 0.2, 0.5)
+
+[node name="Hurtbox" type="Area2D" parent="."]
+script = ExtResource("2_hurt")
+faction = "enemy"
+
+[node name="Shape" type="CollisionShape2D" parent="Hurtbox"]
+shape = SubResource("RectangleShape2D_hurt")
+
+[node name="AttackHitbox" type="Area2D" parent="."]
+script = ExtResource("3_hit")
+faction = "enemy"
+active = false
+
+[node name="Shape" type="CollisionShape2D" parent="AttackHitbox"]
+shape = SubResource("RectangleShape2D_attack")

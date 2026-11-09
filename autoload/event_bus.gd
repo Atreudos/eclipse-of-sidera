@@ -80,3 +80,12 @@ signal item_purchased(actor: Node, item: ItemData, price: int)
 ## Bir düşman saldırı uyarısı verdi (mode: EnemyBase.Tell.GOLD = parry'lenebilir, RED = kaçılacak). Öğretici dinler.
 @warning_ignore("unused_signal")
 signal enemy_tell(enemy: Node, mode: int)
+## Patron (Gölge) sahneye geldi: üstteki can barı ona bağlanır.
+@warning_ignore("unused_signal")
+signal boss_spawned(boss: Node)
+## Patron evre değiştirdi (2 = öfkelendi / ikinci nefes).
+@warning_ignore("unused_signal")
+signal boss_phase(boss: Node, phase: int)
+## Patron yenildi (can barı söner).
+@warning_ignore("unused_signal")
+signal boss_defeated(boss: Node)

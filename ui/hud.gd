@@ -22,6 +22,8 @@ var announcer: Announcer
 var tutorial_hint: TutorialHint
 ## Ritim (agresiflik) çubuğu.
 var rhythm_bar: RhythmBar
+## Patron (Gölge) can barı: ekranın üstünde, patron belirince görünür.
+var boss_bar: BossBar
 ## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
 var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
@@ -139,6 +141,9 @@ func _build() -> void:
 	tutorial_hint = TutorialHint.new()
 	tutorial_hint.name = "TutorialHint"
 	root.add_child(tutorial_hint)
+	boss_bar = BossBar.new()
+	boss_bar.name = "BossBar"
+	root.add_child(boss_bar)
 	inventory_screen = InventoryScreen.new()
 	inventory_screen.name = "InventoryScreen"
 	root.add_child(inventory_screen)

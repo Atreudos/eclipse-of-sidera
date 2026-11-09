@@ -10,6 +10,8 @@ const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
 const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
 const RUN := preload("res://levels/run.tscn")
+const UMBRA := preload("res://actors/enemies/umbra.tscn")
+const UM = UmbraKit.Move
 
 var _checks := 0
 var _fails := 0
@@ -153,6 +155,19 @@ func _run_all() -> void:
 		"ogretici_kayit": _test_tutorial_save,
 		"ogretici_panel": _test_tutorial_view,
 		"ogretici_gercek": _test_tutorial_real_parry,
+		"golge_kit": _test_umbra_kit,
+		"golge_sahne": _test_umbra_scene,
+		"golge_bicak": _test_umbra_knife,
+		"golge_firlatma": _test_umbra_throw,
+		"golge_tirmanis": _test_umbra_climb,
+		"golge_minyon": _test_umbra_minions,
+		"golge_hamleler": _test_umbra_moves,
+		"golge_zirh": _test_umbra_armor,
+		"golge_nefes": _test_umbra_second_wind,
+		"golge_olum": _test_umbra_death,
+		"golge_bar": _test_umbra_bar,
+		"golge_zeka": _test_umbra_brain,
+		"golge_oda": _test_umbra_room,
 	}
 	for test_name: String in tests:
 		if not only.is_empty():
@@ -6402,3 +6417,1077 @@ func _test_tutorial_real_parry() -> void:
 	check(hint.is_done_flashing() or not hint.is_showing(), "tik gösterildi")
 	run.queue_free()
 	await _frames(3)
+
+
+# ------------------------------------------------------------------ Gölge (Umbra)
+
+## Gölge'yi sahneye koyar. `auto` = false: kendi kendine hamle seçmez (testler `force_move` ile başlatır).
+func _spawn_umbra(x: float, floor_no: int = 1, t: EnemyTuning = null, auto: bool = false) -> Umbra:
+	var u := UMBRA.instantiate() as Umbra
+	u.set_meta("floor", floor_no)
+	u.gold_min = 0
+	u.gold_max = 0
+	if t != null:
+		u.tuning = t
+	_world.add_child(u)
+	u.global_position = Vector2(x, 612.0)
+	if not auto:
+		u.abilities = []
+		u._cooldown = 999.0
+	return u
+
+
+## İki yana dikey duvar (Gölge'nin duvar tırmanışı ve arena sınırı için). İç yüzler: sol_x + 20 ve sağ_x - 20.
+func _add_walls(left_x: float, right_x: float) -> void:
+	for x in [left_x, right_x]:
+		var wall := StaticBody2D.new()
+		wall.collision_layer = Layers.WORLD
+		wall.collision_mask = 0
+		var cs := CollisionShape2D.new()
+		var rs := RectangleShape2D.new()
+		rs.size = Vector2(40.0, 1400.0)
+		cs.shape = rs
+		cs.position = Vector2(float(x), 40.0)
+		wall.add_child(cs)
+		_world.add_child(wall)
+
+
+## Sahnede Gölge'nin attığı (hâlâ ona ait) bıçaklar.
+func _umbra_knives(u: Umbra) -> Array[Projectile]:
+	var out: Array[Projectile] = []
+	for node in get_tree().get_nodes_in_group("projectiles"):
+		var pr := node as Projectile
+		if pr != null and not pr.is_queued_for_deletion() and pr.original_source == u:
+			out.append(pr)
+	return out
+
+
+func _count_marks() -> int:
+	var n := 0
+	for c in _world.get_children():
+		if c is UmbraMark and not c.is_queued_for_deletion():
+			n += 1
+	return n
+
+
+func _count_clones() -> int:
+	var n := 0
+	for node in get_tree().get_nodes_in_group("minions"):
+		var mm := node as UmbraMinion
+		if mm != null and mm.kind == UmbraMinion.Kind.CLONE:
+			n += 1
+	return n
+
+
+## Gölge'yi ve oyuncuyu bir sonraki hamle sınaması için sıfırlar (hamle, mermi, minyon, işaret, zırh, kilit temizlenir).
+func _umbra_reset(u: Umbra, p: Player) -> void:
+	u._end_move(0.0)
+	get_tree().call_group("projectiles", "queue_free")
+	get_tree().call_group("minions", "dissolve")
+	for c in _world.get_children():
+		if c is UmbraMark:
+			c.queue_free()
+	u.health = u.max_hp
+	u.stun_t = 0.0
+	u.knock_t = 0.0
+	u._armor_t = 0.0
+	u._poise_hits = 0
+	u._force_melee = false
+	u._lock.clear()
+	u.velocity = Vector2.ZERO
+	u.global_position = Vector2(900.0, 612.0)
+	u._cooldown = 999.0
+	p.invulnerable_t = 0.0
+	p.health = 999
+	p.global_position = Vector2(500.0, 612.0)
+	p.velocity = Vector2.ZERO
+	p.facing = 1
+	await _frames(20)
+
+
+## Hamleyi başlatır, bitene dek (en çok `max_frames` kare) izler; gözlemleri sözlük olarak döndürür.
+func _observe_umbra_move(u: Umbra, m: int, max_frames: int = 900) -> Dictionary:
+	var obs := {
+		"started": false, "done": false, "frames": 0, "strikes": 0, "last_red": false, "knives": [],
+		"min_y": u.global_position.y, "alpha_min": 1.0, "blades": 0, "minions": 0, "clones": 0, "marks": 0,
+		"knife_x": NAN, "untouchable": false, "armored": false, "counter": false, "gravity_min": u.gravity,
+	}
+	var seen := {}
+	var was_active := false
+	obs["started"] = u.force_move(m)
+	if not bool(obs["started"]):
+		return obs
+	for i in max_frames:
+		await get_tree().physics_frame
+		obs["frames"] = i + 1
+		var active := u.attack_hitbox.active
+		if active and not was_active:
+			obs["strikes"] = int(obs["strikes"]) + 1
+			obs["last_red"] = not u.attack_hitbox.parryable
+		was_active = active
+		for pr in _umbra_knives(u):
+			if not seen.has(pr):
+				seen[pr] = true
+				(obs["knives"] as Array).append({"parryable": pr.parryable, "vx": pr.velocity.x, "vy": pr.velocity.y})
+		obs["min_y"] = minf(float(obs["min_y"]), u.global_position.y)
+		obs["alpha_min"] = minf(float(obs["alpha_min"]), u.visual_alpha)
+		obs["gravity_min"] = minf(float(obs["gravity_min"]), u.gravity)
+		obs["blades"] = maxi(int(obs["blades"]), u._blades.size())
+		obs["minions"] = maxi(int(obs["minions"]), u.minion_count())
+		obs["clones"] = maxi(int(obs["clones"]), _count_clones())
+		obs["marks"] = maxi(int(obs["marks"]), _count_marks())
+		if u._untouchable:
+			obs["untouchable"] = true
+		if u.armored:
+			obs["armored"] = true
+		if u._counter_on:
+			obs["counter"] = true
+		if u.current_move == UM.KNIFE and is_nan(float(obs["knife_x"])):
+			obs["knife_x"] = u.global_position.x
+		if u.is_idle():
+			obs["done"] = true
+			break
+	return obs
+
+
+func _test_umbra_kit() -> void:
+	await _new_world("Gölge: yetenek merdiveni ve kat ölçeklemesi (UmbraKit)")
+	var n: int = UmbraKit.LADDER.size()
+	check(n == 18 and n == FloorPlan.FLOOR_COUNT, "merdiven 18 katlık, kat sayısıyla aynı (%d)" % n)
+	var names := {}
+	var ids := {}
+	var shape_ok := true
+	var filled_ok := true
+	for i in n:
+		var a: Dictionary = UmbraKit.LADDER[i]
+		names[str(a["name"])] = true
+		ids[str(a["id"])] = true
+		if a.has("move") == a.has("passive"):
+			shape_ok = false
+		if str(a["name"]) == "" or str(a["text"]) == "":
+			filled_ok = false
+	check(names.size() == n and ids.size() == n, "her katın yeteneği ayrı ad ve kimlik taşıyor")
+	check(shape_ok, "her yetenek ya hamle ya pasif (ikisi birden değil)")
+	check(filled_ok, "adlar ve açıklamalar dolu")
+	# Kullanıcının tarifi: 1 bıçak, 2 fırlatma, 3 duvar tırmanışı, 4 minyon
+	check(UmbraKit.moves_for(1) == [UM.KNIFE], "kat 1: yalnız bıçak")
+	check(UmbraKit.moves_for(2) == [UM.KNIFE, UM.THROW], "kat 2: + fırlatma")
+	check(UM.CLIMB in UmbraKit.moves_for(3) and UmbraKit.floor_of_move(UM.CLIMB) == 3, "kat 3: + duvar tırmanışı")
+	check(UM.MINIONS in UmbraKit.moves_for(4) and UmbraKit.floor_of_move(UM.MINIONS) == 4, "kat 4: + minyon çağırma")
+	var prev: Array = []
+	var cumulative := true
+	var one_at_a_time := true
+	for f in range(1, 19):
+		var mv := UmbraKit.moves_for(f)
+		for m in prev:
+			if not (m in mv):
+				cumulative = false
+		if mv.size() - prev.size() > 1:
+			one_at_a_time = false
+		prev = mv
+	check(cumulative, "her kat öncekilerin hepsini korur")
+	check(one_at_a_time, "her kat en çok bir yeni hamle ekler")
+	check(UmbraKit.moves_for(18).size() == 15, "kat 18: 15 hamle")
+	check(UmbraKit.passives_for(18) == ["armor", "second_wind", "real"], "kat 18 pasifleri: zırh, ikinci nefes, gerçek dövüş")
+	check(UmbraKit.has_passive(8, "armor") and not UmbraKit.has_passive(7, "armor"), "zırh kat 8'den")
+	check(UmbraKit.has_passive(15, "second_wind") and not UmbraKit.has_passive(14, "second_wind"), "ikinci nefes kat 15'ten")
+	check(UmbraKit.has_passive(18, "real") and not UmbraKit.has_passive(17, "real"), "gerçek dövüş yalnız kat 18'de")
+	check(UmbraKit.ability_name(99) == UmbraKit.ability_name(18) and UmbraKit.clamp_floor(0) == 1, "kat dışı değerler kırpılır")
+	check(UmbraKit.ability_name(1) == "BIÇAK" and UmbraKit.ability_name(18) == "GERÇEK DÖVÜŞ", "ilk ve son yetenek adları")
+	var every_move_named := true
+	for m in UmbraKit.moves_for(18):
+		if not UmbraKit.LOCKOUT.has(m) or not UmbraKit.MOVE_NAMES.has(m) or UmbraKit.move_name(m) == "?":
+			every_move_named = false
+	check(every_move_named, "her hamlenin kilit süresi ve adı tanımlı")
+	# Ölçekleme
+	var up := true
+	var down := true
+	for f in range(1, 18):
+		if not (UmbraKit.hp_mult(f + 1) > UmbraKit.hp_mult(f) and UmbraKit.speed_mult(f + 1) > UmbraKit.speed_mult(f)):
+			up = false
+		if UmbraKit.red_bonus(f + 1) < UmbraKit.red_bonus(f):
+			up = false
+		if not (UmbraKit.wait_mult(f + 1) < UmbraKit.wait_mult(f)):
+			down = false
+	check(up, "her kat daha canlı, daha hızlı, daha çok kırmızı")
+	check(down, "her kat hamleler arası bekleme kısalıyor")
+	check(is_equal_approx(UmbraKit.hp_mult(1), 1.0) and is_equal_approx(UmbraKit.wait_mult(1), 1.0) and is_equal_approx(UmbraKit.red_bonus(1), 0.0), "kat 1: can x1, bekleme x1, kırmızı +0")
+	check(is_equal_approx(UmbraKit.wait_mult(18), 0.55) and is_equal_approx(UmbraKit.red_bonus(18), 0.15), "kat 18: bekleme x0.55, kırmızı +0.15")
+	check(UmbraKit.hp_for(1, 30) == 30 and UmbraKit.hp_for(18, 30) == 66, "can: kat 1 = 30, kat 18 = 66 (%d)" % UmbraKit.hp_for(18, 30))
+	check(UmbraKit.minion_count(4, false) == 2 and UmbraKit.minion_count(11, true) == 5, "minyon sayısı: kat 4'te 2, kat 11 sürüsü 5")
+	var cap_ok := true
+	for f in range(UmbraKit.floor_of_move(UM.SWARM), 19):
+		if UmbraKit.minion_cap(f) < UmbraKit.minion_count(f, true):
+			cap_ok = false
+	check(cap_ok, "sürü sayısı sahne sınırını aşmıyor")
+	check(UmbraKit.rain_count(9) == 6 and UmbraKit.rain_count(18) == 8, "bıçak yağmuru: kat 9'da 6, kat 18'de 8")
+	check(UmbraKit.orbit_count(12) == 3 and UmbraKit.orbit_count(18) == 4, "dönen bıçak: kat 12'de 3, kat 18'de 4")
+	var sp := UmbraKit.spec(18)
+	check(bool(sp["armor"]) and bool(sp["second_wind"]) and bool(sp["real"]) and (sp["moves"] as Array).size() == 15, "spec(18) hepsini taşıyor")
+	check(not bool(UmbraKit.spec(1)["armor"]) and not bool(UmbraKit.spec(1)["real"]), "spec(1) pasifsiz")
+	# Hamle ağırlıkları
+	var near := {"dx": 120.0, "level": true, "hp": 1.0, "minions": 0, "proj": 0, "phase": 1, "last": UM.NONE}
+	var far := near.duplicate()
+	far["dx"] = 600.0
+	check(UmbraKit.weight(UM.KNIFE, near) > 0.0 and UmbraKit.weight(UM.KNIFE, far) == 0.0, "bıçak yakında seçilir, uzaktan seçilmez")
+	check(UmbraKit.weight(UM.COMBO, far) == 0.0 and UmbraKit.weight(UM.COMBO, near) > 0.0, "kombo yalnız yakında")
+	check(UmbraKit.weight(UM.THROW, far) > UmbraKit.weight(UM.THROW, near), "fırlatma uzaktan daha olası")
+	var crowd := near.duplicate()
+	crowd["minions"] = 2
+	crowd["hp"] = 0.5
+	check(UmbraKit.weight(UM.MINIONS, crowd) == 0.0 and UmbraKit.weight(UM.SWARM, crowd) == 0.0, "minyonlar sağken yenisi çağrılmaz")
+	var hurt := near.duplicate()
+	hurt["hp"] = 0.5
+	check(UmbraKit.weight(UM.MINIONS, hurt) > 0.0 and UmbraKit.weight(UM.SWARM, hurt) > 0.0, "canı düşünce minyon çağırır")
+	check(UmbraKit.weight(UM.SWARM, near) == 0.0, "sürü yalnız canı %80'in altına inince")
+	var knives := near.duplicate()
+	knives["proj"] = 3
+	check(UmbraKit.weight(UM.THROW, knives) == 0.0 and UmbraKit.weight(UM.FAN, knives) == 0.0 and UmbraKit.weight(UM.COUNTER, knives) == 0.0, "havada bıçak varken fırlatma/karşı duruş yok")
+	var far_wall := far.duplicate()
+	far_wall["wall"] = 1200.0
+	check(UmbraKit.weight(UM.CLIMB, far_wall) < UmbraKit.weight(UM.CLIMB, far), "duvar çok uzaksa tırmanış az seçilir")
+	var melee := near.duplicate()
+	melee["force_melee"] = true
+	check(UmbraKit.weight(UM.KNIFE, melee) > UmbraKit.weight(UM.KNIFE, near) and UmbraKit.weight(UM.THROW, melee) < UmbraKit.weight(UM.THROW, near), "poise kırılınca yakın dövüş öne çıkar")
+	var repeat := near.duplicate()
+	repeat["last"] = UM.KNIFE
+	check(UmbraKit.weight(UM.KNIFE, repeat) < UmbraKit.weight(UM.KNIFE, near), "aynı hamle üst üste az seçilir")
+	# Seçim
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1234
+	check(UmbraKit.pick(UmbraKit.moves_for(1), far, {}, rng) == UM.NONE, "kat 1'de uzakta seçecek hamle yok (yaklaşır)")
+	check(UmbraKit.pick(UmbraKit.moves_for(1), near, {}, rng) == UM.KNIFE, "kat 1'de yakında bıçak")
+	check(UmbraKit.pick([UM.KNIFE], near, {UM.KNIFE: 2.0}, rng) == UM.NONE, "kilitli hamle seçilmez")
+	var mid := {"dx": 300.0, "level": true, "hp": 0.6, "minions": 0, "proj": 0, "phase": 1, "last": UM.NONE, "wall": 300.0}
+	var seen := {}
+	for i in 600:
+		seen[UmbraKit.pick(UmbraKit.moves_for(18), mid, {}, rng)] = true
+	check(seen.size() >= 9, "kat 18'de çok çeşitli hamle seçiliyor (%d tür)" % seen.size())
+	check(not seen.has(UM.NONE) and not seen.has(UM.WIND), "seçim NONE/WIND vermiyor")
+	# Umbra'ya kalan eşyalar
+	var good := _dummy_item("g1")
+	good.mods = [["max_health", 1.0, 1.0], ["move_speed", 0.0, 1.2], ["parry_window", 0.05, 1.0]]
+	check(UmbraKit.usable_mods(good).size() == 2, "yalnız can ve hız Gölge'ye geçer (parry penceresi geçmez)")
+	var blocked := _dummy_item("g2")
+	blocked.umbra_allowed = false
+	blocked.mods = [["max_health", 1.0, 1.0]]
+	check(UmbraKit.usable_mods(blocked).is_empty() and UmbraKit.usable_mods(null).is_empty(), "umbra_allowed=false ya da boş eşya: etki yok")
+
+
+func _test_umbra_scene() -> void:
+	await _new_world("Gölge: sahne, kat ölçeklemesi, gruplar, patron sinyali ve kalan eşyalar")
+	GameState.umbra_items.clear()
+	var p := _spawn_player(300.0)
+	var spawned := []
+	var cb := func(b: Node) -> void: spawned.append(b)
+	EventBus.boss_spawned.connect(cb)
+	var u1 := _spawn_umbra(900.0, 1, null, true)
+	var u18 := _spawn_umbra(1300.0, 18, null, true)
+	EventBus.boss_spawned.disconnect(cb)
+	await _frames(5)
+	check(spawned.size() == 2 and spawned[0] == u1 and spawned[1] == u18, "boss_spawned her Gölge için bir kez")
+	check(u1.is_in_group("boss") and u1.is_in_group("enemies"), "gruplar: boss + enemies")
+	check(u1.floor_no == 1 and u18.floor_no == 18, "kat meta'dan okundu")
+	check(u1.max_hp == 30 and u1.health == 30, "kat 1: 30 can")
+	check(u18.max_hp == UmbraKit.hp_for(18, 30) and u18.max_hp > u1.max_hp * 2, "kat 18: çok daha canlı (%d)" % u18.max_hp)
+	check(u1.abilities == [UM.KNIFE] and u18.abilities.size() == 15, "açık hamleler: kat 1 = 1, kat 18 = 15")
+	check(not u1.armored and u1.is_idle() and u1.phase == 1, "başlangıç: zırhsız, boşta, evre 1")
+	check(u1.get_node("Visual") != null and u1.hurtbox != null and u1.attack_hitbox.faction == "enemy" and not u1.attack_hitbox.active, "yer tutucu çizim, hurtbox ve kapalı saldırı alanı")
+	check(u1.attack_shape.shape != u18.attack_shape.shape, "her Gölge kendi saldırı şeklini taşıyor (paylaşılmıyor)")
+	check(u1.anim_folder() == "res://assets/sprites/umbra" and u1.anim_spec().has("throw") and u1.anim_spec().has("climb") and u1.anim_spec().has("roar"), "sanat klasörü ve hamle animasyon adları (umbra_throw, umbra_climb, umbra_roar...)")
+	# Düşman ölçeklemesi (EnemyScaling) üstüne biner
+	var t := EnemyScaling.tuning(Difficulty.Level.NORMAL, 60)
+	var us := _spawn_umbra(1500.0, 18, t)
+	check(us.max_hp == t.scale_hp(UmbraKit.hp_for(18, 30)) and us.max_hp > u18.max_hp, "kat ölçeği + düşman ölçeği çarpılıyor (%d)" % us.max_hp)
+	# Umbra'ya kalan eşyalar Gölge'yi güçlendirir
+	var it := _dummy_item("kalan_kilic")
+	it.mods = [["max_health", 5.0, 1.0], ["attack_damage", 0.0, 1.5], ["move_speed", 0.0, 1.2]]
+	GameState.umbra_items.append(it)
+	var ui := _spawn_umbra(1700.0, 1)
+	GameState.umbra_items.erase(it)
+	check(ui.max_hp == 39 and ui.health == 39, "kalan 'can' eşyası: 30 x 1.30 = 39 (%d)" % ui.max_hp)
+	check(ui._dmg(2) == 3 and u1._dmg(2) == 2, "kalan 'hasar' eşyası: kırmızı 2 -> 3")
+	check(is_equal_approx(ui._spd(), 180.0) and is_equal_approx(u1._spd(), 150.0), "kalan 'hız' eşyası: 150 -> 180")
+	check(p != null, "oyuncu hazır")
+
+
+func _test_umbra_knife() -> void:
+	await _new_world("Gölge: bıçak (altın = parry'le, kırmızı = kaç), vurulunca hazırlık bozulur")
+	var p := _spawn_player(600.0)
+	p.health = 999
+	var u := _spawn_umbra(700.0, 1)
+	u.red_override = 0
+	await _frames(10)
+	check(u.force_move(UM.KNIFE), "bıçak hamlesi başladı")
+	check(u.current_move == UM.KNIFE and u.stage == Umbra.K_TELL and u.tell_mode() == EnemyBase.Tell.GOLD, "altın uyarı verdi")
+	await _frames(2)
+	check(not u.armored, "kat 1'de hazırlık sırasında zırh yok")
+	var hp0 := p.health
+	var pressed := false
+	for i in 200:
+		await get_tree().physics_frame
+		if not pressed and u.stage == Umbra.K_STRIKE and u.current_move == UM.KNIFE:
+			check(u.attack_hitbox.active and u.attack_hitbox.parryable, "darbe sırasında alan açık ve parry'lenebilir")
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(pressed and _parry_ok == 1, "altın bıçak parry'lendi")
+	check(p.health == hp0, "can kaybı yok")
+	check(u.is_stunned() and u.is_idle() and not u.attack_hitbox.active, "Gölge sersemledi, hamle kesildi, alan kapandı")
+	var hb := u.health
+	p.global_position.x = u.global_position.x - 50.0
+	await _frames(3)
+	p.intent.attack_pressed = true
+	for i in 30:
+		await get_tree().physics_frame
+		if u.health < hb:
+			break
+	check(hb - u.health == 3, "parry sonrası güçlü vuruş x sersem bonusu = 3 hasar (%d)" % (hb - u.health))
+	# Kırmızı bıçak
+	await _new_world("Gölge: kırmızı bıçak parry'lenemez ve 2 hasar verir")
+	p = _spawn_player(600.0)
+	p.health = 999
+	u = _spawn_umbra(700.0, 1)
+	u.red_override = 1
+	await _frames(10)
+	hp0 = p.health
+	check(u.force_move(UM.KNIFE) and u.tell_mode() == EnemyBase.Tell.RED, "kırmızı uyarı verdi")
+	var in_strike := false
+	for i in 200:
+		await get_tree().physics_frame
+		if u.stage == Umbra.K_STRIKE and not in_strike:
+			in_strike = true
+			check(u.attack_hitbox.active and not u.attack_hitbox.parryable and u.attack_hitbox.damage == 2, "kırmızı darbe: parry'lenemez, 2 hasar")
+		if u.is_idle():
+			break
+	check(in_strike and u.is_idle(), "darbe bitti, Gölge boşa döndü")
+	check(p.health == hp0 - 2, "kaçmayan oyuncu 2 can kaybetti (%d)" % (hp0 - p.health))
+	check(_parry_ok == 0, "kırmızı darbe parry sayılmadı")
+	# Vurulunca (zırhsız) hazırlık bozulur
+	await _frames(5)
+	u.red_override = 0
+	u.stun_t = 0.0
+	u.knock_t = 0.0
+	check(u.force_move(UM.KNIFE), "yeniden hazırlanıyor")
+	await _frames(5)
+	check(u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0))), "vuruş işledi")
+	check(u.is_idle() and u.tell_mode() == EnemyBase.Tell.NONE and u.knock_t > 0.0, "kat 1'de vurulunca hazırlık iptal, uyarı söndü")
+	check(u._cooldown > 0.2, "hemen yeniden saldırmıyor (bekleme %.2f)" % u._cooldown)
+
+
+func _test_umbra_throw() -> void:
+	await _new_world("Gölge: fırlatma (altın bıçağı parry'lersen ona döner), üçlü fırlatma")
+	var p := _spawn_player(300.0)
+	p.health = 999
+	var u := _spawn_umbra(800.0, 2)
+	u.red_override = 0
+	await _frames(10)
+	check(u.force_move(UM.THROW) and u.tell_mode() == EnemyBase.Tell.GOLD, "fırlatma: altın uyarı")
+	var got := await _wait_until(func() -> bool: return u._own_projectiles() >= 1, 120)
+	check(got and u._own_projectiles() == 1, "tek bıçak fırlattı")
+	var pr: Projectile = _umbra_knives(u)[0]
+	check(pr.parryable and pr.faction == "enemy" and pr.velocity.x < 0.0, "bıçak altın ve oyuncuya doğru")
+	check(u.tell_mode() == EnemyBase.Tell.NONE, "fırlatınca uyarı söndü")
+	var hp_u := u.health
+	var hp_p := p.health
+	var pressed := false
+	for i in 240:
+		await get_tree().physics_frame
+		if not pressed and is_instance_valid(pr) and pr.global_position.x - p.global_position.x < 85.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(_parry_ok == 1 and p.health == hp_p, "bıçak parry'lendi, can kaybı yok")
+	check(is_instance_valid(pr) and pr.faction == "player" and pr.velocity.x > 0.0, "bıçak Gölge'ye geri döndü")
+	var hit := await _wait_until(func() -> bool: return u.health < hp_u, 240)
+	check(hit and hp_u - u.health == 2, "geri dönen bıçak 2 hasar verdi (%d)" % (hp_u - u.health))
+	# Üçlü fırlatma
+	await _new_world("Gölge: üçlü fırlatma yelpazesi")
+	p = _spawn_player(300.0)
+	p.health = 999
+	u = _spawn_umbra(900.0, 6)
+	u.red_override = 1
+	await _frames(10)
+	check(u.force_move(UM.FAN) and u.tell_mode() == EnemyBase.Tell.RED, "üçlü fırlatma: kırmızı uyarı")
+	await _wait_until(func() -> bool: return u._own_projectiles() >= 3, 160)
+	var ks := _umbra_knives(u)
+	check(ks.size() == 3, "üç bıçak (%d)" % ks.size())
+	var angs: Array[float] = []
+	var all_red := true
+	for k in ks:
+		angs.append(atan2(k.velocity.y, -k.velocity.x))
+		if k.parryable:
+			all_red = false
+	angs.sort()
+	check(all_red, "kırmızı uyarı = üç bıçak da parry'lenemez")
+	check(angs.size() == 3 and absf((angs[2] - angs[0]) - 0.6) < 0.02 and absf(angs[1] - 0.5 * (angs[0] + angs[2])) < 0.05, "yelpaze: ±0.3 rad (%.2f)" % (angs[2] - angs[0] if angs.size() == 3 else 0.0))
+
+
+func _test_umbra_climb() -> void:
+	await _new_world("Gölge: duvara tırmanır, tepeden atlar; duvardan bıçak yağdırır")
+	_add_walls(100.0, 1500.0)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	var u := _spawn_umbra(900.0, 3)
+	u.red_override = 0
+	await _frames(10)
+	var hp0 := p.health
+	check(u.force_move(UM.CLIMB) and u._wall_dir == 1, "tırmanış başladı: oyuncudan uzaktaki sağ duvara koşuyor")
+	var y0 := u.global_position.y
+	var min_y := y0
+	var reached_wall := false
+	var hung := false
+	var hang_ok := false
+	var dove := false
+	var dive_ok := false
+	var landed := false
+	for i in 700:
+		await get_tree().physics_frame
+		min_y = minf(min_y, u.global_position.y)
+		if u.stage == Umbra.C_UP and absf(u.global_position.x - 1465.0) < 30.0:
+			reached_wall = true
+		if u.stage == Umbra.C_HANG and not hung:
+			hung = true
+			hang_ok = u.gravity == 0.0 and u.armored and u.tell_mode() == EnemyBase.Tell.GOLD
+		if u.stage == Umbra.C_ACT and u.attack_hitbox.active and not dove:
+			dove = true
+			dive_ok = u.attack_hitbox.parryable and u.velocity.y > 0.0 and u.velocity.x < 0.0 and u.armored
+		if u.stage == Umbra.C_RECOVER and u.is_on_floor():
+			landed = true
+		if u.is_idle():
+			break
+	check(reached_wall, "duvara yaslandı (x ≈ 1465)")
+	check(y0 - min_y > 350.0, "duvarda yukarı tırmandı (%.0f px; uzak oyuncu = yüksek tırmanış)" % (y0 - min_y))
+	check(hung and hang_ok, "duvarda asılı: yerçekimi 0, zırhlı, altın uyarı")
+	check(dove and dive_ok, "dalış: altın alan açık, aşağı-sola hızlı, zırhlı")
+	check(landed, "yere indi ve toparlanıyor")
+	check(u.is_idle() and u.gravity == u._base_gravity and not u.armored, "bitti: yerçekimi geri geldi, zırh kalktı")
+	check(p.health == hp0 - 1, "dalış uzaktaki oyuncuya yetişti (1 hasar, altın) (%d)" % (hp0 - p.health))
+	# Dalışı parry'le
+	await _umbra_reset(u, p)
+	u.red_override = 0
+	var pressed := false
+	u.force_move(UM.CLIMB)
+	for i in 700:
+		await get_tree().physics_frame
+		if not pressed and u.stage == Umbra.C_ACT and u.attack_hitbox.active and u.global_position.distance_to(p.global_position) < 140.0:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(pressed and _parry_ok == 1 and u.is_stunned(), "dalışı parry'lemek Gölge'yi sersemletir")
+	check(u.gravity == u._base_gravity and not u._committed and u.is_idle(), "sersemleyince yerçekimi geri geldi, tırmanış kesildi")
+	# Duvardan atış
+	await _new_world("Gölge: duvardan atış (kat 14): tepeden üç bıçak, sonuncusu kırmızı")
+	_add_walls(100.0, 1500.0)
+	p = _spawn_player(500.0)
+	p.health = 999
+	u = _spawn_umbra(900.0, 14)
+	u.red_override = 0
+	await _frames(10)
+	var o: Dictionary = await _observe_umbra_move(u, UM.VOLLEY)
+	var ks := o["knives"] as Array
+	check(bool(o["done"]) and ks.size() == 3, "duvardan atış: 3 bıçak (%d)" % ks.size())
+	check(ks.size() == 3 and bool(ks[0]["parryable"]) and bool(ks[1]["parryable"]) and not bool(ks[2]["parryable"]), "ilk ikisi altın, sonuncusu kırmızı")
+	check(612.0 - float(o["min_y"]) > 350.0 and float(o["gravity_min"]) == 0.0, "atışı duvarın tepesinden, yerçekimsiz yaptı")
+	check(u.gravity == u._base_gravity and not u._committed, "atış bitince yerçekimi geri geldi")
+
+
+func _test_umbra_minions() -> void:
+	await _new_world("Gölge: minyon çağırır (doğarken vurulamaz), sayı sınırı, sürü, klon")
+	_add_walls(100.0, 1500.0)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	var u := _spawn_umbra(900.0, 4)
+	await _frames(10)
+	check(u.force_move(UM.MINIONS) and u._casting and u.tell_mode() == EnemyBase.Tell.NONE, "çağırma: mor parlama (parry uyarısı değil)")
+	var came := await _wait_until(func() -> bool: return u.minion_count() >= 1, 150)
+	check(came and u.minion_count() == UmbraKit.minion_count(4, false), "kat 4: %d minyon geldi" % u.minion_count())
+	var m := get_tree().get_nodes_in_group("minions")[0] as UmbraMinion
+	check(m.is_in_group("enemies") and m.is_emerging(), "minyon düşman sayılır, doğuyor")
+	check(not m.on_hit_by(_player_hitbox(p, m.global_position)), "doğarken vurulamaz")
+	var spots_ok := true
+	for node in get_tree().get_nodes_in_group("minions"):
+		var mm := node as UmbraMinion
+		if absf(mm.global_position.x - p.global_position.x) < 60.0 or mm.global_position.x < 110.0 or mm.global_position.x > 1480.0:
+			spots_ok = false
+	check(spots_ok, "minyonlar oyuncunun üstüne ve duvarın içine doğmadı")
+	await _frames(60)
+	check(not m.is_emerging() and m.visual_alpha > 0.99, "doğuş bitti")
+	var hpm := m.health
+	m.stun_t = 0.0
+	check(m.on_hit_by(_player_hitbox(p, m.global_position)) and m.health < hpm, "doğduktan sonra vurulabilir")
+	# Sayı sınırı
+	await _wait_until(func() -> bool: return u.is_idle(), 200)
+	for k in 3:
+		u._cooldown = 999.0
+		u.force_move(UM.MINIONS)
+		await _wait_until(func() -> bool: return u.is_idle(), 200)
+	check(u.minion_count() <= UmbraKit.minion_cap(4), "sahnede en çok %d minyon (%d)" % [UmbraKit.minion_cap(4), u.minion_count()])
+	# Sürü
+	await _new_world("Gölge: sürü (kat 11) ve klon (kat 16)")
+	_add_walls(100.0, 1500.0)
+	p = _spawn_player(500.0)
+	p.health = 999
+	var u11 := _spawn_umbra(900.0, 11)
+	await _frames(10)
+	u11.force_move(UM.SWARM)
+	await _wait_until(func() -> bool: return u11.minion_count() >= 1, 150)
+	check(u11.minion_count() == UmbraKit.minion_count(11, true), "sürü: %d minyon" % u11.minion_count())
+	get_tree().call_group("minions", "dissolve")
+	u11.queue_free()
+	await _frames(3)
+	# Klon: karşı yanda belirir, tek KIRMIZI darbe vurur ve kaybolur; Gölge'nin kendi darbesi ALTIN
+	var u16 := _spawn_umbra(1300.0, 16)
+	u16.max_hp = 99999
+	u16.health = 99999
+	await _frames(10)
+	p.global_position.x = 700.0
+	u16.force_move(UM.CLONE)
+	var cl: UmbraMinion = null
+	for i in 200:
+		await get_tree().physics_frame
+		for node in get_tree().get_nodes_in_group("minions"):
+			var mm := node as UmbraMinion
+			if mm != null and mm.kind == UmbraMinion.Kind.CLONE:
+				cl = mm
+		if cl != null:
+			break
+	check(cl != null, "klon belirdi")
+	check(cl != null and cl.global_position.x < p.global_position.x and u16.global_position.x > p.global_position.x, "klon Gölge'nin KARŞI yanında (oyuncunun diğer tarafı)")
+	check(u16.current_move == UM.KNIFE and not u16._red, "Gölge'nin kendi darbesi altın (klonunki kırmızı)")
+	var clone_struck := false
+	var clone_red := false
+	for i in 300:
+		await get_tree().physics_frame
+		if cl != null and is_instance_valid(cl) and cl.attack_hitbox.active:
+			clone_struck = true
+			clone_red = not cl.attack_hitbox.parryable
+		if cl == null or not is_instance_valid(cl) or cl.dead:
+			break
+	check(clone_struck and clone_red, "klon KIRMIZI darbe vurdu")
+	for i in 120:
+		if not is_instance_valid(cl) or cl.is_queued_for_deletion():
+			break
+		await get_tree().physics_frame
+	check(not is_instance_valid(cl) or cl.is_queued_for_deletion(), "klon vuruştan sonra kayboldu")
+
+
+func _test_umbra_moves() -> void:
+	await _new_world("Gölge: kat 18'de 15 hamlenin hepsi çalışıyor ve kendine özgü izini bırakıyor")
+	_add_walls(100.0, 1500.0)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	var u := _spawn_umbra(900.0, 18)
+	u.max_hp = 99999
+	u.health = 99999
+	u.red_override = 0
+	await _frames(10)
+	var o: Dictionary = {}
+	# 1) BIÇAK
+	o = await _observe_umbra_move(u, UM.KNIFE)
+	check(bool(o["started"]) and bool(o["done"]) and int(o["strikes"]) == 1, "BIÇAK: bir darbe, bitti (%d)" % int(o["strikes"]))
+	# 2) KOMBO: üç darbe, sonuncusu hep kırmızı
+	await _umbra_reset(u, p)
+	u.red_override = -1
+	o = await _observe_umbra_move(u, UM.COMBO)
+	check(bool(o["done"]) and int(o["strikes"]) == 3, "KOMBO: üç darbe (%d)" % int(o["strikes"]))
+	check(bool(o["last_red"]), "KOMBO: sonuncusu kırmızı")
+	u.red_override = 0
+	# 3) FIRLATMA
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.THROW)
+	check(bool(o["done"]) and (o["knives"] as Array).size() == 1, "FIRLATMA: 1 bıçak")
+	# 4) ÜÇLÜ FIRLATMA
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.FAN)
+	check(bool(o["done"]) and (o["knives"] as Array).size() == 3, "ÜÇLÜ FIRLATMA: 3 bıçak")
+	# 5) DUVAR TIRMANIŞI
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.CLIMB)
+	check(bool(o["done"]) and 612.0 - float(o["min_y"]) > 300.0 and float(o["gravity_min"]) == 0.0 and bool(o["armored"]), "TIRMANIŞ: yükseldi, yerçekimsiz, zırhlı")
+	# 6) MİNYON ÇAĞIRMA
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.MINIONS)
+	check(bool(o["done"]) and int(o["minions"]) == UmbraKit.minion_count(18, false), "MİNYON: %d minyon" % int(o["minions"]))
+	# 7) SÜRÜ
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.SWARM)
+	check(bool(o["done"]) and int(o["minions"]) == UmbraKit.minion_count(18, true), "SÜRÜ: %d minyon" % int(o["minions"]))
+	# 8) GÖLGE ADIMI: kaybolur, işaret bırakır, arkandan vurur
+	await _umbra_reset(u, p)
+	var px := p.global_position.x
+	o = await _observe_umbra_move(u, UM.BLINK)
+	check(bool(o["done"]) and float(o["alpha_min"]) < 0.05 and bool(o["untouchable"]), "GÖLGE ADIMI: kayboldu, dokunulmaz")
+	check(int(o["marks"]) >= 1 and int(o["strikes"]) == 1, "GÖLGE ADIMI: işaret bıraktı, çıkınca vurdu")
+	check(not is_nan(float(o["knife_x"])) and absf(float(o["knife_x"]) - (px - Umbra.BLINK_OFFSET)) < 12.0, "GÖLGE ADIMI: oyuncunun ARKASINDA belirdi (x = %.0f)" % float(o["knife_x"]))
+	check(u.collision_layer == Layers.ENEMY and u.visual_alpha == 1.0 and not u._untouchable, "GÖLGE ADIMI: bitince normale döndü")
+	# 9) YER DARBESİ
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.SLAM)
+	var sk := o["knives"] as Array
+	check(bool(o["done"]) and 612.0 - float(o["min_y"]) > 150.0, "YER DARBESİ: zıpladı (%.0f px)" % (612.0 - float(o["min_y"])))
+	check(sk.size() == 2 and not bool(sk[0]["parryable"]) and not bool(sk[1]["parryable"]) and float(sk[0]["vx"]) * float(sk[1]["vx"]) < 0.0, "YER DARBESİ: iki yana kırmızı şok dalgası")
+	check(int(o["strikes"]) == 1 and bool(o["last_red"]), "YER DARBESİ: iniş darbesi kırmızı")
+	# 10) BIÇAK YAĞMURU
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.RAIN)
+	var rk := o["knives"] as Array
+	check(bool(o["done"]) and int(o["marks"]) == UmbraKit.rain_count(18), "YAĞMUR: %d işaret" % int(o["marks"]))
+	check(rk.size() == UmbraKit.rain_count(18), "YAĞMUR: %d bıçak düştü" % rk.size())
+	var rain_ok := rk.size() > 0
+	for k in rk:
+		if bool(k["parryable"]) or float(k["vy"]) < 800.0 or absf(float(k["vx"])) > 0.01:
+			rain_ok = false
+	check(rain_ok, "YAĞMUR: bıçaklar dikey iniyor, kırmızı")
+	# 11) DÖNEN BIÇAKLAR
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.ORBIT)
+	check(bool(o["done"]) and int(o["blades"]) == UmbraKit.orbit_count(18), "DÖNEN BIÇAKLAR: %d bıçak" % int(o["blades"]))
+	check(u._blades.is_empty(), "DÖNEN BIÇAKLAR: bitince kalkıyor")
+	# 12) GİZLENME
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.CLOAK)
+	check(bool(o["done"]) and float(o["alpha_min"]) <= Umbra.CLOAK_ALPHA + 0.01, "GİZLENME: neredeyse görünmez (%.2f)" % float(o["alpha_min"]))
+	check(int(o["strikes"]) == 1, "GİZLENME: yaklaşıp sinsi bir darbe vurdu")
+	check(u.visual_alpha == 1.0, "GİZLENME: bitince tamamen görünür")
+	# 13) GÖLGE KLONU
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.CLONE)
+	check(bool(o["done"]) and int(o["clones"]) == 1 and int(o["strikes"]) == 1, "KLON: bir klon, Gölge'nin kendi darbesi")
+	# 14) KARŞI DURUŞ: beklersen altın bir darbe
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.COUNTER)
+	check(bool(o["done"]) and bool(o["counter"]) and int(o["strikes"]) == 1 and not bool(o["last_red"]), "KARŞI DURUŞ: beklenirse yavaş ALTIN darbe")
+	check(not u._counter_on, "KARŞI DURUŞ: duruş bitti")
+	# 15) DUVARDAN ATIŞ
+	await _umbra_reset(u, p)
+	o = await _observe_umbra_move(u, UM.VOLLEY)
+	check(bool(o["done"]) and (o["knives"] as Array).size() == 3, "DUVARDAN ATIŞ: 3 bıçak")
+	check(not u.is_stunned() and u.gravity == u._base_gravity, "hamleler bitince Gölge sağlam ve yerçekimi normal")
+	# Karşı duruşa vurmak: vuruş boşa gider, anında kırmızı karşılık
+	await _umbra_reset(u, p)
+	u.red_override = -1
+	u.force_move(UM.COUNTER)
+	await _frames(5)
+	var hp := u.health
+	check(not u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0))) and u.health == hp, "KARŞI DURUŞ: yakın vuruş boşa gitti (can aynı)")
+	check(u.current_move == UM.KNIFE and u._red and u.tell_mode() == EnemyBase.Tell.RED and not u._counter_on, "KARŞI DURUŞ: anında KIRMIZI karşılık hazırlıyor")
+	check(u._t < 0.25, "KARŞI DURUŞ: karşılık hızlı (%.2f sn)" % u._t)
+	# Karşı duruş mermiye karşı koruma sağlamaz
+	await _umbra_reset(u, p)
+	u.force_move(UM.COUNTER)
+	await _frames(5)
+	var pr := _spawn_projectile(u.global_position + Vector2(-20.0, 0.0), Vector2.ZERO, false, p)
+	pr.set_faction("player")
+	hp = u.health
+	check(u.on_hit_by(pr) and u.health < hp and u._counter_on, "KARŞI DURUŞ: mermi (sapan) duruşu deler, karşılık tetiklemez")
+	# Dönen bıçak parry'lenince kırılır, sonra yenilenir
+	await _umbra_reset(u, p)
+	u.force_move(UM.ORBIT)
+	await _wait_until(func() -> bool: return u._blades.size() == UmbraKit.orbit_count(18), 120)
+	var pressed := false
+	for i in 360:
+		await get_tree().physics_frame
+		if not pressed:
+			for b in u._blades:
+				if is_instance_valid(b) and not b.is_broken() and b.global_position.distance_to(p.global_position) < 58.0:
+					p.intent.parry_pressed = true
+					pressed = true
+					break
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	var broken: UmbraBlade = null
+	for b in u._blades:
+		if is_instance_valid(b) and b.is_broken():
+			broken = b
+	check(_parry_ok >= 1 and broken != null, "dönen bıçak parry'lenince kırıldı")
+	if broken != null:
+		check(not broken.visible and not broken.active, "kırık bıçak görünmez ve etkisiz")
+		for k in 8:
+			broken._physics_process(0.5)
+		check(not broken.is_broken() and broken.visible and broken.active, "birkaç sn sonra yenilendi")
+	await _umbra_reset(u, p)
+
+
+func _test_umbra_armor() -> void:
+	await _new_world("Gölge: zırh (kat 8) hazırlığı bölünmez; poise (3 sersemletme = 1.5 sn zırh) sonsuz komboyu önler")
+	var p := _spawn_player(500.0)
+	p.health = 999
+	# Kat 7: zırh yok -> vuruş hazırlığı iptal eder. Kat 8: zırh var -> vuruş can götürür ama hazırlık sürer.
+	var res := {}
+	for f in [7, 8]:
+		var uf := _spawn_umbra(700.0, f)
+		uf.red_override = 0
+		await _frames(5)
+		uf.force_move(UM.KNIFE)
+		await _frames(3)
+		var armored_in_tell := uf.armored
+		var hp0 := uf.health
+		var landed := uf.on_hit_by(_player_hitbox(p, uf.global_position + Vector2(-30.0, 0.0)))
+		res[f] = {
+			"armored": armored_in_tell, "landed": landed, "hurt": hp0 - uf.health,
+			"kept": uf.current_move == UM.KNIFE, "knock": uf.knock_t,
+		}
+		if f == 8:
+			var struck := await _wait_until(func() -> bool: return uf.attack_hitbox.active, 90)
+			res[f]["struck"] = struck
+		uf.queue_free()
+		await _frames(3)
+	check(not res[7]["armored"] and res[7]["landed"] and res[7]["hurt"] == 1 and not res[7]["kept"] and res[7]["knock"] > 0.0, "kat 7: zırhsız, vuruş hazırlığı iptal etti")
+	check(res[8]["armored"] and res[8]["landed"] and res[8]["hurt"] == 1 and res[8]["kept"] and res[8]["knock"] == 0.0, "kat 8: ZIRHLI, vuruş hasar verdi ama hazırlığı bölmedi, geri itmedi")
+	check(res[8]["struck"], "kat 8: darbe yine de geldi (zırh yalnız parry'ye açık)")
+	# Zırhlı hazırlık yine de parry'lenince sersemler
+	var u8 := _spawn_umbra(700.0, 8)
+	u8.red_override = 0
+	p.global_position.x = 600.0
+	await _frames(5)
+	u8.force_move(UM.KNIFE)
+	var pressed := false
+	for i in 200:
+		await get_tree().physics_frame
+		if not pressed and u8.stage == Umbra.K_STRIKE and u8.current_move == UM.KNIFE:
+			p.intent.parry_pressed = true
+			pressed = true
+		if _parry_ok > 0:
+			break
+	await _frames(2)
+	check(_parry_ok == 1 and u8.is_stunned() and not u8.armored, "zırh parry'ye karşı koruma sağlamaz: sersemledi, zırh düştü")
+	u8.queue_free()
+	await _frames(3)
+	# Poise: kısa sürede 3 sersemletme -> 1.5 sn zırh + yakın dövüş
+	var u := _spawn_umbra(700.0, 3)
+	await _frames(5)
+	var hits := 0
+	for k in 3:
+		u.stun_t = 0.0
+		if u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0))):
+			hits += 1
+		if k < 2:
+			u.knock_t = 0.0
+	check(hits == 3, "üç vuruş da işledi")
+	check(is_equal_approx(u._armor_t, Umbra.POISE_ARMOR) and u._force_melee and u._cooldown == 0.0 and u._poise_hits == 0, "3. sersemletme: 1.5 sn zırh + yakın dövüş zorlaması, sayaç sıfırlandı")
+	await _frames(40)
+	check(u.armored and u.knock_t <= 0.0, "sersemlik bitti, Gölge ZIRHLI")
+	var hp := u.health
+	check(u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0))) and u.health == hp - 1 and u.knock_t <= 0.0, "zırhlıyken vuruş can götürür ama sersemletmez (sonsuz kombo yok)")
+	var armor_gone := await _wait_until(func() -> bool: return not u.armored, 200)
+	check(armor_gone, "1.5 sn sonra zırh kalktı")
+	u.knock_t = 0.0
+	check(u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0))) and u.knock_t > 0.0, "zırh bitince yeniden sersemletilebilir")
+	# Poise hafızası: vuruşlar 1.6 sn'den seyrek gelirse birikmez
+	u.knock_t = 0.0
+	u._poise_hits = 0
+	u._poise_t = 0.0
+	u._force_melee = false
+	u._armor_t = 0.0
+	u.on_hit_by(_player_hitbox(p, u.global_position + Vector2(-30.0, 0.0)))
+	check(u._poise_hits == 1, "bir sersemletme sayıldı")
+	u.knock_t = 0.0
+	await _frames(120)
+	check(u._poise_hits == 0, "1.6 sn geçince sayaç sıfırlandı")
+
+
+func _test_umbra_second_wind() -> void:
+	await _new_world("Gölge: ikinci nefes (kat 15) ve gerçek dövüşün ikinci evresi (kat 18)")
+	var p := _spawn_player(300.0)
+	p.health = 999
+	var phases := []
+	var cbp := func(b: Node, ph: int) -> void: phases.append([b, ph])
+	EventBus.boss_phase.connect(cbp)
+	var defeated := []
+	var cbd := func(b: Node) -> void: defeated.append(b)
+	EventBus.boss_defeated.connect(cbd)
+	# Kat 14: ikinci nefes yok: can bitince ölür
+	var u14 := _spawn_umbra(900.0, 14)
+	await _frames(5)
+	u14.take_damage(u14.max_hp, p)
+	await _frames(2)
+	check(u14.dead and defeated.size() == 1 and defeated[0] == u14 and phases.is_empty(), "kat 14: can bitince ölür (evre sinyali yok)")
+	# Kat 15: ikinci nefes
+	var u := _spawn_umbra(1100.0, 15)
+	await _frames(5)
+	u.take_damage(u.max_hp, p)
+	await _frames(2)
+	check(not u.dead and u.current_move == UM.WIND and u.phase == 2, "kat 15: ölmedi, soluklanıyor, evre 2")
+	check(u.health == roundi(float(u.max_hp) * 0.3), "canı %%30'a döndü (%d / %d)" % [u.health, u.max_hp])
+	check(u._untouchable and u.armored and not u.on_hit_by(_player_hitbox(p, u.global_position)), "kükrerken dokunulmaz ve vurulamaz")
+	check(phases.size() == 1 and phases[0][0] == u and phases[0][1] == 2, "boss_phase(2) tam bir kez")
+	check(defeated.size() == 1, "henüz yenilmedi (boss_defeated gelmedi)")
+	var ph_hp := u.health
+	await _frames(30)
+	check(u.health == ph_hp, "kükreme sürerken can sabit")
+	var calm := await _wait_until(func() -> bool: return u.is_idle(), 140)
+	check(calm and not u._untouchable and not u.armored, "kükreme bitti: vurulabilir, zırhsız")
+	check(is_equal_approx(u._spd(), 150.0 * UmbraKit.speed_mult(15) * Umbra.PHASE2_SPEED), "evre 2: %%%d daha hızlı" % roundi((Umbra.PHASE2_SPEED - 1.0) * 100.0))
+	u.take_damage(u.max_hp, p)
+	await _frames(2)
+	check(u.dead and defeated.size() == 2 and defeated[1] == u, "ikinci kez can bitince ÖLDÜ (ikinci nefes tek sefer)")
+	check(phases.size() == 1, "evre sinyali tekrarlanmadı")
+	# Kat 17: gerçek dövüş yok: yarı canda evre değişmez
+	var u17 := _spawn_umbra(1300.0, 17)
+	await _frames(5)
+	u17.take_damage(u17.max_hp / 2 + 2, p)
+	await _frames(10)
+	check(u17.phase == 1 and u17.current_move != UM.WIND, "kat 17: yarı canda evre değişmez")
+	# Kat 18: yarı canda ikinci evre (kükreme), ölümde ikinci nefes
+	var u18 := _spawn_umbra(1500.0, 18)
+	await _frames(5)
+	var half := u18.max_hp - u18.max_hp / 2
+	u18.take_damage(half - 1, p)
+	await _frames(6)
+	check(u18.phase == 1, "kat 18: yarıdan önce evre 1 (%d / %d)" % [u18.health, u18.max_hp])
+	u18.take_damage(1, p)
+	await _frames(6)
+	check(u18.phase == 2 and u18.current_move == UM.WIND, "kat 18: canı yarıya inince KÜKREDİ, evre 2")
+	check(phases.size() == 2 and phases[1][0] == u18 and phases[1][1] == 2, "boss_phase(2) kat 18 için")
+	check(u18.health == u18.max_hp - half, "öfke canı yenilemez (yalnız ikinci nefes yeniler)")
+	await _wait_until(func() -> bool: return u18.is_idle(), 140)
+	u18.take_damage(u18.max_hp, p)
+	await _frames(3)
+	check(not u18.dead and u18.health == roundi(float(u18.max_hp) * 0.3) and u18.phase == 2, "kat 18: öldü sanılınca ikinci nefes (evre zaten 2)")
+	check(phases.size() == 2, "evre 2 yeniden duyurulmadı")
+	EventBus.boss_phase.disconnect(cbp)
+	EventBus.boss_defeated.disconnect(cbd)
+
+
+func _test_umbra_death() -> void:
+	await _new_world("Gölge: ölünce her şey temizlenir (bıçak, işaret, minyon, dönen bıçak), boss_defeated, gruplar")
+	_add_walls(100.0, 1500.0)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	var defeated := []
+	var cbd := func(b: Node) -> void: defeated.append(b)
+	EventBus.boss_defeated.connect(cbd)
+	var died := []
+	var cbe := func(e: Node) -> void: died.append(e)
+	EventBus.enemy_died.connect(cbe)
+	var u := _spawn_umbra(900.0, 12)
+	await _frames(10)
+	# Minyonlar + havada bıçak + yağmur işaretleri + dönen bıçaklar
+	u.force_move(UM.SWARM)
+	await _wait_until(func() -> bool: return u.minion_count() >= 3, 150)
+	u.force_move(UM.THROW)
+	await _wait_until(func() -> bool: return u._own_projectiles() >= 1, 120)
+	u.force_move(UM.RAIN)
+	await _wait_until(func() -> bool: return _count_marks() >= 3, 120)
+	u.force_move(UM.ORBIT)
+	await _wait_until(func() -> bool: return u._blades.size() >= 2, 120)
+	var had_minions := u.minion_count()
+	check(had_minions >= 3 and not u._blades.is_empty(), "ölüm öncesi sahne dolu (%d minyon, %d dönen bıçak)" % [had_minions, u._blades.size()])
+	u.take_damage(u.max_hp, p)
+	await _frames(3)
+	check(u.dead and not u.is_in_group("enemies"), "Gölge öldü ve düşman sayılmıyor")
+	check(defeated.size() == 1 and defeated[0] == u, "boss_defeated tam bir kez")
+	check(died.has(u), "enemy_died de geldi (kat/oda sayaçları için)")
+	check(u.minion_count() == 0, "minyonlar eridi")
+	check(u._blades.is_empty() and not u.attack_hitbox.active, "dönen bıçaklar ve saldırı alanı kapandı")
+	await _frames(4)
+	check(_umbra_knives(u).is_empty(), "Gölge'nin bıçakları silindi")
+	check(_count_marks() == 0, "yağmur işaretleri silindi")
+	var left_alive := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not (e as ActorBase).dead:
+			left_alive += 1
+	check(left_alive == 0, "sahnede canlı düşman kalmadı (oda temizlenebilir)")
+	EventBus.boss_defeated.disconnect(cbd)
+	EventBus.enemy_died.disconnect(cbe)
+
+
+func _test_umbra_bar() -> void:
+	await _new_world("Gölge: üstteki can barı (bağlanma, dolgu, hayalet şerit, öfke, çentik, ölünce söner)")
+	var p := _spawn_player(300.0)
+	p.health = 999
+	var bar := BossBar.new()
+	bar.set_process(false)  # zamanı biz veririz
+	_world.add_child(bar)
+	check(not bar.is_active() and bar.boss == null, "Gölge yokken bar görünmez")
+	var u := _spawn_umbra(900.0, 5)
+	check(bar.boss == u and is_equal_approx(bar.fraction(), 1.0) and not bar.is_enraged(), "boss_spawned barı Gölge'ye bağladı: dolu, öfkesiz")
+	check(not bar.is_active(), "belirmeden önce görünmez")
+	bar._process(0.3)
+	check(bar.is_active(), "bar belirmeye başladı")
+	bar._process(0.5)
+	var full := u.max_hp
+	u.take_damage(10, p)
+	bar._process(1.0 / 60.0)
+	check(is_equal_approx(bar.fraction(), float(full - 10) / float(full)), "hasarla dolgu azaldı (%.3f)" % bar.fraction())
+	check(bar._ghost > bar._frac, "hayalet şerit hasarın arkasında kaldı")
+	for i in 150:
+		bar._process(1.0 / 60.0)
+	check(is_equal_approx(bar._ghost, bar._frac), "hayalet şerit eridi")
+	check(not bar._real, "kat 5: yarı çentik yok")
+	EventBus.boss_phase.emit(u, 2)
+	check(bar.is_enraged() and bar._flash > 0.0, "evre 2: bar öfkeli (kırmızı) ve parladı")
+	# Gerçek dövüş: çentik, ikinci nefeste bar yukarı dolar
+	var u15 := _spawn_umbra(1300.0, 15)
+	check(bar.boss == u15 and not bar.is_enraged(), "yeni Gölge barı yeniden bağladı, öfke sıfırlandı")
+	bar._process(0.8)
+	u15.take_damage(u15.max_hp, p)
+	bar._process(1.0 / 60.0)
+	check(not u15.dead and bar.fraction() > 0.25 and bar.fraction() < 0.35, "ikinci nefesten sonra bar %%30 civarında (%.2f)" % bar.fraction())
+	check(bar.is_enraged(), "ikinci nefes evre 2 yaptı: bar kırmızı")
+	var u18 := _spawn_umbra(1500.0, 18)
+	check(bar.boss == u18 and bar._real, "kat 18: bar yarı çentikli")
+	# Ölüm: bir süre kalır, sonra söner
+	bar._process(0.8)
+	u18.take_damage(u18.max_hp, p)
+	u18.take_damage(u18.max_hp, p)
+	check(u18.dead and bar.boss == null and is_equal_approx(bar.fraction(), 0.0), "ölünce bar boşaldı ve Gölge'den ayrıldı")
+	bar._process(0.5)
+	check(bar.is_active(), "ölümden hemen sonra bar kısa süre ekranda")
+	for i in 5:
+		bar._process(0.5)
+	check(not bar.is_active(), "birkaç sn sonra bar söndü")
+	# Silinen Gölge: bar takılı kalmaz
+	var u2 := _spawn_umbra(700.0, 2)
+	bar._process(0.8)
+	check(bar.is_active() and bar.boss == u2, "yeni Gölge: bar yeniden çıktı")
+	u2.free()
+	bar._process(0.1)
+	check(bar.boss == null, "Gölge sahneden silinirse bar ondan kopar")
+	bar.queue_free()
+
+
+func _test_umbra_brain() -> void:
+	await _new_world("Gölge: oyuncuya yaklaşır, mesafe tutar, kendi başına hamle seçer, boş parry'yi cezalandırır")
+	_add_walls(100.0, 1500.0)
+	var p := _spawn_player(500.0)
+	p.health = 999
+	# Yaklaşma
+	var u := _spawn_umbra(1300.0, 1)
+	await _frames(10)
+	var x0 := u.global_position.x
+	await _frames(300)
+	var d := absf(u.global_position.x - p.global_position.x)
+	check(u.global_position.x < x0 - 300.0, "oyuncuya doğru yürüdü")
+	check(d > Umbra.PREFERRED_DIST - 80.0 and d < Umbra.PREFERRED_DIST + 45.0, "tercih ettiği mesafede durdu (%.0f px)" % d)
+	check(u.facing == -1, "oyuncuya dönük")
+	# Çok yakındaysa geri çekilir
+	u.global_position.x = p.global_position.x + 40.0
+	await _frames(100)
+	d = absf(u.global_position.x - p.global_position.x)
+	check(d > 80.0, "fazla yakınsa geri çekildi (%.0f px)" % d)
+	# Kendi başına hamle seçer; yalnız açık hamleleri yapar
+	await _new_world("Gölge: kendi başına hamle yapar (kat 4: bıçak, fırlatma, tırmanış, minyon)")
+	_add_walls(100.0, 1500.0)
+	p = _spawn_player(500.0)
+	p.health = 999
+	u = _spawn_umbra(1000.0, 4, null, true)
+	u._rng.seed = 424242
+	u._cooldown = 0.2
+	var moves := []
+	u.move_started.connect(func(m: int) -> void: moves.append(m))
+	await _frames(900)
+	check(moves.size() >= 3, "15 sn'de en az 3 hamle yaptı (%d)" % moves.size())
+	var legal := true
+	for m in moves:
+		if not (m in UmbraKit.moves_for(4)):
+			legal = false
+	check(legal, "yalnız kat 4'ün açık hamlelerini yaptı: %s" % str(moves))
+	var distinct := {}
+	for m in moves:
+		distinct[m] = true
+	check(distinct.size() >= 2, "farklı hamleler seçti (%d tür)" % distinct.size())
+	check(p.health > 0, "oyuncu hayatta")
+	# CEZA: oyuncu parry'yi ıskalarsa (toparlanırken) Gölge hemen, kısa uyarıyla yakından vurur
+	await _new_world("Gölge: boş parry'yi cezalandırır (kısaltılmış uyarıyla yakın dövüş)")
+	p = _spawn_player(600.0)
+	p.health = 999
+	u = _spawn_umbra(730.0, 5)
+	u.tuning.punish = 1.0
+	u.abilities = [UM.KNIFE]
+	u.red_override = 0
+	await _frames(10)
+	var punished := false
+	var tele := 9.0
+	for attempt in 6:
+		u._cooldown = 999.0
+		u._quick = false
+		u._force_melee = false
+		p.invulnerable_t = 0.0
+		p.intent.parry_pressed = true
+		var got_punish := await _wait_until(func() -> bool: return u.current_move == UM.KNIFE, 40)
+		if got_punish:
+			punished = true
+			tele = u._t
+			break
+		await _frames(40)
+	check(punished, "boş parry'nin ardından Gölge hemen saldırdı")
+	check(tele < 0.46, "uyarı kısaltıldı (%.2f sn, normalde ~0.62)" % tele)
+
+
+func _run_to_boss_room(run: RunController, floor_no: int) -> Room:
+	if floor_no > 1:
+		run.current = FloorPlan.index_of(floor_no - 1, 5)
+		run.dev_next_floor()
+	for k in 5:
+		await _frames(3)
+		if k > 0:
+			var room := run.current_room()
+			# Dalganın hepsi doğsun (bekleyen işaret kalmasın); yoksa geç doğanlar sonraki odaya sızar.
+			await _wait_until(func() -> bool: return room.pending_count() == 0 and room.alive_count() > 0, 400)
+			run.skip_room()
+			await _frames(3)
+		await _walk_to_next_room(run)
+	return run.current_room()
+
+
+func _test_umbra_room() -> void:
+	await _new_world("Gölge: kat entegrasyonu (kat 3 Gölge odası: bar, duyuru, ölçek, kendi hamleleri, ölünce geçit)")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.umbra_items.clear()
+	var run := _start_run(777, true)
+	var p := run.player
+	await _frames(5)
+	var boss_room := await _run_to_boss_room(run, 3)
+	check(boss_room.kind == FloorPlan.Kind.BOSS and boss_room.floor_no == 3 and run.current_floor() == 3, "kat 3'ün Gölge odasındayız")
+	var spawned := await _wait_until(func() -> bool: return boss_room.alive_count() >= 1, 360)
+	check(spawned and boss_room.alive_count() == 1, "Gölge doğdu (tek düşman)")
+	var u: Umbra = null
+	for e in get_tree().get_nodes_in_group("boss"):
+		u = e as Umbra
+	check(u != null and u.floor_no == 3 and u.is_in_group("enemies"), "doğan Gölge kat 3'ün Gölge'si")
+	if u == null:
+		run.queue_free()
+		await _frames(2)
+		return
+	var tuning := run.tuning_for(run.current)
+	check(u.max_hp == tuning.scale_hp(UmbraKit.hp_for(3, 30)), "can = kat ölçeği x tur ölçeği (%d)" % u.max_hp)
+	check(u.abilities == [UM.KNIFE, UM.THROW, UM.CLIMB], "kat 3: bıçak + fırlatma + duvar tırmanışı")
+	check(run.hud.boss_bar.boss == u, "HUD'daki boss barı Gölge'ye bağlandı")
+	var shown := await _wait_until(func() -> bool: return run.hud.boss_bar.is_active(), 120)
+	check(shown, "boss barı ekranda")
+	var announced := false
+	for it in run.hud.announcer._items:
+		var line := ""
+		for part in it["runs"]:
+			line += str(part[0])
+		if line.contains("YENİ YETENEK") and line.contains("DUVAR TIRMANIŞI"):
+			announced = true
+	check(announced, "yeni yetenek duyurusu çıktı (YENİ YETENEK  DUVAR TIRMANIŞI)")
+	check(boss_room.floor_exit != null and boss_room.floor_exit.state == FloorExit.State.CLOSED, "Gölge yaşarken geçit kapalı")
+	# Kendi başına hamle yapıyor mu?
+	var moves := []
+	u.move_started.connect(func(m: int) -> void: moves.append(m))
+	var acted := await _wait_until(func() -> bool: return moves.size() >= 1, 900)
+	check(acted and moves[0] in UmbraKit.moves_for(3), "Gölge kendi başına hamle yaptı (%s)" % str(moves))
+	# Gerçek yoldan öldür: oda temizlenir, geçit açılır
+	var kills_before := int(run.stats["kills"])
+	u.take_damage(u.max_hp, p)
+	var cleared := await _wait_until(func() -> bool: return boss_room.is_cleared(), 120)
+	check(cleared and (not is_instance_valid(u) or u.dead), "Gölge ölünce oda temizlendi")
+	check(int(run.stats["kills"]) == kills_before + 1, "öldürme sayıldı")
+	check(run.hud.boss_bar.boss == null, "bar Gölge'den ayrıldı")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(boss_room.floor_exit.is_open(), "kat geçidi açıldı")
+	run.queue_free()
+	await _frames(2)
