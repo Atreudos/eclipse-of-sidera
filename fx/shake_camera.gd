@@ -9,6 +9,9 @@ extends Camera2D
 ##    zıplarken yükselişin küçük bir kısmı kadar yukarı, düşerken hızına göre biraz aşağı kayar, sert inişte hafifçe çöker.
 ## ZOOM
 ##  - Hafif yakınlaşma (base_zoom). Kombo uzadıkça biraz daha yaklaşır, dash'te hafifçe açılır.
+## PATRON ÇERÇEVESİ
+##  - "boss" grubunda canlı bir patron (Gölge) varsa kamera onu da ekranda tutar: gerekirse patrona doğru kayar,
+##    patron çok uzaktaysa (örn. karşı duvara tırmandıysa) oyuncuyla birlikte sığsın diye açılır. Oyuncu her zaman öncelikli.
 ## SINIRLAR
 ##  - `bounds` (oda dikdörtgeni) dışı hiç görünmez. Odalar arası geçişte sınırlar değişir, kamera kendiliğinden kayar.
 ## EFEKTLER
@@ -58,6 +61,12 @@ extends Camera2D
 @export var focus_max := 110.0
 ## Oyuncunun ekran kenarına en fazla bu kadar yaklaşmasına izin verilir.
 @export var screen_margin := Vector2(150.0, 120.0)
+## Canlı patron (grup "boss") varsa kamera onu da ekranda tutmaya çalışır.
+@export var boss_frame := true
+## Patronun ekran kenarına en fazla bu kadar yaklaşmasına izin verilir (dünya pikseli).
+@export var boss_margin := Vector2(170.0, 130.0)
+## Patron uzaktayken kamera en fazla bu zoom'a kadar açılır (oda sınırlarının dışını da göstermez).
+@export var boss_min_zoom := 0.8
 ## Oda sınırları değişince kamera sınırlarının yeni odaya kayma hızı (1/sn).
 @export var bounds_speed := 6.0
 ## Kameranın en yüksek hızı (piksel/sn). Odalar arası geçişte kamera "fırlamasın" diye.
@@ -225,7 +234,42 @@ func _zoom_goal() -> float:
 			goal += 0.012 * float(mini(p.combo.events(), 5))
 		if p.state == Player.State.DASH:
 			goal -= 0.05
+	# Patron çok uzaktaysa oyuncuyla birlikte sığsın diye açılır (sadece açılır, hiçbir zaman fazladan yaklaşmaz).
+	var boss := _boss_node()
+	if boss != null and target != null:
+		var need := _boss_zoom(target.global_position, boss.global_position)
+		goal = minf(goal, maxf(need, _boss_zoom_floor()))
 	return goal
+
+
+## Canlı patron (grup "boss"); yoksa ya da çerçeveleme kapalıysa null.
+func _boss_node() -> Node2D:
+	if not boss_frame or not is_inside_tree():
+		return null
+	for b in get_tree().get_nodes_in_group("boss"):
+		var n := b as Node2D
+		if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
+			continue
+		if n is ActorBase and (n as ActorBase).dead:
+			continue
+		return n
+	return null
+
+
+## Oyuncu ile patron kenar paylarıyla birlikte sığsın diye gereken en büyük zoom.
+func _boss_zoom(player_pos: Vector2, boss_pos: Vector2) -> float:
+	var need := (boss_pos - player_pos).abs() + screen_margin + boss_margin
+	var view := _view_size()
+	return minf(view.x / maxf(need.x, 1.0), view.y / maxf(need.y, 1.0))
+
+
+## Patron çerçevesinin açılabileceği en küçük zoom: `boss_min_zoom` ve oda sınırlarının dışını göstermeyen zoom'un büyüğü.
+func _boss_zoom_floor() -> float:
+	var floor_zoom := boss_min_zoom
+	if _beff.size.x > 0.0 and _beff.size.y > 0.0:
+		var view := _view_size()
+		floor_zoom = maxf(floor_zoom, maxf(view.x / _beff.size.x, view.y / _beff.size.y))
+	return floor_zoom
 
 
 func _total_zoom() -> float:
@@ -293,13 +337,30 @@ func _follow(dt: float) -> void:
 	# Zoom
 	_zoom_mod = lerpf(_zoom_mod, _zoom_goal() - base_zoom, 1.0 - exp(-5.0 * dt))
 	var z := _total_zoom()
-	var want := _clamp_to_bounds(_oyuncu_gorunur(_desired(), pos, z), z)
+	var boss := _boss_node()
+	var want := _clamp_to_bounds(_ekranda_tut(_desired(), pos, boss, z), z)
 	# Yumuşak takip; hız sınırı sayesinde kamera hiçbir zaman "fırlamaz" (örn. kapıdan geçişte).
 	var lim := max_speed * dt
 	_pos.x += clampf((want.x - _pos.x) * (1.0 - exp(-follow_speed.x * dt)), -lim, lim)
 	_pos.y += clampf((want.y - _pos.y) * (1.0 - exp(-follow_speed.y * dt)), -lim, lim)
 	# Sınırlar ya da zoom değişmiş olabilir; oyuncu da her zaman ekranda kalmalı.
-	_pos = _clamp_to_bounds(_oyuncu_gorunur(_pos, pos, z), z)
+	_pos = _clamp_to_bounds(_ekranda_tut(_pos, pos, boss, z), z)
+
+
+## Kamera merkezini ekranda kalması gerekenlere göre sınırlar: önce (varsa) patron, en son oyuncu (oyuncu her şeyden öncelikli).
+func _ekranda_tut(cam: Vector2, player_pos: Vector2, boss: Node2D, zoom_value: float) -> Vector2:
+	if boss != null:
+		cam = _patron_gorunur(cam, boss.global_position, zoom_value)
+	return _oyuncu_gorunur(cam, player_pos, zoom_value)
+
+
+## Patron ekran kenarına `boss_margin`'den fazla yaklaşmasın.
+func _patron_gorunur(cam: Vector2, boss_pos: Vector2, zoom_value: float) -> Vector2:
+	var half := _view_size() / zoom_value * 0.5
+	var reach := Vector2(maxf(half.x - boss_margin.x, 20.0), maxf(half.y - boss_margin.y, 20.0))
+	return Vector2(
+		clampf(cam.x, boss_pos.x - reach.x, boss_pos.x + reach.x),
+		clampf(cam.y, boss_pos.y - reach.y, boss_pos.y + reach.y))
 
 
 ## Oyuncu ekran kenarına `screen_margin`'den fazla yaklaşmasın (look-ahead/odak/gecikme ne olursa olsun).

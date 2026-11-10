@@ -4,10 +4,12 @@ extends Node
 ## Çalıştırma (sanal ekranla):
 ##   xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 ##     godot --path . --rendering-driver opengl3 --fixed-fps 60 res://tools/screenshots_umbra.tscn -- /cikti/klasoru
+## İsteğe bağlı ikinci argüman yalnız bazı bölümleri çeker (virgülle): kat1 kat3 kat7 kat8 kat9 kat12 kat13 kat16 kat18. Örn. "-- /cikti kat3,kat18".
 
 const RUN := preload("res://levels/run.tscn")
 
 var out_dir := "user://shots"
+var only: PackedStringArray = PackedStringArray()
 var run: RunController
 var player: Player
 var umbra: Umbra
@@ -17,9 +19,16 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out_dir = args[0]
+	if args.size() > 1:
+		only = args[1].split(",", false)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir))
 	Hitstop.enabled = false
 	_run()
+
+
+## Bölüm çekilsin mi? (süzgeç boşsa hepsi)
+func _want(section: String) -> bool:
+	return only.is_empty() or section in only
 
 
 func _frames(n: int) -> void:
@@ -102,101 +111,111 @@ func _face_off(gap: float = 260.0) -> void:
 
 func _run() -> void:
 	# Kat 1: yalnız bıçak. Çubuk + altın uyarı, sonra kırmızı uyarı.
-	await _enter_boss(1)
-	await _face_off(170.0)
-	await _shot("u1_bar_kat1")
-	umbra.red_override = 0
-	umbra.force_move(UmbraKit.Move.KNIFE)
-	await _frames(22)
-	await _shot("u2_bicak_altin_uyari")
-	await _frames(60)
-	umbra.red_override = 1
-	umbra._cooldown = 999.0
-	player.health = 99
-	umbra.force_move(UmbraKit.Move.KNIFE)
-	await _frames(22)
-	await _shot("u3_bicak_kirmizi_uyari")
+	if _want("kat1"):
+		await _enter_boss(1)
+		await _face_off(170.0)
+		await _shot("u1_bar_kat1")
+		umbra.red_override = 0
+		umbra.force_move(UmbraKit.Move.KNIFE)
+		await _frames(22)
+		await _shot("u2_bicak_altin_uyari")
+		await _frames(60)
+		umbra.red_override = 1
+		umbra._cooldown = 999.0
+		player.health = 99
+		umbra.force_move(UmbraKit.Move.KNIFE)
+		await _frames(22)
+		await _shot("u3_bicak_kirmizi_uyari")
 
 	# Kat 3: duvar tırmanışı (asılı: altın uyarı, zırhlı çerçeve)
-	await _enter_boss(3)
-	await _face_off(520.0)
-	umbra.red_override = 0
-	umbra.force_move(UmbraKit.Move.CLIMB)
-	for i in 400:
-		await get_tree().physics_frame
-		if umbra.stage == Umbra.C_HANG:
-			break
-	await _frames(8)
-	await _shot("u4_duvar_tirmanisi")
+	if _want("kat3"):
+		await _enter_boss(3)
+		await _face_off(520.0)
+		umbra.red_override = 0
+		umbra.force_move(UmbraKit.Move.CLIMB)
+		for i in 400:
+			await get_tree().physics_frame
+			if umbra.stage == Umbra.C_HANG:
+				break
+		await _frames(8)
+		await _shot("u4_duvar_tirmanisi")
 
 	# Kat 7: yer darbesi (kırmızı şok dalgaları)
-	await _enter_boss(7)
-	await _face_off(300.0)
-	umbra.force_move(UmbraKit.Move.SLAM)
-	for i in 300:
-		await get_tree().physics_frame
-		if umbra.stage == Umbra.S_SHOCK:
-			break
-	await _frames(8)
-	await _shot("u5_yer_darbesi")
+	if _want("kat7"):
+		await _enter_boss(7)
+		await _face_off(300.0)
+		umbra.force_move(UmbraKit.Move.SLAM)
+		for i in 300:
+			await get_tree().physics_frame
+			if umbra.stage == Umbra.S_SHOCK:
+				break
+		await _frames(8)
+		await _shot("u5_yer_darbesi")
 
 	# Kat 8: zırh (hazırlık sırasında çerçeve)
-	await _enter_boss(8)
-	await _face_off(170.0)
-	umbra.red_override = 0
-	umbra.force_move(UmbraKit.Move.KNIFE)
-	await _frames(25)
-	await _shot("u6_zirh_cercevesi")
+	if _want("kat8"):
+		await _enter_boss(8)
+		await _face_off(170.0)
+		umbra.red_override = 0
+		umbra.force_move(UmbraKit.Move.KNIFE)
+		await _frames(25)
+		await _shot("u6_zirh_cercevesi")
 
 	# Kat 9: bıçak yağmuru (işaretler)
-	await _enter_boss(9)
-	await _face_off(300.0)
-	umbra.force_move(UmbraKit.Move.RAIN)
-	await _frames(62)
-	await _shot("u7_bicak_yagmuru")
+	if _want("kat9"):
+		await _enter_boss(9)
+		await _face_off(300.0)
+		umbra.force_move(UmbraKit.Move.RAIN)
+		await _frames(62)
+		await _shot("u7_bicak_yagmuru")
 
 	# Kat 12: dönen bıçaklar
-	await _enter_boss(12)
-	await _face_off(260.0)
-	umbra.force_move(UmbraKit.Move.ORBIT)
-	for i in 200:
-		await get_tree().physics_frame
-		if umbra._blades.size() > 0:
-			break
-	await _frames(50)
-	await _shot("u8_donen_bicaklar")
+	if _want("kat12"):
+		await _enter_boss(12)
+		await _face_off(260.0)
+		umbra.force_move(UmbraKit.Move.ORBIT)
+		for i in 200:
+			await get_tree().physics_frame
+			if umbra._blades.size() > 0:
+				break
+		await _frames(50)
+		await _shot("u8_donen_bicaklar")
 
 	# Kat 13: gizlenme (neredeyse görünmez)
-	await _enter_boss(13)
-	await _face_off(300.0)
-	umbra.force_move(UmbraKit.Move.CLOAK)
-	await _frames(45)
-	await _shot("u9_gizlenme")
+	if _want("kat13"):
+		await _enter_boss(13)
+		await _face_off(300.0)
+		umbra.force_move(UmbraKit.Move.CLOAK)
+		await _frames(45)
+		await _shot("u9_gizlenme")
 
 	# Kat 16: klon (karşı yanda belirir)
-	await _enter_boss(16)
-	await _face_off(260.0)
-	umbra.red_override = 0
-	umbra.force_move(UmbraKit.Move.CLONE)
-	for i in 200:
-		await get_tree().physics_frame
-		if umbra.minion_count() > 0:
-			break
-	await _frames(25)
-	await _shot("u10_klon")
+	if _want("kat16"):
+		await _enter_boss(16)
+		await _face_off(260.0)
+		umbra.red_override = 0
+		umbra.force_move(UmbraKit.Move.CLONE)
+		for i in 200:
+			await get_tree().physics_frame
+			if umbra.minion_count() > 0:
+				break
+		await _frames(25)
+		await _shot("u10_klon")
 
 	# Kat 18: gerçek dövüş: çubukta yarı çentik; yarı canda kükreme (kırmızı çubuk)
-	await _enter_boss(18)
-	umbra.max_hp = UmbraKit.hp_for(18, 30)
-	umbra.health = umbra.max_hp
-	await _face_off(320.0)
-	await _frames(20)
-	await _shot("u11_bar_kat18")
-	umbra.take_damage(umbra.max_hp / 2 + 3, player)
-	for i in 200:
-		await get_tree().physics_frame
-		if umbra.current_move == UmbraKit.Move.WIND:
-			break
-	await _frames(25)
-	await _shot("u12_kukreme")
+	if _want("kat18"):
+		await _enter_boss(18)
+		umbra.max_hp = UmbraKit.hp_for(18, 30)
+		umbra.health = umbra.max_hp
+		await _face_off(320.0)
+		await _frames(20)
+		await _shot("u11_bar_kat18")
+		umbra.take_damage(umbra.max_hp / 2 + 3, player)
+		for i in 200:
+			await get_tree().physics_frame
+			if umbra.current_move == UmbraKit.Move.WIND:
+				break
+		await _frames(25)
+		await _shot("u12_kukreme")
+
 	get_tree().quit()

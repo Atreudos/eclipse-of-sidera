@@ -75,6 +75,7 @@ func _run_all() -> void:
 		"kamera_tepki": _test_camera_reactions,
 		"kamera_dikey": _test_camera_vertical,
 		"kamera_oda_gecis": _test_camera_room_transition,
+		"kamera_patron": _test_camera_boss,
 		"ritim": _test_rhythm_meter,
 		"ritim_dodge": _test_rhythm_dodge_and_heal,
 		"ritim_gercek": _test_rhythm_real_fight,
@@ -841,6 +842,78 @@ func _test_camera_follow() -> void:
 	p.global_position.x += 900.0
 	await _cam_run(cam, 1)
 	check(cam.view_rect().has_point(p.global_position), "uzağa ışınlanınca bile oyuncu ekranda")
+
+
+func _test_camera_boss() -> void:
+	await _new_world("Kamera: patron çerçevesi (Gölge uzaktayken ikisi birden görünür)")
+	var room := Rect2(0.0, -200.0, 1600.0, 900.0)
+	var p := _spawn_player(200.0)
+	await _frames(20)
+	var cam := _make_camera(p, room)
+	var boss := Node2D.new()
+	boss.add_to_group("boss")
+	_world.add_child(boss)
+	# Patron yakında: çerçeve hiçbir şeyi değiştirmez (zoom ve konum aynı kalır)
+	boss.global_position = Vector2(p.global_position.x + 420.0, 612.0)
+	await _cam_run(cam, 150)
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.01, "patron yakınken zoom aynı (%.3f)" % cam.zoom.x)
+	check(cam.view_rect().has_point(boss.global_position), "yakın patron ekranda")
+	# Patron karşı uçta: kamera açılır ve ikisi de payla birlikte ekranda
+	boss.global_position = Vector2(1500.0, 612.0)
+	await _cam_run(cam, 240)
+	var v := cam.view_rect()
+	check(cam.zoom.x < cam.base_zoom - 0.05, "uzak patronda kamera açıldı (%.3f)" % cam.zoom.x)
+	check(cam.zoom.x >= cam.boss_min_zoom - 0.005, "ama alt sınırın altına inmedi (%.3f)" % cam.zoom.x)
+	check(v.has_point(p.global_position), "oyuncu ekranda")
+	check(v.has_point(boss.global_position), "uzak patron da ekranda")
+	check(v.position.x >= room.position.x - 0.5 and v.end.x <= room.end.x + 0.5, "oda dışı görünmüyor (%.0f..%.0f)" % [v.position.x, v.end.x])
+	# Kenar payları (oda sınırı kamerayı kısıtlamasın diye sınırsız kurulumda): oyuncu 150, patron 170 px içeride
+	cam.set_bounds(Rect2(), true)
+	boss.global_position = Vector2(p.global_position.x + 1000.0, 612.0)
+	await _cam_run(cam, 300)
+	v = cam.view_rect()
+	check(v.end.x - boss.global_position.x > cam.boss_margin.x - 12.0, "patron sağ kenara payı kadar uzak (%.0f px)" % (v.end.x - boss.global_position.x))
+	check(p.global_position.x - v.position.x > cam.screen_margin.x - 12.0, "oyuncu sol kenara payı kadar uzak (%.0f px)" % (p.global_position.x - v.position.x))
+	cam.set_bounds(room, true)
+	# Yukarıda asılı patron (duvar tırmanışı): dikeyde de görünür
+	boss.global_position = Vector2(1500.0, 612.0 - 420.0)
+	await _cam_run(cam, 240)
+	v = cam.view_rect()
+	check(v.has_point(p.global_position) and v.has_point(boss.global_position), "yukarıdaki patron da oyuncu da ekranda (%s)" % str(v))
+	check(v.position.y >= room.position.y - 0.5 and v.end.y <= room.end.y + 0.5, "dikeyde oda dışı görünmüyor (%.0f..%.0f)" % [v.position.y, v.end.y])
+	# Patron yakına gelince kamera yeniden yaklaşır
+	boss.global_position = Vector2(p.global_position.x + 380.0, 612.0)
+	await _cam_run(cam, 240)
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.01, "patron yakına gelince zoom eski haline döndü (%.3f)" % cam.zoom.x)
+	# Aşırı uzak patron: oyuncu öncelikli, zoom alt sınırda
+	boss.global_position = Vector2(5000.0, 612.0)
+	cam.set_bounds(Rect2(), true)
+	await _cam_run(cam, 300)
+	check(cam.zoom.x >= cam.boss_min_zoom - 0.005 and cam.zoom.x < cam.base_zoom - 0.1, "aşırı uzakta zoom alt sınırda (%.3f)" % cam.zoom.x)
+	check(cam.view_rect().has_point(p.global_position), "aşırı uzak patronda bile oyuncu ekranda")
+	# Patron gruptan çıkınca (öldü) çerçeve kalkar
+	boss.remove_from_group("boss")
+	await _cam_run(cam, 240)
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.01, "patron gidince zoom eski haline döndü (%.3f)" % cam.zoom.x)
+	# Çerçeveleme kapatılabilir
+	boss.add_to_group("boss")
+	boss.global_position = Vector2(1500.0, 612.0)
+	cam.boss_frame = false
+	await _cam_run(cam, 240)
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.01, "boss_frame kapalıyken kamera açılmaz (%.3f)" % cam.zoom.x)
+	# Ölü Gölge çerçeveyi tutmaz
+	cam.boss_frame = true
+	boss.remove_from_group("boss")
+	var u := _spawn_umbra(1500.0)
+	u.set_physics_process(false)  # kendi kendine yürüyüp yaklaşmasın
+	await _frames(5)
+	await _cam_run(cam, 240)
+	check(cam.zoom.x < cam.base_zoom - 0.05, "gerçek Gölge uzaktayken kamera açıldı (%.3f)" % cam.zoom.x)
+	check(cam.view_rect().has_point(u.global_position), "gerçek Gölge ekranda")
+	u.die()
+	await _frames(3)
+	await _cam_run(cam, 240)
+	check(absf(cam.zoom.x - cam.base_zoom) < 0.01, "Gölge ölünce kamera eski haline döndü (%.3f)" % cam.zoom.x)
 
 
 func _test_camera_bounds() -> void:

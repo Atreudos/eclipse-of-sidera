@@ -49,7 +49,23 @@ Vuruş sersemletmesi: kombo yediği sırada düşman saldıramaz (hazırlığı 
 **Katlar** (`game/floor_plan.gd`, `levels/run.gd`): normal koşu **18 kat**tır; her kat **6 oda**: 1. oda **lobi** (düşman yok, tüccarın **dükkânı**: tezgâha yaklaşıp `E`, altınla eşya ve yemek al), 2-5. odalar savaş, 6. oda **Gölge** (Umbra) odası. Gölge yenilince sağdaki **kat geçidi** açılır; içine yürüyünce ekran kararır, "KAT n" kartı çıkar, yeni katın lobisi kurulur. 18. katın Gölge'sini yenmek koşuyu **zaferle** bitirir (kayıtta ZAFER sayısı tutulur). Düşman gücü katlar boyunca sürekli artar (`progress`: kat başına 4 savaş odası); dükkân rafı kat ilerledikçe pahalanır ve Nadir eşya sıklaşır, ama **Efsanevi/Lanetli eşya dükkâna hiç düşmez** (en değerli eşyalar Gölge ödülünden gelir; `items/shop_stock.gd`). Eski (sürümsüz) kayıtlar yeni yapıya aynı ilerlemeyle aktarılır. Eski "tek sonsuz şerit" davranışı yalnız testlerde (`floors_enabled = false`) kalıyor; asıl sonsuz kip ayrı bir mod olarak gelecek.
 **Öğretici (kat 1)** (`game/tutorial.gd`, `levels/tutorial_guide.gd`, `ui/tutorial_hint.gd`): kat 1 oyunu öğretir. Lobide ekranın üstündeki panel tuş ikonlarıyla sırayla gösterir: **A/D koş → W/Space zıpla → Shift dash → J saldır (3 kez) → sağdaki kapıya ilerle** (sırası gelmeden yaptığın beceri atlanır). Savaş odaları elle yazılmıştır: düşmanlar **tek tek** gelir (ilk ikili yalnız 5. odada), yavaştır (hız düşük, uyarı ve toparlanma uzun) ve ilk derslerde **yalnız altın** saldırı yapar: oda 2 = Taurus ile parry, oda 3 = altın mermi (Sagitta) → **kırmızı** saldırı (dash dersi) → karışık, oda 4-5 = karışık ve ilk ikili. Altın uyarı çıkınca "K = PARRY" ipucu, kaçırınca "tekrar dene", parry sonrası "J = VUR", kırmızı uyarıda "SHIFT = DASH" (3 kez gösterilir ya da dash ile savuşturunca biter). Hepsi yapılınca (ya da kat 1 bitince) profile işlenir (`tutorial_done`) ve ipuçları bir daha çıkmaz; kat 1'in tek tek/yavaş akışı her koşuda kalır. Yeni profil açarak öğreticiyi yeniden görebilirsin.
 
-Sıradaki: Umbra patronu (her katta yeni bir yetenek), ödül mezatı (2 eşya, seçmediğin Umbra'ya), silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
+**Gölge (Umbra) patronu** (`actors/enemies/umbra.gd`, `game/umbra_kit.gd`, `ui/boss_bar.gd`): her katın 6. odasında Umbra'yla dövüşülür. Umbra **her katta bir yeni yetenek** kazanır (öncekileri de korur); kat ilerledikçe canı ve hızı artar, hamle arası beklemesi kısalır, kırmızı (parry'lenemez) saldırı payı büyür. Ekranın üstünde **boss can barı** durur (adı, o katın yeni yeteneği, 18. katta yarı can çentiği); dövüş başında yeni yetenek duyurulur. Altın uyarı = parry'le, kırmızı uyarı = dash ile kaç (her hamle bu kurala uyar).
+
+| Kat | Yeni yetenek | Kat | Yeni yetenek |
+|---|---|---|---|
+| 1 | **Bıçak** (yakın dövüş) | 10 | **Üçlü kombo** (sonuncusu kırmızı) |
+| 2 | **Fırlatma** (altın bıçağı parry'lersen geri döner) | 11 | **Sürü** (çok minyon) |
+| 3 | **Duvar tırmanışı** (tepeden atlar) | 12 | **Dönen bıçaklar** |
+| 4 | **Minyon çağırma** | 13 | **Gizlenme** (neredeyse görünmez) |
+| 5 | **Gölge adımı** (arkandan çıkar) | 14 | **Duvardan atış** (tepeden üç bıçak) |
+| 6 | **Üçlü fırlatma** (yelpaze) | 15 | **İkinci nefes** (canı bitince bir kez kalkar) |
+| 7 | **Yer darbesi** (şok dalgaları) | 16 | **Gölge klonu** (biri altın, biri kırmızı vurur) |
+| 8 | **Zırh** (hazırlıkta yalnız parry bozar) | 17 | **Karşı duruş** (vurursan karşılık verir) |
+| 9 | **Bıçak yağmuru** | 18 | **Gerçek dövüş** (hepsi bir arada, yarı canda 2. evre) |
+
+Ayrıntılar: arka arkaya 3 sersemletme alırsa 1.5 sn zırhlanır (sonsuz sersemletme yok); parry'yi ıskalarsan hemen cezalandırır; seçmeyip bıraktığın eşyaların sayısal etkilerini (can, hasar, hız) kendine alır; kamera Gölge uzaktayken (örn. karşı duvarda asılıyken) açılıp ikinizi birden gösterir (`ShakeCamera` patron çerçevesi).
+
+Sıradaki: ödül mezatı (Gölge yenilince 2 eşya, seçmediğin Umbra'ya), silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
 
 **Yazı tipi**: oyun **Fraunces** (SIL OFL) kullanıyor: Times'ın klasik "Roman" serif iskeleti ama yumuşak/tombul, biraz çizgi film afişi gibi. Türkçe harflerin tamamı var (Ğ ğ Ş ş İ fontun kendi parçalarından eklendi). Tek yerden okunur: `ui/game_font.gd` `PATH` + proje ayarı `gui/theme/custom_font`; ayrıntı ve değiştirme adımları `assets/fonts/README.md`. Eski AGENTORANGE projeden çıkarıldı (lisansı belirsizdi; artık depoyu bu açıdan herkese açmak engel değil).
 
@@ -77,6 +93,7 @@ xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 # ana menü ekranları için: res://tools/screenshots_main_menu.tscn
 # katlar, dükkân, Gölge odası, kat geçidi, zafer için: res://tools/screenshots_floors.tscn
 # öğretici ipucu paneli (lobi adımları, parry, kırmızı uyarı) için: res://tools/screenshots_tutorial.tscn
+# Gölge dövüşü (can barı, uyarılar, duvar tırmanışı, yer darbesi, klon, 2. evre) için: res://tools/screenshots_umbra.tscn (~4 dk)
 ```
 
 Gerçek tuş girdileriyle uçtan uca duman testi (menü -> yeni kayıt -> oyun -> duraklatma -> ana menü -> devam; ekransız çalışır, betik hatalarını yakalar):
