@@ -2,7 +2,10 @@ class_name ShopStock
 extends RefCounted
 ## Lobideki dükkânın rafı: birkaç takılabilir eşya + birkaç yemek. Kat başına bir kez, tohumla üretilir.
 ##
-## "Çok değerli olmayan" kuralı: dükkânda Lanetli eşya yoktur; Efsanevi eşya yalnız LATE_FLOOR. kattan sonra çıkar.
+## DEĞERE GÖRE RAF: dükkân yalnız YAYGIN ve NADİR eşya satar. EFSANEVİ (en değerli / en güçlü) ve LANETLİ eşya dükkâna HİÇ düşmez
+## (hiçbir katta, raf boş kalsa bile); onlar Gölge'yi yenince çıkan ödül sehpasından gelir. Taban fiyatı MAX_PRICE'ı aşan eşya da
+## nadirliği ne olursa olsun satılmaz. Raftaki şans değere göre: yaygın eşya çok çıkar, nadir eşya 1. katta seyrek çıkar
+## (RARE_EARLY_WEIGHT) ve RARE_FULL_FLOOR. kata doğru sıklaşır.
 ## Sahip olunan eşyalar (takılı ya da çantada) ve Umbra'ya kalmış eşyalar rafa konmaz.
 ## Fiyat = eşyanın fiyatı, her kat için %12 pahalı. Altın yetmiyorsa ya da çanta doluysa satış REDDEDİLİR (altın düşmez).
 
@@ -17,13 +20,39 @@ const GEAR_OFFERS_LATE := 4
 const LATE_FLOOR := 4
 const FOOD_OFFERS := 2
 const PRICE_STEP := 0.12
+## Dükkânda satılabilecek en yüksek nadirlik: NADİR. (Efsanevi ve Lanetli hiçbir katta satılmaz.)
+const MAX_RARITY := ItemData.Rarity.RARE
+## Taban fiyatı bunu aşan eşya dükkâna konmaz (nadirliği yanlış girilmiş çok değerli eşyalara karşı ikinci güvence).
+const MAX_PRICE := 80
+## Nadir eşyanın şansı 1. katta bu çarpanla başlar...
+const RARE_EARLY_WEIGHT := 0.5
+## ...ve bu katta tam şansa (x1) ulaşır.
+const RARE_FULL_FLOOR := 9
 
 var offers: Array[Offer] = []
 
 
-## Dükkânda satılabilecek en yüksek nadirlik.
-static func max_rarity(floor_no: int) -> int:
-	return ItemData.Rarity.EPIC if floor_no >= LATE_FLOOR else ItemData.Rarity.RARE
+## Dükkânda satılabilecek en yüksek nadirlik (her katta aynı; kat parametresi eski çağrılar için).
+static func max_rarity(_floor_no: int = 1) -> int:
+	return MAX_RARITY
+
+
+## Bu eşya dükkânda SATILABİLİR mi? (yemekler: her biri; takılabilir eşya: nadirlik ve fiyat sınırı içinde)
+static func sellable(item: ItemData) -> bool:
+	if item == null:
+		return false
+	if item.is_food():
+		return item.rarity <= MAX_RARITY
+	return item.is_equippable() and item.rarity <= MAX_RARITY and item.price <= MAX_PRICE
+
+
+## Eşyanın bu kattaki raf şansı (ağırlık): değer arttıkça seyrekleşir; nadir eşya derin katlarda sıklaşır.
+static func weight_of(item: ItemData, floor_no: int) -> float:
+	var w: float = ItemDB.RARITY_WEIGHT[item.rarity]
+	if item.rarity == ItemData.Rarity.RARE and not item.is_food():
+		var t := clampf(float(maxi(floor_no, 1) - 1) / float(RARE_FULL_FLOOR - 1), 0.0, 1.0)
+		w *= lerpf(RARE_EARLY_WEIGHT, 1.0, t)
+	return w
 
 
 static func gear_count(floor_no: int) -> int:
@@ -38,37 +67,36 @@ static func price_of(item: ItemData, floor_no: int) -> int:
 ## Raf üretir. `rng` aynıysa (ve sahip olunanlar aynıysa) raf aynıdır.
 static func generate(rng: RandomNumberGenerator, floor_no: int, owned_ids: Array = [], umbra_ids: Array = []) -> ShopStock:
 	var stock := ShopStock.new()
-	var cap := max_rarity(floor_no)
 	var gear: Array[ItemData] = []
 	for it in ItemDB.equipment():
-		if it.rarity <= cap and not (it.id in owned_ids) and not (it.id in umbra_ids):
+		if sellable(it) and not (it.id in owned_ids) and not (it.id in umbra_ids):
 			gear.append(it)
 	var foods: Array[ItemData] = []
 	for it in ItemDB.all():
-		if it.is_food():
+		if it.is_food() and sellable(it):
 			foods.append(it)
 	for k in gear_count(floor_no):
 		if gear.is_empty():
-			break
-		var picked := _pick(rng, gear)
+			break  # uygun eşya kalmadıysa raf eksik kalır; Efsanevi'ye asla düşülmez
+		var picked := _pick(rng, gear, floor_no)
 		gear.erase(picked)
 		stock._add(picked, floor_no)
 	for k in FOOD_OFFERS:
 		if foods.is_empty():
 			break
-		var picked := _pick(rng, foods)
+		var picked := _pick(rng, foods, floor_no)
 		foods.erase(picked)
 		stock._add(picked, floor_no)
 	return stock
 
 
-static func _pick(rng: RandomNumberGenerator, pool: Array[ItemData]) -> ItemData:
+static func _pick(rng: RandomNumberGenerator, pool: Array[ItemData], floor_no: int) -> ItemData:
 	var total := 0.0
 	for it in pool:
-		total += ItemDB.RARITY_WEIGHT[it.rarity]
+		total += weight_of(it, floor_no)
 	var roll := rng.randf() * total
 	for it in pool:
-		roll -= ItemDB.RARITY_WEIGHT[it.rarity]
+		roll -= weight_of(it, floor_no)
 		if roll <= 0.0:
 			return it
 	return pool[pool.size() - 1]

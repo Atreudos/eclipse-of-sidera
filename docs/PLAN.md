@@ -199,6 +199,7 @@ Her ailenin **kendine özgü parry biçimi** var; böylece oyun tekrar etmiyor.
 - **Etiket (tag) sistemi:** her eşyanın 1-3 etiketi var: `PARRY`, `DASH`, `MERMI`, `ALEV`, `BUZ`, `ZEHIR`, `CAN`, `RITIM`, `KARMA`, `ZAMAN`, `ALTIN`, `HAREKET`, `SAVUNMA`.
 - **Sinerji:** aynı etiketten 3 eşya = küçük bonus (Isaac'taki set mantığı). Şimdilik PARRY, DASH, RITIM, CAN, ALEV, BUZ için tanımlı (`ItemDB.SYNERGIES`); ekranda envanterin altında görünür.
 - **Nadirlik:** Yaygın / Nadir / Efsanevi / **Lanetli** (güçlü ama bedeli var).
+- **Dükkân değere göre dizilir:** dükkân yalnız **Yaygın** ve **Nadir** eşya satar; **Efsanevi** (en değerli/güçlü) ve **Lanetli** eşya dükkâna **hiç** düşmez (taban fiyatı `ShopStock.MAX_PRICE`'ı aşan eşya da satılmaz). Raftaki şans değere göre: yaygın eşya çok çıkar, Nadir eşya 1. katta yarı şansla başlar, 9. kata doğru tam şansa ulaşır (`ShopStock.weight_of`). Efsanevi eşyalar Gölge'yi yenince çıkan ödül sehpasından gelir.
 - **Umbra etiketi:** `Sadece Oyuncu` / `Umbra Dahil`.
 
 ### 7.2 Slotlar, çanta ve envanter ekranı

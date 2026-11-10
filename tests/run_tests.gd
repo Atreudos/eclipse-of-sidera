@@ -5386,13 +5386,16 @@ func _test_shop_stock() -> void:
 	late_rng.seed = 3
 	var late := ShopStock.generate(late_rng, 6)
 	check(late.size() == ShopStock.GEAR_OFFERS_LATE + ShopStock.FOOD_OFFERS, "kat 6: 4 eşya + 2 yemek (%d)" % late.size())
-	# Nadirlik sınırı: Lanetli hiç yok, Efsanevi yalnız 4. kattan sonra
+	# Değere göre raf: Efsanevi ve Lanetli HİÇBİR katta çıkmaz; fiyat sınırı; yemekler tam sayıda
 	var no_cursed := true
-	var epic_early := false
-	var epic_late := false
+	var no_epic := true
+	var no_legend_ids := true
+	var price_ok := true
+	var all_sellable := true
+	var rare_seen := false
 	var food_count_ok := true
-	for f in [1, 2, 3, 4, 8, 18]:
-		for s in 40:
+	for f in [1, 2, 3, 4, 8, 12, 18]:
+		for s in 60:
 			var r := RandomNumberGenerator.new()
 			r.seed = s * 31 + f
 			var st := ShopStock.generate(r, f)
@@ -5401,18 +5404,86 @@ func _test_shop_stock() -> void:
 				if o.item.rarity == ItemData.Rarity.CURSED:
 					no_cursed = false
 				if o.item.rarity == ItemData.Rarity.EPIC:
-					if f < ShopStock.LATE_FLOOR:
-						epic_early = true
-					else:
-						epic_late = true
+					no_epic = false
+				if o.item.id == "vampire_relic" or o.item.id == "saturn_hourglass":
+					no_legend_ids = false
+				if not ShopStock.sellable(o.item):
+					all_sellable = false
 				if o.item.is_food():
 					foods += 1
+				else:
+					if o.item.price > ShopStock.MAX_PRICE:
+						price_ok = false
+					if o.item.rarity == ItemData.Rarity.RARE:
+						rare_seen = true
 			if foods != ShopStock.FOOD_OFFERS:
 				food_count_ok = false
 	check(no_cursed, "Lanetli eşya dükkânda yok")
-	check(not epic_early, "4. kattan önce Efsanevi yok")
-	check(epic_late, "4. kattan sonra Efsanevi çıkabiliyor")
+	check(no_epic and no_legend_ids, "Efsanevi (en değerli) eşya hiçbir katta dükkâna düşmüyor (kat 1..18, 420 raf)")
+	check(price_ok and all_sellable, "rafın her eşyası satılabilir sınırlar içinde (nadirlik + fiyat tavanı)")
+	check(rare_seen, "Nadir eşya yine de çıkabiliyor")
 	check(food_count_ok, "her rafta tam %d yemek var" % ShopStock.FOOD_OFFERS)
+	# Satılabilirlik kuralı
+	check(not ShopStock.sellable(_item("vampire_relic")) and not ShopStock.sellable(_item("saturn_hourglass")), "Vampir Yadigârı ve Satürn'ün Kum Saati satılamaz")
+	check(ShopStock.sellable(_item("watcher_band")) and ShopStock.sellable(_item("viper_fang")) and ShopStock.sellable(_item("tower_bread")) and ShopStock.sellable(_item("cosmic_star_soup")), "yaygın/nadir eşya ve yemekler satılabilir")
+	var pricey := _dummy_item("pahali_yaygin")
+	pricey.slot = ItemData.Slot.CHARM
+	pricey.rarity = ItemData.Rarity.COMMON
+	pricey.price = ShopStock.MAX_PRICE + 1
+	var cursed := _dummy_item("lanetli_ucuz")
+	cursed.slot = ItemData.Slot.CHARM
+	cursed.rarity = ItemData.Rarity.CURSED
+	cursed.price = 10
+	var fair := _dummy_item("makul_nadir")
+	fair.slot = ItemData.Slot.CHARM
+	fair.rarity = ItemData.Rarity.RARE
+	fair.price = ShopStock.MAX_PRICE
+	check(not ShopStock.sellable(pricey) and not ShopStock.sellable(cursed) and ShopStock.sellable(fair) and not ShopStock.sellable(null), "fiyat tavanı: yaygın bile olsa pahalı eşya satılmaz; ucuz Lanetli satılmaz; tavan fiyatlı Nadir satılır")
+	check(ShopStock.max_rarity(1) == ItemData.Rarity.RARE and ShopStock.max_rarity(18) == ItemData.Rarity.RARE, "en yüksek satılabilir nadirlik her katta NADİR")
+	# Şans (ağırlık) değere göre: yaygın > nadir; nadir derin katlarda sıklaşır
+	var wb := _item("watcher_band")
+	var vf := _item("viper_fang")
+	check(is_equal_approx(ShopStock.weight_of(wb, 1), 60.0) and is_equal_approx(ShopStock.weight_of(wb, 18), 60.0), "yaygın eşyanın şansı katla değişmez (60)")
+	check(is_equal_approx(ShopStock.weight_of(vf, 1), 30.0 * ShopStock.RARE_EARLY_WEIGHT) and is_equal_approx(ShopStock.weight_of(vf, ShopStock.RARE_FULL_FLOOR), 30.0) and is_equal_approx(ShopStock.weight_of(vf, 18), 30.0), "nadir eşya: 1. katta yarı şans, 9. katta tam şans")
+	check(ShopStock.weight_of(vf, 5) > ShopStock.weight_of(vf, 1) and ShopStock.weight_of(vf, 5) < ShopStock.weight_of(vf, 9), "nadir eşyanın şansı kat kat artıyor")
+	var rare_share := {}
+	for f in [1, 9]:
+		var rares := 0
+		var gears := 0
+		var commons := 0
+		for s in 300:
+			var r := RandomNumberGenerator.new()
+			r.seed = s + f * 1000
+			for o in ShopStock.generate(r, f).offers:
+				if o.item.is_food():
+					continue
+				gears += 1
+				if o.item.rarity == ItemData.Rarity.RARE:
+					rares += 1
+				else:
+					commons += 1
+		rare_share[f] = float(rares) / float(maxi(gears, 1))
+		check(commons > rares, "kat %d: yaygın eşya nadirden çok çıkıyor (%d yaygın / %d nadir)" % [f, commons, rares])
+	check(rare_share[9] > rare_share[1] + 0.05 and rare_share[1] > 0.0, "nadir payı derin katta daha yüksek (kat 1: %.2f, kat 9: %.2f)" % [rare_share[1], rare_share[9]])
+	# Uygun eşya kalmazsa raf eksik kalır; Efsanevi'ye asla düşülmez
+	var every_sellable: Array = []
+	for it in ItemDB.equipment():
+		if ShopStock.sellable(it):
+			every_sellable.append(it.id)
+	var drained := true
+	var empty_gear := true
+	for s in 20:
+		var r := RandomNumberGenerator.new()
+		r.seed = s
+		var st := ShopStock.generate(r, 12, every_sellable)
+		for o in st.offers:
+			if not o.item.is_food():
+				empty_gear = false
+			if o.item.rarity == ItemData.Rarity.EPIC:
+				drained = false
+		if st.size() != ShopStock.FOOD_OFFERS:
+			drained = false
+	check(empty_gear and drained, "hepsi sahipliyken raf yalnız yemek satar (Efsanevi'ye düşmez)")
 	# Sahip olunan ve Umbra'nın eşyaları çıkmaz
 	var gear := ItemDB.equipment()
 	var banned: Array = []
