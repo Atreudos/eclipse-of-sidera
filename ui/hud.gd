@@ -29,6 +29,7 @@ var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
 ## Dükkân menüsü (lobide tezgâhta E).
 var shop_menu: ShopMenu
+var reward_menu: RewardMenu
 ## Duraklatma menüsü (Esc).
 var pause_menu: PauseMenu
 
@@ -153,6 +154,9 @@ func _build() -> void:
 	shop_menu = ShopMenu.new()
 	shop_menu.name = "ShopMenu"
 	root.add_child(shop_menu)
+	reward_menu = RewardMenu.new()
+	reward_menu.name = "RewardMenu"
+	root.add_child(reward_menu)
 	pause_menu = PauseMenu.new()
 	pause_menu.name = "PauseMenu"
 	root.add_child(pause_menu)

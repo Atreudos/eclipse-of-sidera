@@ -70,6 +70,10 @@ var has_exit := false
 var floor_exit: FloorExit = null
 ## Lobideki dükkân tezgâhı (yoksa null).
 var shop: ShopStand = null
+## Gölge odasında, Gölge yenilince çıkan ödül sunakları (yoksa null).
+var reward: RewardStand = null
+## true iken oda temizlense de kat geçidi AÇILMAZ (ödül seçilene kadar). `release_exit()` açar.
+var hold_exit := false
 ## Odanın DÜNYA dikdörtgeni (x, 0, genişlik, 720).
 var rect := Rect2()
 var state: State = State.PENDING
@@ -343,7 +347,14 @@ func force_clear() -> void:
 		return
 	state = State.CLEARED
 	door.open()
-	if floor_exit != null:
+	if floor_exit != null and not hold_exit:
 		floor_exit.open_up()
 	get_tree().call_group("projectiles", "queue_free")
 	cleared.emit(self)
+
+
+## Ödül seçildi: tutulan kat geçidi açılır (oda henüz temizlenmediyse temizlenince kendiliğinden açılır).
+func release_exit() -> void:
+	hold_exit = false
+	if state == State.CLEARED and floor_exit != null:
+		floor_exit.open_up()

@@ -136,7 +136,14 @@ Yemekler slotsuzdur: çantada durur, envanter ekranında yenir. Umbra'ya gitmez,
 ## 5. RAKİP SİSTEMİ (oyunu özel yapan şey)
 
 ### 5.1 Temel kural
-Her ödül odasında **2 eşya** sunulur. Birini seçersin; **diğeri Umbra'nın envanterine gider.**
+Her Gölge (Umbra) dövüşünü yenince **2 eşya** sunulur (18. katta ödül yok, zafer var). Birini seçersin; **diğeri Umbra'nın envanterine gider** ve sonraki katlarda sana karşı kullanılır. "Sadece Oyuncu" etiketli eşya Umbra'ya gitmez, yok olur.
+
+**Uygulanan akış** (`game/reward_choice.gd`, `levels/reward_stand.gd`, `ui/reward_menu.gd`, `levels/run.gd`):
+1. Gölge ölünce odanın ortasında iki **sunak** yükselir (üstlerinde süzülen eşya). Kat geçidi **kapalı** kalır (`Room.hold_exit`).
+2. Sunağa yaklaşıp `E` → **ödül menüsü** (oyun durur; ←/→ gezin, `Enter`/`E`/`J` al, `Esc` kapat ve sonra tekrar seç). Menü, odaklı eşyayı alırsan **Gölge'ye ne gideceğini** açıkça yazar (seçimin bedeli görünür olsun).
+3. Alınan eşya envantere girer (slotta yer varsa takılır, çanta doluysa "ÇANTA DOLU" der ve seçim yapılmaz). Seçilmeyen sunak kararır, eşya Gölge'ye gider (`GameState.leave_behind`), kat geçidi açılır, oyun **sonraki katın lobisinden** kaydedilir.
+4. Seçim **geri alınmaz**. Çift, koşu tohumundan türer (kayıttan devam edince aynı çift gelir) ve sahip olunan/Gölge'nin elindeki eşyaları içermez.
+5. **Değere göre ağırlık:** Efsanevi eşya erken katlarda seyrek çıkar (1. katta ağırlık 0,4), 9. kata doğru tam şansa ulaşır (`ItemDB.reward_weight`). Dükkândan farklı olarak ödül çiftinde Efsanevi eşya **çıkabilir** (en değerli eşyalar buradan gelir).
 
 ### 5.2 Umbra kimdir?
 - Senin gölgen gibi: aynı hareket seti (dash, parry benzeri blok) ama **kendi eşyalarıyla** saldırır.
@@ -220,7 +227,7 @@ Eşyalar slotlara takılır; sayılar tek yerden okunur (`ItemData.SLOT_CAPACITY
 - **Envanter ekranı (`I` ya da `Tab`)**: oyunu durdurur. Ortada karakter, çevresinde slotlar, sağda çanta, en sağda seçili eşyanın ayrıntısı (ad, nadirlik, slot, açıklama, **GÖLGE ALIRSA** metni, etiket, fiyat). Çantanın altında can/bağışıklık, altın, refleks, parry süresi, dash, hız ve aktif sinerjiler. Yön tuşları / WASD / fare ile gezilir; `Enter`, `E`, `J` ya da tıklama: çantadaki eşyayı tak, takılıyı çıkar, yemeği ye. `Esc`, `I`, `Tab` ya da panel dışına tıklama kapatır.
 - Tek kapasiteli slot doluysa yeni eşya takılırken **eskisiyle yer değiştirir** (eski çantaya döner). Çok kapasiteli slot doluysa önce biri elle çıkarılır. Çanta doluysa "ÇANTA DOLU" der.
 - Görünüm geçici: çizimler gelince yenilenecek, mantık aynı kalır. Eşya simgeleri `assets/items/<eşya_id>.png` olarak konunca otomatik kullanılır (yoksa harf yer tutucu).
-- **Eşya menüsü (`F5`, deneme için):** tüm eşyaları slot sırasıyla listeler; `Enter`/`E`/`J`/tıklama envantere ekler (slotta yer varsa hemen takar), `T` yalnız çantaya koyar, `G` +50 altın, `H` canı doldurur, `B` +1 bağışıklık kalbi, `C` her şeyi siler. Ödül seçme mekaniği sonra gelecek; bu menü o zamana kadar test içindir ve her zaman açılabilir.
+- **Eşya menüsü (`F5`, deneme için):** tüm eşyaları slot sırasıyla listeler; `Enter`/`E`/`J`/tıklama envantere ekler (slotta yer varsa hemen takar), `T` yalnız çantaya koyar, `G` +50 altın, `H` canı doldurur, `B` +1 bağışıklık kalbi, `C` her şeyi siler. Gerçek ödül seçimi Gölge yenilince çıkan sunaklardadır (bkz. 5.1); bu menü yalnız deneme içindir ve her zaman açılabilir.
 
 ### 7.3 Güncel eşya listesi (tasarımcının listesi)
 
@@ -294,14 +301,14 @@ Eşyalar slotlara takılır; sayılar tek yerden okunur (`ItemData.SLOT_CAPACITY
 
 ## 8. Run Yapısı
 
-### 8.1 Kat yapısı (5 kat)
-Her kat **bir mağaza ile başlar**, sonra 4-5 savaş odası + 1 ödül odası + 1 Umbra pusu + 1 boss odası (kat sonu mini-boss, 5. katta final).
+### 8.1 Kat yapısı (18 kat × 6 oda)
+Normal koşu **18 kattır**; her kat 6 odadır: **1. oda lobi** (düşman yok, tüccarın dükkânı), **2-5. odalar savaş**, **6. oda Gölge (Umbra) boss odası**. Gölge yenilince **2 eşyadan 1** seçilir (bkz. 5.1), sonra kat geçidi açılır ve ekran kararıp "KAT n" kartıyla yeni katın lobisi kurulur. 18. katın Gölge'sini yenmek koşuyu **zaferle** bitirir. Umbra her katta yeni bir yetenek kazanır (`game/umbra_kit.gd`); 18. kat "gerçek dövüş"tür.
 
-> **UNUTMA: Mağaza her katın BAŞINDA olacak** (tasarımcı notu: "katların başında market/dükkan sistemi olacak"). Altın sistemi (düşmanlar para düşürür, HUD sayacı) ve her eşyanın `price` alanı hazır; mağaza odası ve ekranı henüz yapılmadı. Satacakları: eşyalar, yemekler (Ekmek 6, Tatlı Patates 12, Çorba 24), sonra can yenileme ve eşya silme.
+> Mağaza her katın başındadır (`levels/shop_stand.gd`, `items/shop_stock.gd`). Satılanlar: eşyalar (yalnız Yaygın/Nadir; **Efsanevi ve Lanetli eşya dükkâna düşmez**), yemekler (Ekmek 6, Tatlı Patates 12, Çorba 24), can yenileme ve eşya silme.
 
 ### 8.2 Oda tipleri
-- **Savaş:** düşman dalgaları, bitince ödül.
-- **Mezat (ödül):** 2 eşya, seç.
+- **Savaş:** düşman dalgaları; hepsi ölünce kapı açılır.
+- **Gölge (ödül):** kat sonunda Umbra dövüşü; yenince iki sunaktan birini seçersin, seçmediğin Umbra'nın olur (bkz. 5.1).
 - **Mağaza (her katın başında):** altınla eşya ve yemek satın alma, can yenileme, eşya silme (Umbra'ya giden havuzdan). Bağışıklık kalbi varken dükkândan da yemek yenmez (bkz. 4.7).
 - **Pusu:** Umbra dövüşü (parry ile eşya çalma fırsatı).
 - **Gizli oda:** riskli ödül (lanetli eşya).
@@ -435,15 +442,15 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 - [x] Slotlar + çanta + envanter ekranı (I / Tab) + F5 eşya menüsü
 - [x] 10 eşya + 3 yemek (tasarımcının listesi), refleks statı, zaman durdurma
 - [x] Etiket sinerji bonusu
-- [ ] Mezat ekranı (2 eşya seç; `ItemDB.roll_pair` hazır, seçme mekaniği sonra)
-- [ ] **Mağaza: her katın başında** (altın + `price` hazır; oda/ekran yapılacak)
+- [x] Ödül ekranı: Gölge yenilince iki sunak, ödül menüsü, seçim (`RewardChoice`, `RewardStand`, `RewardMenu`)
+- [x] **Mağaza: her katın başında** (lobi + dükkân ekranı)
 
 ### Aşama 4: UMBRA (hafta 4)  ← oyunu farklı kılan
-- [ ] Seçilmeyen eşya Umbra envanterine gider
-- [ ] Umbra pusu dövüşü (ActorBase ile)
+- [x] Seçilmeyen eşya Umbra envanterine gider (`GameState.leave_behind`; Gölge sayısal etkilerini kendine alır)
+- [x] Umbra boss dövüşü (her katın 6. odası, `UmbraKit` merdiveni)
 - [ ] Umbra eşya saldırıları (altın renkli)
 - [ ] Parry ile eşya çalma
-- [ ] "Sadece Oyuncu" etiketi
+- [x] "Sadece Oyuncu" etiketi (`umbra_allowed = false` eşya Umbra'ya gitmez)
 
 ### Aşama 5: İçerik (hafta 5-6)
 - [ ] 5 kat, boss'lar, gizli odalar (mağaza Aşama 3'te: her katın başı)

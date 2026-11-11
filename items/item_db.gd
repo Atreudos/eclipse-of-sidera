@@ -30,6 +30,10 @@ const SYNERGY_TEXT := {
 
 ## Seçim ağırlıkları (yaygın daha sık, lanetli nadir).
 const RARITY_WEIGHT := [60.0, 30.0, 8.0, 14.0]
+## Gölge ödülünde Efsanevi eşyanın erken katlardaki şans çarpanı: 1. katta bu kadar, REWARD_FULL_FLOOR. katta ve sonrasında 1.0.
+## (Efsanevi eşya dükkâna hiç düşmez; yalnız buradan ve sonraki Gölge ödüllerinden gelir.)
+const REWARD_EPIC_EARLY := 0.4
+const REWARD_FULL_FLOOR := 9
 
 static var _all: Array[ItemData] = []
 static var _by_id: Dictionary = {}
@@ -173,9 +177,10 @@ static func _build() -> void:
 	})
 
 
-## Ödül sehpası için iki farklı eşya seçer (yemekler çıkmaz). Sahip olunan ve Umbra'ya gitmiş eşyalar havuzdan çıkar;
+## Gölge ödülü için iki farklı eşya seçer (yemekler çıkmaz). Sahip olunan ve Umbra'ya gitmiş eşyalar havuzdan çıkar;
 ## havuz iki eşyadan azsa sahip olunanlar da dahil edilir. `rng` verilirse sonuç tekrarlanabilir.
-static func roll_pair(rng: RandomNumberGenerator, owned_ids: Array = [], umbra_ids: Array = []) -> Array[ItemData]:
+## `floor_no` > 0 ise Efsanevi eşya erken katlarda seyrek çıkar (`reward_weight`); 0 = kata bakmaz.
+static func roll_pair(rng: RandomNumberGenerator, owned_ids: Array = [], umbra_ids: Array = [], floor_no: int = 0) -> Array[ItemData]:
 	var pool: Array[ItemData] = []
 	for it in equipment():
 		if not (it.id in owned_ids) and not (it.id in umbra_ids):
@@ -189,19 +194,28 @@ static func roll_pair(rng: RandomNumberGenerator, owned_ids: Array = [], umbra_i
 		pool = equipment()
 	var out: Array[ItemData] = []
 	while out.size() < 2 and not pool.is_empty():
-		var picked := _weighted_pick(rng, pool)
+		var picked := _weighted_pick(rng, pool, floor_no)
 		out.append(picked)
 		pool.erase(picked)
 	return out
 
 
-static func _weighted_pick(rng: RandomNumberGenerator, pool: Array[ItemData]) -> ItemData:
+## Ödül çiftinde bir eşyanın seçilme ağırlığı: nadirlik ağırlığı; `floor_no` > 0 iken Efsanevi, erken katlarda `REWARD_EPIC_EARLY` ile çarpılır.
+static func reward_weight(item: ItemData, floor_no: int = 0) -> float:
+	var w: float = RARITY_WEIGHT[item.rarity]
+	if floor_no > 0 and item.rarity == ItemData.Rarity.EPIC:
+		var t := clampf(float(floor_no - 1) / float(REWARD_FULL_FLOOR - 1), 0.0, 1.0)
+		w *= lerpf(REWARD_EPIC_EARLY, 1.0, t)
+	return w
+
+
+static func _weighted_pick(rng: RandomNumberGenerator, pool: Array[ItemData], floor_no: int = 0) -> ItemData:
 	var total := 0.0
 	for it in pool:
-		total += RARITY_WEIGHT[it.rarity]
+		total += reward_weight(it, floor_no)
 	var roll := rng.randf() * total
 	for it in pool:
-		roll -= RARITY_WEIGHT[it.rarity]
+		roll -= reward_weight(it, floor_no)
 		if roll <= 0.0:
 			return it
 	return pool[pool.size() - 1]

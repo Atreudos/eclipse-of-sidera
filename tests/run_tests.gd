@@ -146,6 +146,11 @@ func _run_all() -> void:
 		"kat_plani": _test_floor_plan,
 		"dukkan_raf": _test_shop_stock,
 		"dukkan_menu": _test_shop_menu,
+		"odul_havuz": _test_reward_pool,
+		"odul_secim": _test_reward_choice,
+		"odul_sunak": _test_reward_stand_menu,
+		"odul_akis": _test_reward_flow,
+		"odul_kayit": _test_reward_save,
 		"kat_cikisi": _test_floor_exit,
 		"kat_akisi": _test_floor_flow,
 		"kat_son": _test_final_floor,
@@ -5689,6 +5694,372 @@ func _test_shop_menu() -> void:
 	await _frames(2)
 
 
+func _test_reward_pool() -> void:
+	await _new_world("Ödül havuzu: Efsanevi erken katlarda seyrek, tekrarlanabilir, sahip olunan/Gölge'ye kalan çıkmaz")
+	var R := ItemData.Rarity
+	var epic: ItemData = null
+	var common: ItemData = null
+	for it in ItemDB.equipment():
+		if it.rarity == R.EPIC and epic == null:
+			epic = it
+		if it.rarity == R.COMMON and common == null:
+			common = it
+	check(epic != null and common != null, "havuzda Efsanevi ve Yaygın eşya var")
+	var w_epic: float = ItemDB.RARITY_WEIGHT[R.EPIC]
+	check(is_equal_approx(ItemDB.reward_weight(epic, 0), w_epic), "kat verilmezse (0) ağırlık değişmez")
+	check(is_equal_approx(ItemDB.reward_weight(epic, 1), w_epic * ItemDB.REWARD_EPIC_EARLY), "1. katta Efsanevi ağırlığı kısılır (%.2f)" % ItemDB.reward_weight(epic, 1))
+	check(is_equal_approx(ItemDB.reward_weight(epic, ItemDB.REWARD_FULL_FLOOR), w_epic) and is_equal_approx(ItemDB.reward_weight(epic, 18), w_epic), "%d. katta ve sonrasında tam ağırlık" % ItemDB.REWARD_FULL_FLOOR)
+	check(ItemDB.reward_weight(epic, 1) < ItemDB.reward_weight(epic, 5) and ItemDB.reward_weight(epic, 5) < ItemDB.reward_weight(epic, 9), "kat ilerledikçe Efsanevi sıklaşır")
+	check(is_equal_approx(ItemDB.reward_weight(common, 1), float(ItemDB.RARITY_WEIGHT[R.COMMON])), "Yaygın eşya kata bakmaz")
+	# Sıklık: 1. katta Efsanevi içeren çift, 12. kattakinden seyrek
+	var early := 0
+	var late := 0
+	for sd in 700:
+		var r1 := RandomNumberGenerator.new()
+		r1.seed = sd
+		for it in ItemDB.roll_pair(r1, [], [], 1):
+			if it.rarity == R.EPIC:
+				early += 1
+		var r2 := RandomNumberGenerator.new()
+		r2.seed = sd
+		for it in ItemDB.roll_pair(r2, [], [], 12):
+			if it.rarity == R.EPIC:
+				late += 1
+	check(early > 0 and late > early, "Efsanevi ödül derin katlarda daha sık (kat 1: %d, kat 12: %d / 700 çift)" % [early, late])
+	# Tekrarlanabilir, iki farklı takılabilir eşya
+	var a := RandomNumberGenerator.new()
+	a.seed = 4242
+	var b := RandomNumberGenerator.new()
+	b.seed = 4242
+	var c1 := RewardChoice.generate(a, 5)
+	var c2 := RewardChoice.generate(b, 5)
+	check(c1.size() == 2 and c1.items[0] != c1.items[1] and c1.items[0].is_equippable() and c1.items[1].is_equippable(), "iki farklı takılabilir eşya")
+	check(c1.items[0].id == c2.items[0].id and c1.items[1].id == c2.items[1].id, "aynı tohum = aynı ödül")
+	# Sahip olunan ve Gölge'ye kalan eşya çıkmaz
+	var seen_bad := false
+	for sd in 120:
+		var rr := RandomNumberGenerator.new()
+		rr.seed = sd
+		var pair := RewardChoice.generate(rr, 7, ["viper_fang", "guardian_helm"], ["watcher_band"]).items
+		for it in pair:
+			if it.id in ["viper_fang", "guardian_helm", "watcher_band"]:
+				seen_bad = true
+	check(not seen_bad, "sahip olunan ve Gölge'nin eşyaları ödülde çıkmaz")
+	# Dükkânın tersi: ödül havuzunda Efsanevi eşya var, dükkânda yok
+	var shop_has_epic := false
+	for it in ItemDB.all():
+		if ShopStock.sellable(it) and it.rarity == R.EPIC:
+			shop_has_epic = true
+	check(not shop_has_epic and early + late > 0, "Efsanevi eşya yalnız ödülden gelir, dükkânda satılmaz")
+
+
+func _test_reward_choice() -> void:
+	await _new_world("Ödül seçimi: biri oyuncuya, diğeri Gölge'ye; ikinci seçim yok; engeller; Sadece Oyuncu eşya")
+	GameState.umbra_items.clear()
+	ItemView.active_menu = null
+	var p := _spawn_player(500.0)
+	await _frames(3)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var c := RewardChoice.generate(rng, 3, p.inventory.owned_ids(), GameState.umbra_ids())
+	var a := c.items[0]
+	var b := c.items[1]
+	check(c.size() == 2 and not c.is_done() and c.chosen_item() == null and c.left_items().is_empty(), "iki eşya sunuldu, seçim yok")
+	check(c.why_not(p, 0) == "" and c.why_not(p, 1) == "", "ikisi de alınabilir")
+	check(c.why_not(p, 2) == "YOK" and c.why_not(p, -1) == "YOK", "olmayan sıra reddedilir")
+	check(c.why_not(null, 0) == "ÖLÜSÜN", "oyuncu yoksa reddedilir")
+	var events: Array = []
+	c.taken.connect(func(it: ItemData, left: Array) -> void: events.append([it, left]))
+	var umbra_events: Array = []
+	var on_left := func(it: ItemData) -> void: umbra_events.append(it)
+	EventBus.item_left_behind.connect(on_left)
+	check(c.take(p, 0) == "", "ilk eşya alındı")
+	EventBus.item_left_behind.disconnect(on_left)
+	check(c.is_done() and c.chosen == 0 and c.chosen_item() == a and c.left_items().size() == 1 and c.left_items()[0] == b, "seçim işlendi")
+	check(p.inventory.owned_count(a.id) == 1 and p.inventory.count(a.id) == 1, "alınan eşya sende ve takılı (slotu boştu)")
+	check(p.inventory.owned_count(b.id) == 0, "seçilmeyen eşya sende değil")
+	check(GameState.umbra_has(b.id) and not GameState.umbra_has(a.id) and GameState.umbra_items.size() == 1, "seçilmeyen eşya Gölge'nin envanterinde")
+	check(umbra_events.size() == 1 and umbra_events[0] == b, "item_left_behind sinyali geldi")
+	check(events.size() == 1 and events[0][0] == a and (events[0][1] as Array).size() == 1 and events[0][1][0] == b, "taken sinyali: alınan ve kalan")
+	check(c.take(p, 1) == "ZATEN SEÇİLDİ" and GameState.umbra_items.size() == 1 and p.inventory.owned_count(b.id) == 0, "ikinci seçim yapılamaz")
+	check(c.why_not(p, 1) == "ZATEN SEÇİLDİ", "seçimden sonra neden: zaten seçildi")
+	# Çanta dolu: reddedilir, hiçbir şey değişmez
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = 12
+	var c2 := RewardChoice.generate(rng2, 4, p.inventory.owned_ids(), GameState.umbra_ids())
+	var free := p.inventory.bag_free()
+	for i in free:
+		p.inventory.give(_dummy_item("dolgu%d" % i))
+	check(p.inventory.bag_free() == 0, "çanta dolduruldu")
+	var before := GameState.umbra_items.size()
+	check(c2.take(p, 0) == "ÇANTA DOLU" and c2.why_not(p, 1) == "ÇANTA DOLU", "çanta doluyken reddedilir")
+	check(not c2.is_done() and GameState.umbra_items.size() == before and p.inventory.owned_count(c2.items[0].id) == 0, "hiçbir şey değişmedi, seçim hâlâ açık")
+	p.inventory.bag.clear()
+	check(c2.take(p, 1) == "" and c2.chosen == 1 and GameState.umbra_has(c2.items[0].id), "çanta boşalınca ikinci eşya alınır, ilki Gölge'ye gider")
+	# "Sadece Oyuncu" eşya Gölge'ye gitmez
+	var mine := _dummy_item("sadece_oyuncu")
+	mine.umbra_allowed = false
+	var other := _dummy_item("baska")
+	var c3 := RewardChoice.new()
+	c3.items = [other, mine]
+	var n_before := GameState.umbra_items.size()
+	check(c3.take(p, 0) == "", "diğer eşya alındı")
+	check(GameState.umbra_items.size() == n_before and not GameState.umbra_has("sadece_oyuncu"), "'Sadece Oyuncu' eşya Gölge'ye gitmez (yok olur)")
+	# Slotu dolu eşya çantada kalır
+	var boots_a := _dummy_item("bot_a", ItemData.Slot.FEET)
+	var boots_b := _dummy_item("bot_b", ItemData.Slot.FEET)
+	var c4 := RewardChoice.new()
+	c4.items = [boots_a, boots_b]
+	check(c4.take(p, 0) == "" and p.inventory.count("bot_a") == 1, "ayak slotu boşken eşya takıldı")
+	var c5 := RewardChoice.new()
+	c5.items = [boots_b, _dummy_item("bot_c", ItemData.Slot.FEET)]
+	check(c5.take(p, 0) == "" and p.inventory.count("bot_b") == 0 and p.inventory.bag_count("bot_b") == 1, "slot doluysa eşya çantaya konur")
+	# Tek eşyalı seçim (havuz daralınca): kalan yok
+	var c6 := RewardChoice.new()
+	c6.items = [_dummy_item("tek")]
+	var n6 := GameState.umbra_items.size()
+	check(c6.take(p, 0) == "" and c6.left_items().is_empty() and GameState.umbra_items.size() == n6, "tek eşyalı seçimde Gölge'ye bir şey kalmaz")
+	GameState.umbra_items.clear()
+
+
+func _test_reward_stand_menu() -> void:
+	await _new_world("Ödül sunağı ve menüsü: yükselme, E ile menü, gezinme, Esc, çanta dolu, fare")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.umbra_items.clear()
+	var p := _spawn_player(640.0)
+	await _frames(3)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var c := RewardChoice.generate(rng, 2)
+	var stand := RewardStand.new()
+	stand.position = Vector2(640.0, RoomLayouts.FLOOR_Y)
+	_world.add_child(stand)
+	stand.set_choice(c)
+	var menu := RewardMenu.new()
+	_world.add_child(menu)
+	var asked: Array = []
+	stand.requested.connect(func(s: RewardStand) -> void: asked.append(s))
+	await _frames(3)
+	check(not stand.is_risen(), "sunaklar yükseliyor")
+	p.interacted.emit()
+	check(asked.is_empty(), "yükselirken E menü açmaz")
+	await _frames(int(RewardStand.RISE_TIME * 60.0) + 6)
+	check(stand.is_risen() and stand.in_range, "yükseldi, oyuncu menzilde")
+	check(is_equal_approx(stand.altar_x(0), -RewardStand.SPACING * 0.5) and is_equal_approx(stand.altar_x(1), RewardStand.SPACING * 0.5), "iki sunak orijinin iki yanında")
+	p.interacted.emit()
+	check(asked.size() == 1 and asked[0] == stand, "yaklaşınca E: menü istendi")
+	p.global_position.x += 900.0
+	await _frames(3)
+	p.interacted.emit()
+	check(asked.size() == 1 and not stand.in_range, "uzaktayken E menü açmaz")
+	p.global_position.x = 640.0
+	await _frames(3)
+	# Menü
+	check(menu.open_reward(p, c, stand) and menu.is_open and get_tree().paused and ItemView.active_menu == menu, "açıldı: oyun durdu")
+	check(menu.cell_count() == 2 and menu.cursor_index() == 0 and menu.cursor_item() == c.items[0], "iki kutu, imleç ilkinde")
+	var inside := true
+	for i in menu.cell_count():
+		if not RewardMenu.PANEL.encloses(menu.cell_rect(i)) or menu.cell_rect(i).intersects(RewardMenu.DETAIL):
+			inside = false
+	check(inside and not menu.cell_rect(0).intersects(menu.cell_rect(1)), "kutular panelin içinde, ayrıntı paneline taşmıyor")
+	menu._unhandled_input(_ui_key(KEY_RIGHT))
+	check(menu.cursor_index() == 1 and menu.cursor_item() == c.items[1], "sağ: ikinci eşya")
+	menu._unhandled_input(_ui_key(KEY_RIGHT))
+	check(menu.cursor_index() == 0, "sağdan sola sarıldı")
+	menu._unhandled_input(_ui_key(KEY_D))
+	check(menu.cursor_index() == 1, "D: ikinci eşya")
+	menu._unhandled_input(_ui_key(KEY_A))
+	check(menu.cursor_index() == 0, "A: ilk eşya")
+	menu._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not menu.is_open and not get_tree().paused and not c.is_done() and ItemView.active_menu == null, "Esc kapattı, seçim yapılmadı")
+	check(not menu.open_reward(p, null), "ödül yoksa açılmaz")
+	p.dead = true
+	check(not menu.open_reward(p, c, stand) and not menu.is_open, "ölüyken açılmaz")
+	p.dead = false
+	# Çanta dolu: Enter reddeder, menü açık kalır
+	for i in p.inventory.bag_free():
+		p.inventory.give(_dummy_item("dolgu%d" % i))
+	check(menu.open_reward(p, c, stand), "yeniden açıldı")
+	menu.focus(0)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu.is_open and menu._msg == "ÇANTA DOLU" and not menu._msg_good and not c.is_done() and GameState.umbra_items.is_empty(), "çanta doluyken Enter reddeder: " + menu._msg)
+	p.inventory.bag.clear()
+	# Fare: ilk tık yalnız seçer, seçiliye ikinci tık alır
+	var pos := menu.cell_rect(1).get_center()
+	menu._gui_input(_mouse_click(pos))
+	check(menu.cursor_index() == 1 and not c.is_done(), "fare: ilk tık yalnız seçer")
+	menu._gui_input(_mouse_click(pos))
+	check(c.is_done() and c.chosen == 1 and not menu.is_open and not get_tree().paused, "fare: ikinci tık aldı, menü kapandı")
+	check(p.inventory.owned_count(c.items[1].id) == 1 and GameState.umbra_has(c.items[0].id), "seçilen sende, diğeri Gölge'de")
+	check(not menu.open_reward(p, c, stand), "seçilmiş ödül yeniden açılmaz")
+	p.interacted.emit()
+	check(asked.size() == 1, "seçimden sonra sunak E'ye yanıt vermez")
+	# Dışarı tık menüyü kapatır; Enter yeni ödülü alır
+	var rng2 := RandomNumberGenerator.new()
+	rng2.seed = 10
+	var c2 := RewardChoice.generate(rng2, 3, p.inventory.owned_ids(), GameState.umbra_ids())
+	check(menu.open_reward(p, c2), "yeni ödül açıldı")
+	menu._gui_input(_mouse_click(Vector2(20.0, 20.0)))
+	check(not menu.is_open and not c2.is_done(), "panel dışına tık kapattı")
+	check(menu.open_reward(p, c2), "yeniden açıldı")
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(c2.is_done() and c2.chosen == 0 and not menu.is_open, "Enter imlecin üstündekini aldı")
+	GameState.umbra_items.clear()
+
+
+func _test_reward_flow() -> void:
+	await _new_world("Ödül akışı: Gölge ölünce iki sunak, geçit kapalı, menüden seç, geçit açılır, seçilmeyen Gölge'ye; son katta ödül yok")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	GameState.umbra_items.clear()
+	var run := _start_run(31337, true)
+	var p := run.player
+	await _frames(5)
+	var boss_room := await _run_to_boss_room(run, 2)
+	check(boss_room.kind == FloorPlan.Kind.BOSS and boss_room.floor_no == 2 and boss_room.has_exit and boss_room.hold_exit, "kat 2'nin Gölge odası; geçit ödül için tutuluyor")
+	await _wait_until(func() -> bool: return boss_room.alive_count() >= 1, 360)
+	check(boss_room.reward == null and run.reward_choice == null, "Gölge yaşarken sunak yok")
+	var u: Umbra = null
+	for e in get_tree().get_nodes_in_group("boss"):
+		u = e as Umbra
+	check(u != null, "Gölge doğdu")
+	if u == null:
+		run.queue_free()
+		await _frames(2)
+		return
+	u.take_damage(u.max_hp, p)
+	var cleared := await _wait_until(func() -> bool: return boss_room.is_cleared(), 120)
+	check(cleared, "Gölge ölünce oda temizlendi")
+	check(boss_room.reward != null and run.reward_choice != null and boss_room.reward.choice == run.reward_choice and run.reward_choice.size() == 2, "iki ödül sunağı çıktı")
+	check(is_equal_approx(boss_room.reward.position.x, boss_room.rect.size.x * 0.5), "sunaklar odanın ortasında")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(boss_room.floor_exit.state == FloorExit.State.CLOSED and not boss_room.floor_exit.is_open(), "ödül seçilene kadar kat geçidi kapalı")
+	p.global_position = boss_room.floor_exit.global_position + Vector2(0.0, -12.0)
+	await _frames(40)
+	check(not run.is_transitioning(), "kapalı geçide yürümek kat geçişi başlatmaz")
+	var announced := false
+	for it in run.hud.announcer._items:
+		var line := ""
+		for part in it["runs"]:
+			line += str(part[0])
+		if line.contains("SUNAKTAN BİR EŞYA SEÇ"):
+			announced = true
+	check(announced, "'SUNAKTAN BİR EŞYA SEÇ' duyurusu çıktı")
+	# Sunağa git, E: menü
+	var menu := run.hud.reward_menu
+	p.global_position = boss_room.reward.global_position + Vector2(-90.0, -28.0)
+	await _wait_until(func() -> bool: return boss_room.reward.in_range and boss_room.reward.is_risen(), 120)
+	p.interacted.emit()
+	check(menu.is_open and get_tree().paused and menu.choice == run.reward_choice, "E: ödül menüsü açıldı")
+	var a := run.reward_choice.items[0]
+	var b := run.reward_choice.items[1]
+	menu._unhandled_input(_ui_key(KEY_ESCAPE))
+	check(not menu.is_open and not run.reward_choice.is_done() and not boss_room.floor_exit.is_open(), "Esc: seçim yapılmadı, geçit kapalı")
+	p.interacted.emit()
+	check(menu.is_open, "sunak yeniden açıldı")
+	menu.focus(1)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(run.reward_choice.is_done() and run.reward_choice.chosen == 1 and not menu.is_open and not get_tree().paused, "ikinci eşya alındı, menü kapandı")
+	check(p.inventory.owned_count(b.id) == 1 and p.inventory.owned_count(a.id) == 0, "alınan eşya sende")
+	check(GameState.umbra_has(a.id) and not GameState.umbra_has(b.id), "seçilmeyen eşya Gölge'nin envanterine gitti")
+	var told_take := false
+	var told_umbra := false
+	for it in run.hud.announcer._items:
+		var line := ""
+		for part in it["runs"]:
+			line += str(part[0])
+		if line.contains("ALINDI") and line.contains(b.upper_name()):
+			told_take = true
+		if line.contains("GÖLGE ALDI") and line.contains(a.upper_name()):
+			told_umbra = true
+	check(told_take and told_umbra, "duyuru: ALINDI ve GÖLGE ALDI")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(boss_room.floor_exit.is_open() and not boss_room.hold_exit, "ödül seçilince kat geçidi açıldı")
+	p.interacted.emit()
+	check(not menu.is_open, "seçilmiş sunak yeniden menü açmaz")
+	# Bir sonraki kat ödülü: alınan ve Gölge'ye kalan eşyalar tekrar çıkmaz
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 3
+	var next_pair := RewardChoice.generate(rr, 3, p.inventory.owned_ids(), GameState.umbra_ids()).items
+	var repeats := false
+	for it in next_pair:
+		if it.id == a.id or it.id == b.id:
+			repeats = true
+	check(not repeats, "sonraki ödül, alınan ve Gölge'ye kalan eşyayı tekrarlamaz")
+	# Gerçek yol: açık geçide yürü, yeni kata geç; ödül sıfırlanır
+	p.global_position = boss_room.floor_exit.global_position + Vector2(0.0, -12.0)
+	var started := await _wait_until(func() -> bool: return run.is_transitioning(), 60)
+	check(started, "geçidin içine yürüyünce geçiş başladı")
+	var swapped := await _wait_until(func() -> bool: return run.current_floor() == 3, 240)
+	check(swapped and run.reward_choice == null, "kat 3'e geçildi, ödül sıfırlandı")
+	await _wait_until(func() -> bool: return not run.is_transitioning(), 400)
+	# Son kat: ödül yok, zafer (18. kat düşmanları güçlü; oyuncu odalar arasında ölmesin)
+	run.queue_free()  # iki koşu aynı anda olmasın (düşmanlar "ilk oyuncu"yu hedefler)
+	await _frames(3)
+	GameState.god_mode = true
+	var run2 := _start_run(8080, true)
+	await _frames(5)
+	var final_room := await _run_to_boss_room(run2, FloorPlan.FLOOR_COUNT)
+	check(final_room.kind == FloorPlan.Kind.BOSS and final_room.floor_no == FloorPlan.FLOOR_COUNT and not final_room.hold_exit and final_room.floor_exit == null, "son kat Gölge odası: geçit yok, tutulacak bir şey yok")
+	await _wait_until(func() -> bool: return final_room.alive_count() >= 1, 360)
+	run2.skip_room()
+	await _frames(10)
+	check(run2.won and final_room.reward == null and run2.reward_choice == null, "son Gölge yenilince ödül yok, zafer")
+	GameState.god_mode = false
+	run2.queue_free()
+	await _frames(2)
+	GameState.umbra_items.clear()
+
+
+func _test_reward_save() -> void:
+	await _new_world("Ödül kaydı: seçimden sonra koşu bir sonraki katın başına kaydedilir; devam edince eşyalar yerinde")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	_clean_saves()
+	var slot := SaveSlot.create(0, "Odul", Difficulty.Level.NORMAL)
+	SaveStore.save_slot(slot)
+	GameState.begin_session(slot, GameMode.Kind.NORMAL)
+	var run := _start_run(555, true)
+	await _frames(5)
+	var p := run.player
+	var boss_room := await _run_to_boss_room(run, 4)
+	var d0 := slot.run_of(GameMode.Kind.NORMAL)
+	check(int(d0.get("floor", 0)) == 4 and int(d0.get("room", -1)) == 5, "Gölge odasına girince kayıt: kat 4, oda 6")
+	await _wait_until(func() -> bool: return boss_room.alive_count() >= 1, 360)
+	run.skip_room()
+	await _frames(10)
+	var d1 := slot.run_of(GameMode.Kind.NORMAL)
+	check(boss_room.reward != null and int(d1.get("room", -1)) == 5, "ödül seçilmeden kayıt aynı kalır (oda 6)")
+	var a := run.reward_choice.items[0]
+	var b := run.reward_choice.items[1]
+	check(run.take_reward(0) == "", "ödül alındı")
+	var d2 := slot.run_of(GameMode.Kind.NORMAL)
+	check(int(d2.get("floor", 0)) == 5 and int(d2.get("room", -1)) == 0 and not d2.has("shop"), "ödülden sonra kayıt: kat 5, lobi (raf yok)")
+	check(slot.progress_text(GameMode.Kind.NORMAL) == "KAT 5  ODA 1", "kaldığımız yer: " + slot.progress_text(GameMode.Kind.NORMAL))
+	var equipped: Array = (d2["player"] as Dictionary).get("equipped", [])
+	check(a.id in equipped, "alınan eşya kayıttaki takılılarda")
+	check(b.id in (d2.get("umbra", []) as Array), "Gölge'ye kalan eşya kayıtta")
+	# Diskten yükle ve devam et
+	run.queue_free()
+	await _frames(3)
+	var slot2 := SaveStore.load_slot(0)
+	GameState.begin_session(slot2, GameMode.Kind.NORMAL)
+	var run2 := _resume_run(slot2.run_of(GameMode.Kind.NORMAL))
+	await _frames(5)
+	var lobby := run2.current_room()
+	check(run2.current == FloorPlan.index_of(5, 0) and run2.current_floor() == 5 and lobby.kind == FloorPlan.Kind.LOBBY, "devam: kat 5'in lobisi")
+	check(run2.player.inventory.owned_count(a.id) == 1 and GameState.umbra_has(b.id), "devam: eşya sende, diğeri Gölge'de")
+	check(run2.reward_choice == null and lobby.shop != null and lobby.shop.stock.size() > 0, "devam: ödül yok, lobide yeni raf")
+	run2.queue_free()
+	await _frames(3)
+	_end_saves()
+	GameState.umbra_items.clear()
+
+
 func _test_floor_exit() -> void:
 	await _new_world("Kat geçidi: kapalıyken kullanılmaz, açılma süresi, E ve yürüyerek geçiş, bir kez kullanılır")
 	var p := _spawn_player(300.0)
@@ -5817,6 +6188,10 @@ func _test_floor_flow() -> void:
 	run.skip_room()
 	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
 	check(boss_room.is_cleared() and int(run.stats["rooms_cleared"]) == 5, "Gölge yenildi, 5 oda temizlendi")
+	check(boss_room.reward != null and run.reward_choice != null and not run.reward_choice.is_done(), "Gölge yenilince ödül sunakları çıktı")
+	check(not boss_room.floor_exit.is_open() and boss_room.floor_exit.state == FloorExit.State.CLOSED, "ödül seçilene kadar kat geçidi kapalı")
+	check(run.take_reward(0) == "", "ödülden biri alındı")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
 	check(boss_room.floor_exit.is_open(), "kat geçidi açıldı")
 	# Gerçek yol: açık geçidin içine yürü
 	p.global_position = boss_room.floor_exit.global_position + Vector2(0.0, -12.0)
@@ -7631,6 +8006,9 @@ func _test_umbra_room() -> void:
 	check(cleared and (not is_instance_valid(u) or u.dead), "Gölge ölünce oda temizlendi")
 	check(int(run.stats["kills"]) == kills_before + 1, "öldürme sayıldı")
 	check(run.hud.boss_bar.boss == null, "bar Gölge'den ayrıldı")
+	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
+	check(boss_room.reward != null and not boss_room.floor_exit.is_open(), "ödül seçilmeden kat geçidi kapalı")
+	check(run.take_reward(1) == "", "ödül seçildi")
 	await _frames(int(FloorExit.OPEN_TIME * 60.0) + 12)
 	check(boss_room.floor_exit.is_open(), "kat geçidi açıldı")
 	run.queue_free()

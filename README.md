@@ -65,7 +65,9 @@ Vuruş sersemletmesi: kombo yediği sırada düşman saldıramaz (hazırlığı 
 
 Ayrıntılar: arka arkaya 3 sersemletme alırsa 1.5 sn zırhlanır (sonsuz sersemletme yok); parry'yi ıskalarsan hemen cezalandırır; seçmeyip bıraktığın eşyaların sayısal etkilerini (can, hasar, hız) kendine alır; kamera Gölge uzaktayken (örn. karşı duvarda asılıyken) açılıp ikinizi birden gösterir (`ShakeCamera` patron çerçevesi).
 
-Sıradaki: ödül mezatı (Gölge yenilince 2 eşya, seçmediğin Umbra'ya), silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
+**Gölge ödülü: 2 eşyadan 1** (`game/reward_choice.gd`, `levels/reward_stand.gd`, `ui/reward_menu.gd`): 18. kat dışında Gölge yenilince odanın ortasında **iki sunak** yükselir, her birinin üstünde bir eşya süzülür. Yaklaşıp `E` → ödül menüsü (oyun durur): ←/→ ya da A/D gezin, `Enter`/`E`/`J` ya da seçiliye ikinci tıklama **alır**, `Esc` kapatır (sonra yine seçebilirsin). **Seçmediğin eşya Gölge'nin olur** ve sonraki katlarda sana karşı kullanılır (menü "bunu alırsan Gölge şunu alır" bedelini gösterir; "Sadece Oyuncu" eşyalar Gölge'ye gitmez, yok olur). **Kat geçidi seçim yapılana kadar kapalı** kalır; seçince açılır ve koşu bir sonraki katın lobisinden kaydedilir. Eşyalar, sahip olduğun ve Gölge'nin elindekiler dışından, aynı koşu tohumuyla hep aynı çift olarak gelir; Efsanevi eşya kat ilerledikçe sıklaşır (1. katta ağırlık 0,4 → 9. katta tam; `ItemDB.roll_pair`). Son katta (18) ödül yoktur, zafer vardır. Sunakların ve Gölge elinin çizimleri `altar_rise/idle/take/dim` ve `fx_umbra_grab` adlarıyla `assets/` altına konunca kendiliğinden kullanılır. Ekran görüntüsü: `res://tools/screenshots_reward.tscn`.
+
+Sıradaki: silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
 
 **Yazı tipi**: oyun **Fraunces** (SIL OFL) kullanıyor: Times'ın klasik "Roman" serif iskeleti ama yumuşak/tombul, biraz çizgi film afişi gibi. Türkçe harflerin tamamı var (Ğ ğ Ş ş İ fontun kendi parçalarından eklendi). Tek yerden okunur: `ui/game_font.gd` `PATH` + proje ayarı `gui/theme/custom_font`; ayrıntı ve değiştirme adımları `assets/fonts/README.md`. Eski AGENTORANGE projeden çıkarıldı (lisansı belirsizdi; artık depoyu bu açıdan herkese açmak engel değil).
 
@@ -93,7 +95,8 @@ xvfb-run -a -s "-screen 0 1280x720x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 # ana menü ekranları için: res://tools/screenshots_main_menu.tscn
 # katlar, dükkân, Gölge odası, kat geçidi, zafer için: res://tools/screenshots_floors.tscn
 # öğretici ipucu paneli (lobi adımları, parry, kırmızı uyarı) için: res://tools/screenshots_tutorial.tscn
-# Gölge dövüşü (can barı, uyarılar, duvar tırmanışı, yer darbesi, klon, 2. evre) için: res://tools/screenshots_umbra.tscn (~4 dk)
+# Gölge dövüşü (can barı, uyarılar, duvar tırmanışı, yer darbesi, klon, 2. evre) için: res://tools/screenshots_umbra.tscn (~4 dk; 2. argüman bölüm süzer: kat1, kat7...)
+# Gölge ödülü (sunaklar yükselirken/hazır, ödül menüsü, çanta dolu, seçim sonrası) için: res://tools/screenshots_reward.tscn (~2 dk; 2. argüman = kat)
 ```
 
 Gerçek tuş girdileriyle uçtan uca duman testi (menü -> yeni kayıt -> oyun -> duraklatma -> ana menü -> devam; ekransız çalışır, betik hatalarını yakalar):

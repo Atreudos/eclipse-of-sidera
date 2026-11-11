@@ -61,6 +61,8 @@ var player: Player
 var seen_enemies := {SAGITTA.resource_path: true, TAURUS.resource_path: true}
 ## Şu anki lobinin dükkân rafı (lobide değilsen son lobinin rafı; kayda yalnız lobideyken yazılır).
 var shop_stock: ShopStock = null
+## Son Gölge ödülü: Gölge yenilince kurulur (son kat hariç), seçilince `is_done()` olur. Yeni katta sıfırlanır.
+var reward_choice: RewardChoice = null
 ## Son katın Gölge'si yenildi.
 var won := false
 ## Zafer ekranı açıldı.
@@ -300,6 +302,7 @@ func _build_room(index: int) -> Room:
 		}
 		if kind == FloorPlan.Kind.BOSS:
 			room.spawn_meta = {"floor": f}
+			room.hold_exit = not FloorPlan.is_final_floor(f)  # kat geçidi, Gölge ödülü seçilene kadar kapalı
 	room.build(index, x_left_of(index), layout_for(index), enemies_root, rng_for(index, "room"), make_waves(index), opts)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
@@ -399,6 +402,69 @@ func _on_shop_requested(stand: ShopStand) -> void:
 	hud.shop_menu.open_shop(player, stand.stock, stand)
 
 
+# ---------------------------------------------------------------- Gölge ödülü
+
+## Gölge yenildi (son kat hariç): odanın ortasında iki sunak yükselir. Biri alınınca diğeri Gölge'ye gider ve kat geçidi açılır.
+## Sunaklardaki çift yalnız (tohum, oda no)'ya ve sahip olunan eşyalara bağlıdır: aynı koşu = aynı ödül.
+func _setup_reward(room: Room) -> void:
+	if room.reward != null or player == null or not is_instance_valid(player):
+		return
+	var owned: Array = player.inventory.owned_ids() if player.inventory != null else []
+	reward_choice = RewardChoice.generate(rng_for(room.index, "reward"), room.floor_no, owned, GameState.umbra_ids())
+	if reward_choice.size() == 0:
+		room.release_exit()  # eşya havuzu boş (olmaz): geçit kilitli kalmasın
+		return
+	reward_choice.taken.connect(_on_reward_taken.bind(room))
+	var stand := RewardStand.new()
+	stand.name = "RewardStand"
+	stand.accent = room.palette["accent"]
+	stand.position = Vector2(room.rect.size.x * 0.5, RoomLayouts.FLOOR_Y)
+	room.add_child(stand)
+	stand.set_choice(reward_choice)
+	room.reward = stand
+	stand.requested.connect(_on_reward_requested)
+
+
+func _on_reward_requested(stand: RewardStand) -> void:
+	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	hud.reward_menu.open_reward(player, stand.choice, stand)
+
+
+## Ödülden `index`. eşyayı alır (menüyle aynı yol; testler ve geliştirme için). Başarılıysa "", değilse neden.
+func take_reward(index: int) -> String:
+	if reward_choice == null:
+		return "ÖDÜL YOK"
+	return reward_choice.take(player, index)
+
+
+## Eşya alındı: kat geçidi açılır, ne olduğu duyurulur, koşu bir sonraki katın başına kaydedilir.
+func _on_reward_taken(item: ItemData, left: Array, room: Room) -> void:
+	if is_instance_valid(room):
+		room.release_exit()
+	hud.announcer.push_runs([["ALINDI  ", GameFont.WHITE], [item.upper_name(), item.color()]], 40, 2.0)
+	for it in left:
+		var other := it as ItemData
+		if other != null and other.umbra_allowed:
+			hud.announcer.push_runs([["GÖLGE ALDI  ", Color(0.78, 0.55, 1.0)], [other.upper_name(), other.color()]], 36, 2.4)
+	if is_instance_valid(room):
+		_save_floor_checkpoint(room.floor_no + 1)
+
+
+## Gölge ödülü alınınca koşu bir sonraki katın başlangıcına kaydedilir: oyundan çıkıp dönersen Gölge'yi yeniden yenmen gerekmez.
+func _save_floor_checkpoint(next_floor: int) -> bool:
+	var slot := GameState.slot
+	if slot == null or GameState.mode != GameMode.Kind.NORMAL or player == null or player.dead or won:
+		return false
+	var d := snapshot()
+	d["floor"] = clampi(next_floor, 1, FloorPlan.FLOOR_COUNT)
+	d["room"] = 0
+	d.erase("shop")
+	slot.set_run(GameMode.Kind.NORMAL, d)
+	slot.touch()
+	return SaveStore.save_slot(slot)
+
+
 # ---------------------------------------------------------------- akış
 
 func _process(delta: float) -> void:
@@ -476,6 +542,8 @@ func _on_room_cleared(room: Room) -> void:
 			_begin_victory()
 		else:
 			hud.announcer.push_runs([["GÖLGE YENİLDİ", GameFont.YELLOW]], 58, 2.2)
+			hud.announcer.push_runs([["SUNAKTAN BİR EŞYA SEÇ", GameFont.WHITE]], 32, 2.6)
+			_setup_reward(room)
 	else:
 		hud.announcer.push("ODA TEMİZ", GameFont.YELLOW, 58, 1.8)
 	EventBus.room_cleared.emit(room.index)
@@ -560,6 +628,7 @@ func _go_next_floor() -> void:
 			e.queue_free()
 	get_tree().call_group("projectiles", "queue_free")
 	shop_stock = null
+	reward_choice = null
 	var index := FloorPlan.index_of(f, 0)
 	var room := _build_room(index)
 	player.global_position = Vector2(room.rect.position.x + START_OFFSET, 600.0)
