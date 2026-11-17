@@ -6,19 +6,23 @@ extends RefCounted
 ##   <ad>.png            yatay şerit (kareler yan yana). Kare genişliği = görüntü yüksekliği (kare kare),
 ##                       farklıysa spec içinde "frame_w" verilir.
 ##   <ad>_0.png, <ad>_1.png, ...   numaralı tek kareler
-## Ayrıntı: docs/SPRITES.md
+## Önce çizim listesindeki ad aranır (`sidera_walk.png`: `<karakter>_<hareket>.png`, `assets/` altında nerede durursa durur; bkz. ArtManifest),
+## bulunamazsa klasördeki eski adlar (`assets/sprites/sidera/run.png`). Ayrıntı: docs/SPRITES.md
 
 
 ## folder: "res://assets/sprites/sidera".  spec: {anim_adı: {"fps": 10, "loop": true, "fallback": "idle", "frame_w": 0}}
+## owner: çizim listesindeki karakter adı ("sidera"); boşsa yalnız klasör aranır.
 ## Hiç animasyon bulunamazsa null döner (yer tutucu görsel kullanılır).
-static func build(folder: String, spec: Dictionary) -> SpriteFrames:
+static func build(folder: String, spec: Dictionary, owner: String = "") -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	if frames.has_animation(&"default"):
 		frames.remove_animation(&"default")
 	var found := 0
 	for anim_name: String in spec:
 		var cfg: Dictionary = spec[anim_name]
-		var textures := load_textures(folder, anim_name, int(cfg.get("frame_w", 0)))
+		var textures := load_listed_textures(owner, anim_name)
+		if textures.is_empty() and folder != "":
+			textures = load_textures(folder, anim_name, int(cfg.get("frame_w", 0)))
 		if textures.is_empty():
 			continue
 		add_animation(frames, anim_name, textures, float(cfg.get("fps", 10.0)), bool(cfg.get("loop", true)))
@@ -32,6 +36,20 @@ static func add_animation(frames: SpriteFrames, anim_name: String, textures: Arr
 	frames.set_animation_loop(anim_name, loop)
 	for t in textures:
 		frames.add_frame(anim_name, t)
+
+
+## Çizim listesindeki adla yükler: `<karakter>_<dosya eki>.png` (örn. `run` hareketi `sidera_walk.png`), yoksa `<karakter>_<hareket>.png`.
+## Kareler kare biçimlidir (kare genişliği = görüntü yüksekliği). Bulunamazsa boş dizi.
+static func load_listed_textures(owner: String, anim_name: String) -> Array[Texture2D]:
+	var out: Array[Texture2D] = []
+	if owner == "":
+		return out
+	var listed := ArtManifest.file_for(owner, anim_name)
+	for file in [listed, "%s_%s" % [owner, anim_name]]:
+		var tex := Art.texture(file)
+		if tex != null:
+			return slice_strip(tex)
+	return out
 
 
 static func load_textures(folder: String, anim_name: String, frame_w: int = 0) -> Array[Texture2D]:

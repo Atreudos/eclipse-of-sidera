@@ -136,6 +136,7 @@ func _run_all() -> void:
 		"kayit_oyuncu": _test_save_player_snapshot,
 		"kayit_kosu": _test_save_run,
 		"art_yukleyici": _test_art_loader,
+		"cizim_adlari": _test_art_names,
 		"menu_giris": _test_menu_input,
 		"menu_akis": _test_menu_flow,
 		"menu_kayitlar": _test_menu_slots,
@@ -151,6 +152,16 @@ func _run_all() -> void:
 		"odul_sunak": _test_reward_stand_menu,
 		"odul_akis": _test_reward_flow,
 		"odul_kayit": _test_reward_save,
+		"silah_veri": _test_weapon_db,
+		"silah_donanim": _test_weapon_loadout,
+		"silah_nisan": _test_aiming,
+		"silah_giris": _test_weapon_input,
+		"silah_yumruk": _test_fist,
+		"silah_sapan": _test_sling,
+		"silah_nisangah": _test_auto_aim,
+		"silah_kayit": _test_weapon_save,
+		"silah_envanter": _test_inventory_weapons,
+		"dukkan_silah": _test_shop_weapons,
 		"kat_cikisi": _test_floor_exit,
 		"kat_akisi": _test_floor_flow,
 		"kat_son": _test_final_floor,
@@ -165,6 +176,7 @@ func _run_all() -> void:
 		"golge_sahne": _test_umbra_scene,
 		"golge_bicak": _test_umbra_knife,
 		"golge_firlatma": _test_umbra_throw,
+		"golge_nisangah": _test_umbra_homing,
 		"golge_tirmanis": _test_umbra_climb,
 		"golge_minyon": _test_umbra_minions,
 		"golge_hamleler": _test_umbra_moves,
@@ -2200,7 +2212,7 @@ func _test_items_db() -> void:
 	print("\nEşya veritabanı")
 	const S := ItemData.Slot
 	var all := ItemDB.all()
-	check(all.size() == 14, "11 donanım + 3 yemek = 14 eşya (%d)" % all.size())
+	check(all.size() == 15, "12 donanım + 3 yemek = 15 eşya (%d)" % all.size())
 	var seen := {}
 	var fields_ok := true
 	var price_ok := true
@@ -2257,7 +2269,7 @@ func _test_items_db() -> void:
 	for it in gear:
 		if it.is_food():
 			no_food = false
-	check(gear.size() == 11 and no_food, "donanım havuzu 11 eşya, yemek yok")
+	check(gear.size() == 12 and no_food, "donanım havuzu 12 eşya, yemek yok")
 	check(GameFont.upper("Kule Ekmeği") == "KULE EKMEĞİ" and GameFont.upper("Satürn'ün Kum Saati") == "SATÜRN'ÜN KUM SAATİ", "Türkçe büyük harf (i -> İ)")
 	# Ödül çifti
 	var r1 := RandomNumberGenerator.new()
@@ -3790,7 +3802,7 @@ func _test_inventory_swap() -> void:
 
 
 func _test_inventory_screen() -> void:
-	await _new_world("Envanter ekranı (I / Tab): duraklatma, kutu düzeni, gezinme, tak / çıkar / ye, reddedilenler, fare")
+	await _new_world("Envanter ekranı (Tab): duraklatma, kutu düzeni, gezinme, tak / çıkar / ye, reddedilenler, fare")
 	const S := ItemData.Slot
 	GameState.god_mode = false
 	TimeStop.reset()
@@ -3802,7 +3814,7 @@ func _test_inventory_screen() -> void:
 	var scr := run.hud.inventory_screen
 	check(scr != null and not scr.is_open and not scr.visible and not get_tree().paused, "ekran HUD'da var, kapalı, oyun akıyor")
 	check(InputMap.has_action("inventory"), "'inventory' eylemi tanımlı")
-	check(run.hud._hint_label.text.contains("I envanter") and run.hud._hint_label.text.contains("F5"), "ipucu satırında I ve F5 yazıyor")
+	check(run.hud._hint_label.text.contains("Tab envanter") and run.hud._hint_label.text.contains("F5") and run.hud._hint_label.text.contains("I "), "ipucu satırında Tab (envanter), I (silah) ve F5 yazıyor")
 	inv.give(_item("watcher_band"))
 	inv.give(_item("viper_fang"))
 	inv.give(_item("tower_bread"))
@@ -3810,14 +3822,16 @@ func _test_inventory_screen() -> void:
 	var x0 := p.global_position.x
 	p.intent.move_x = 1.0
 	scr._unhandled_input(_ui_key(KEY_I))
-	check(scr.is_open and scr.visible and scr.player == p and get_tree().paused and ItemView.active_menu == scr, "I açtı: oyun durdu, menü aktif")
+	check(not scr.is_open and not get_tree().paused, "I envanteri AÇMAZ (artık ikinci silah slotu)")
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(scr.is_open and scr.visible and scr.player == p and get_tree().paused and ItemView.active_menu == scr, "Tab açtı: oyun durdu, menü aktif")
 	await _frames(10)
 	check(is_equal_approx(p.global_position.x, x0), "açıkken oyuncu yürümüyor (x %.1f -> %.1f)" % [x0, p.global_position.x])
 	# Kutu düzeni
 	var slot_total := 0
 	for slot in [S.FEET, S.CHARM, S.HEAD, S.POCKET, S.WRIST, S.ARMOR]:
 		slot_total += int(ItemData.SLOT_CAPACITY[slot])
-	check(scr.cell_count() == slot_total + Inventory.BAG_SIZE and scr.cell_count() == 33, "33 kutu: 9 slot + 24 çanta (%d)" % scr.cell_count())
+	check(scr.cell_count() == slot_total + Inventory.BAG_SIZE + WeaponDB.SLOT_COUNT and scr.cell_count() == 35, "35 kutu: 9 slot + 24 çanta + 2 silah (%d)" % scr.cell_count())
 	var inside := true
 	var overlap := false
 	for i in scr.cell_count():
@@ -3943,21 +3957,23 @@ func _test_inventory_screen() -> void:
 	scr._unhandled_input(_ui_key(KEY_TAB))
 	check(scr.is_open, "Tab açtı")
 	scr._unhandled_input(_ui_key(KEY_I))
-	check(not scr.is_open and not get_tree().paused, "I kapattı")
+	check(scr.is_open, "açıkken I tuşu bir şey yapmaz (Tab kapatır)")
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(not scr.is_open and not get_tree().paused, "Tab kapattı")
 	check(scr.open(p), "open() doğrudan çağrılabiliyor")
 	scr._gui_input(_mouse_click(Vector2(8.0, 8.0)))
 	check(not scr.is_open and not get_tree().paused, "panelin dışına tıklayınca kapandı")
 	# Açılmaması gereken durumlar
 	p.dead = true
 	check(not scr.open(p) and not scr.is_open, "ölüyken açılmaz")
-	scr._unhandled_input(_ui_key(KEY_I))
-	check(not scr.is_open and not get_tree().paused, "ölüyken I tuşu da açmaz")
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(not scr.is_open and not get_tree().paused, "ölüyken Tab tuşu da açmaz")
 	p.dead = false
 	var dm := run.hud.dev_menu
 	check(dm.open(p) and ItemView.active_menu == dm, "F5 menüsü açıldı")
 	check(not scr.open(p), "başka menü açıkken envanter açılmaz")
-	scr._unhandled_input(_ui_key(KEY_I))
-	check(not scr.is_open, "başka menü açıkken I tuşu bir şey yapmaz")
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(not scr.is_open, "başka menü açıkken Tab tuşu bir şey yapmaz")
 	dm.close()
 	check(not get_tree().paused and ItemView.active_menu == null, "F5 menüsü kapanınca oyun devam ediyor")
 	# Menü açıkken sahne kapanırsa oyun kilitli kalmamalı
@@ -4040,6 +4056,18 @@ func _test_dev_menu() -> void:
 	dm._unhandled_input(_ui_key(KEY_B))
 	check(p.immunity == 2, "B tekrar: 2 bağışıklık")
 	p.set_immunity(0)
+	# Silah kısayolları: Y yumruk, U yükselt
+	check(not p.loadout.owns("fist"), "yumruk henüz yok")
+	dm._unhandled_input(_ui_key(KEY_Y))
+	check(p.loadout.owns("fist") and p.weapon_in(0) == "fist" and dm._msg_good, "Y: yumruk alındı, J'ye takıldı (%s)" % dm._msg)
+	dm._unhandled_input(_ui_key(KEY_Y))
+	check(not dm._msg_good and dm._msg.begins_with("YUMRUK"), "Y tekrar: zaten var uyarısı (%s)" % dm._msg)
+	dm._unhandled_input(_ui_key(KEY_U))
+	check(p.loadout.level_of("fist") == 2 and p.loadout.level_of("sword") == 2 and p.loadout.level_of("sling") == 2 and dm._msg == "3 SİLAH BİR SEVİYE YÜKSELDİ", "U: üç silah da +1 (%s)" % dm._msg)
+	for i in 5:
+		dm._unhandled_input(_ui_key(KEY_U))
+	check(p.loadout.level_of("fist") == 5 and not dm._msg_good and dm._msg == "HEPSİ ZATEN EN ÜST SEVİYEDE", "U: en üstte durur (%s)" % dm._msg)
+	p.loadout.reset()
 	# Dolu çanta
 	inv.clear_all()
 	for i in Inventory.BAG_SIZE:
@@ -4060,7 +4088,7 @@ func _test_dev_menu() -> void:
 	check(inv.owned_count(dm._entries[2].id) == 1, "tıklama: eşya eklendi (%s)" % dm._entries[2].id)
 	dm._gui_input(_mouse_click(Vector2(DevMenu.LIST.position.x + 60.0, DevMenu.LIST.position.y + 10.0)))
 	check(dm.is_open, "başlık satırına tıklamak kapatmaz")
-	dm._list_h = DevMenu.ROW_H * 16.0  # 20 satır 16'lık pencerede: en çok 4 satır kayar
+	dm._list_h = DevMenu.ROW_H * 17.0  # 21 satır 17'lik pencerede: en çok 4 satır kayar
 	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))
 	check(dm._scroll == 2, "tekerlek aşağı: 2 satır kaydı (%d)" % dm._scroll)
 	dm._gui_input(_mouse_click(pos, MOUSE_BUTTON_WHEEL_DOWN))
@@ -4072,8 +4100,8 @@ func _test_dev_menu() -> void:
 	# Karşılıklı dışlama
 	var scr := run.hud.inventory_screen
 	check(not scr.open(p), "F5 menüsü açıkken envanter ekranı açılmaz")
-	dm._unhandled_input(_ui_key(KEY_I))
-	check(not scr.is_open and dm.is_open, "F5 menüsünde I tuşu bir şey yapmaz")
+	dm._unhandled_input(_ui_key(KEY_TAB))
+	check(not scr.is_open and dm.is_open, "F5 menüsünde Tab tuşu bir şey yapmaz")
 	# Kapatma
 	dm._unhandled_input(_f_key(KEY_F5))
 	check(not dm.is_open and not dm.visible and not get_tree().paused and ItemView.active_menu == null, "F5 kapattı: oyun devam ediyor")
@@ -5026,6 +5054,99 @@ func _test_art_loader() -> void:
 	Art.root = old_root
 	Art.reset()
 	check(Art.override.is_empty() and Art.texture("ui_arrow_left") == null, "reset: geçersiz kılmalar temizlendi")
+
+
+## Çizim listesindeki animasyon adları ile koddaki animasyonlar birebir aynı olmalı (çizer boşuna çizmesin, kod çizimi bulsun).
+## Listede olup kodda henüz oynatılmayan animasyonlar burada açıkça sayılır (ilgili özellik gelince listeden çıkar).
+const ART_NOT_WIRED := {
+	"sidera": ["wall_slide", "wall_jump", "double_jump", "land", "eat", "interact", "appear", "ascend"],
+	"taurus": ["spawn"],
+	"sagitta": ["spawn"],
+	"scorpius": ["spawn"],
+}
+## Koddaki animasyon listesinde olup bu karakterin hiç oynatmadığı (EnemyBase'ten gelen) animasyonlar: listede satırı olmaz.
+const ART_SPEC_UNUSED := {
+	"sagitta": ["recover"],
+	"scorpius": ["recover"],
+}
+
+
+func _spec_of(node: Node) -> Dictionary:
+	var spec: Dictionary = node.anim_spec()
+	node.free()
+	return spec
+
+
+func _test_art_names() -> void:
+	await _new_world("Çizim adları: listedeki animasyonlar kodla eşleşir; çizim listedeki adla yüklenir")
+	Art.reset()
+	var specs := {
+		"sidera": _spec_of(Player.new()),
+		"taurus": _spec_of(Taurus.new()),
+		"sagitta": _spec_of(Sagitta.new()),
+		"scorpius": _spec_of(Scorpius.new()),
+		"umbra": _spec_of(Umbra.new()),
+		"umbra_minion": _spec_of(UmbraMinion.new()),
+	}
+	for owner: String in specs:
+		var spec: Dictionary = specs[owner]
+		var rows := ArtManifest.owner_anims(owner)
+		var wasted: Array[String] = []
+		for k: String in rows:
+			if not spec.has(k) and not (k in ART_NOT_WIRED.get(owner, [])):
+				wasted.append(k)
+		check(wasted.is_empty(), "%s: listede olup kodda oynatılmayan animasyon yok %s" % [owner, wasted])
+		var undrawable: Array[String] = []
+		for k: String in spec:
+			if not rows.has(k) and not (k in ART_SPEC_UNUSED.get(owner, [])):
+				undrawable.append(k)
+		check(undrawable.is_empty(), "%s: koddaki her animasyonun listede çizimi var %s" % [owner, undrawable])
+		check(not rows.is_empty(), "%s: listede satırı var" % owner)
+	# Silahlar: yumruk ve sapan animasyonları listede
+	for a in ["punch1", "punch2", "punch3", "punch4", "throw", "throw_up", "throw_diag"]:
+		check(ArtManifest.file_for("sidera", a) == "sidera_" + a and ArtManifest.has_file("sidera_" + a), "sidera_%s listede" % a)
+	check(ArtManifest.has_file("fx_sling_stone") and ArtManifest.has_file("item_weapon_sword") and ArtManifest.has_file("item_weapon_fist") and ArtManifest.has_file("item_weapon_sling"), "sapan taşı efekti ve 3 silah simgesi listede")
+	check(ArtManifest.file_for("sidera", "run") == "sidera_walk" and ArtManifest.file_for("umbra", "run") == "umbra_walk", "dosya eki: `run` hareketi `_walk.png`")
+	# Her eşyanın (ve silahın) simgesi listede, oyun da aynı adı arar
+	var missing_icons: Array[String] = []
+	for it in ItemDB.all():
+		if not ArtManifest.has_file(it.art_name()) or it.art_name() != "item_" + it.id:
+			missing_icons.append(it.id)
+	check(missing_icons.is_empty(), "her eşyanın simgesi listede (item_<id>) %s" % [missing_icons])
+	for wid in WeaponDB.ids():
+		check(WeaponDB.display_item(wid, 2).art_name() == "item_weapon_" + wid and WeaponDB.upgrade_display(wid, 2).art_name() == "item_weapon_" + wid, "%s: yükseltme/gösterim eşyası silahın simgesini arar" % wid)
+	# Yükleme: çizim listedeki adla konunca karakter bulur (klasör gerekmez)
+	var strip := Image.create(96 * 4, 96, false, Image.FORMAT_RGBA8)
+	Art.override["sidera_walk"] = ImageTexture.create_from_image(strip)
+	Art.override["sidera_punch2"] = ImageTexture.create_from_image(Image.create(96 * 3, 96, false, Image.FORMAT_RGBA8))
+	var frames := SpriteSetLoader.build("", Player.ANIM_SPEC, "sidera")
+	check(frames != null and frames.has_animation(&"run") and frames.get_frame_count(&"run") == 4, "sidera_walk.png: `run` animasyonu, 4 kare")
+	check(frames != null and frames.has_animation(&"punch2") and frames.get_frame_count(&"punch2") == 3 and not frames.has_animation(&"idle"), "sidera_punch2.png: 3 kare; çizimi olmayan animasyon eklenmez")
+	check(SpriteSetLoader.build("", Player.ANIM_SPEC, "") == null and SpriteSetLoader.build("res://assets/sprites/yok_boyle_klasor", Player.ANIM_SPEC, "yok_boyle_biri") == null, "ad ve klasör boşsa/yoksa null (yer tutucu)")
+	var p := _spawn_player()
+	await _frames(2)
+	check(p.anim.has_art and p.anim.sprite.sprite_frames.has_animation(&"run"), "oyuncu: sidera_walk.png gelince animasyonlu çizim kullanılır")
+	p.queue_free()
+	# Gölge Klonu: minyonun çizimleri + mavimsi renk (çizim yokken renk değişmez)
+	var scene := load("res://actors/enemies/umbra_minion.tscn") as PackedScene
+	var plain := scene.instantiate() as UmbraMinion
+	plain.kind = UmbraMinion.Kind.CLONE
+	_world.add_child(plain)
+	await _frames(2)
+	check(not plain.anim.has_art and plain.base_tint == Color.WHITE, "klon: çizim yokken renk değişmez")
+	plain.queue_free()
+	Art.override["umbra_minion_idle"] = ImageTexture.create_from_image(Image.create(64 * 2, 64, false, Image.FORMAT_RGBA8))
+	var clone := scene.instantiate() as UmbraMinion
+	clone.kind = UmbraMinion.Kind.CLONE
+	var shade := scene.instantiate() as UmbraMinion
+	_world.add_child(clone)
+	_world.add_child(shade)
+	await _frames(2)
+	check(clone.anim.has_art and clone.base_tint == UmbraMinion.CLONE_TINT and shade.anim.has_art and shade.base_tint == Color.WHITE, "klon: minyon çizimi + mavimsi renk; gerçek minyon renksiz")
+	clone.queue_free()
+	shade.queue_free()
+	Art.reset()
+	check(SpriteSetLoader.build("", Player.ANIM_SPEC, "sidera") == null, "reset: çizim kalkınca yine yer tutucu")
 
 
 func _test_menu_input() -> void:
@@ -6136,7 +6257,7 @@ func _test_floor_flow() -> void:
 	check(lobby.waves.is_empty() and lobby.is_cleared() and lobby.alive_count() == 0, "lobide düşman yok, oda baştan temiz")
 	check(not lobby.door.is_blocking(), "lobinin kapısı açık")
 	check(lobby.rect.position.x == 0.0 and run.rooms.has(1) and (run.rooms[1] as Room).kind == FloorPlan.Kind.COMBAT, "kat x = 0'dan başlıyor, yanındaki oda savaş odası")
-	check(lobby.shop != null and lobby.shop.stock != null and lobby.shop.stock.size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS, "tezgâh kurulu, rafta %d teklif" % lobby.shop.stock.size())
+	check(lobby.shop != null and lobby.shop.stock != null and lobby.shop.stock.size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS + 3 and lobby.shop.stock.has_weapon_offers(), "tezgâh kurulu, rafta %d teklif (3 eşya + 2 yemek + 3 silah)" % lobby.shop.stock.size())
 	check(run.hud.overlay.floor_number == 1 and run.hud.overlay.room_kind == FloorPlan.Kind.LOBBY and run.hud.overlay.room_number == 1, "HUD: KAT 1, LOBİ")
 	check(int(run.stats["rooms_cleared"]) == 0 and int(run.stats["floor"]) == 1 and int(run.stats["room"]) == 1, "lobi temizlenen oda sayılmaz (%s)" % str(run.stats))
 	check(run.camera.bounds.end.x >= (run.rooms[1] as Room).camera_rect().end.x - 0.5, "kamera lobiden yan odaya uzanabiliyor")
@@ -6250,7 +6371,15 @@ func _test_floor_save() -> void:
 	var p := run.player
 	var data := slot.run_of(GameMode.Kind.NORMAL)
 	check(int(data.get("v", 0)) == 2 and int(data.get("floor", 0)) == 1 and int(data.get("room", -1)) == 0, "kayıt: sürüm 2, kat 1, oda 0 (lobi)")
-	check(data.get("shop") is Array and (data["shop"] as Array).size() == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS, "lobide raf kayda yazıldı")
+	var shop_saved: Array = data.get("shop", []) if data.get("shop") is Array else []
+	var saved_plain := 0
+	var saved_weapons := 0
+	for e in shop_saved:
+		if (e as Dictionary).has("weapon"):
+			saved_weapons += 1
+		else:
+			saved_plain += 1
+	check(saved_plain == ShopStock.GEAR_OFFERS + ShopStock.FOOD_OFFERS and saved_weapons == 3, "lobide raf kayda yazıldı: 3 eşya + 2 yemek + 3 silah teklifi (%d + %d)" % [saved_plain, saved_weapons])
 	check(slot.progress_text(GameMode.Kind.NORMAL) == "KAT 1  ODA 1", "kaldığımız yer: " + slot.progress_text(GameMode.Kind.NORMAL))
 	# Bir şey satın al ve kaydet
 	p.add_gold(500)
@@ -6612,7 +6741,7 @@ func _test_tutorial_hints() -> void:
 	check(moved and g.moved >= TutorialGuide.MOVE_DISTANCE, "yürüyünce HAREKET tamamlandı (%.0f px)" % g.moved)
 	check(hint.is_done_flashing(), "tamamlanınca tik/yeşil geçiş")
 	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_JUMP, 5.0), "ardından ZIPLAMA ipucu")
-	check(hint.title == "ZIPLAMA" and _hint_keys(hint) == ["W", "SPACE"], "ZIPLAMA: W ve SPACE (%s)" % str(_hint_keys(hint)))
+	check(hint.title == "ZIPLAMA" and _hint_keys(hint) == ["SPACE"], "ZIPLAMA: yalnız SPACE (W artık yukarı nişan) (%s)" % str(_hint_keys(hint)))
 	# Zıplama (gerçek zıplama)
 	await get_tree().physics_frame
 	p.intent.jump_pressed = true
@@ -6641,6 +6770,16 @@ func _test_tutorial_hints() -> void:
 	p.intent.attack_pressed = true
 	await _frames(25)
 	check(g.attacks == 3 and g.done.has("attack"), "3 vuruşta SALDIRI tamamlandı")
+	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_SLING, 5.0), "ardından SAPAN ipucu")
+	check(hint.title == "SAPAN" and _hint_keys(hint) == ["I"], "SAPAN: I tuşu (%s)" % str(_hint_keys(hint)))
+	await _frames(40)
+	p.intent.attack_pressed = true  # J (kılıç) sapan adımını tamamlamaz
+	await _frames(25)
+	check(not g.done.has("sling"), "kılıç vuruşu SAPAN adımını tamamlamaz")
+	p.facing = 1
+	p.intent.attack2_pressed = true
+	await _frames(6)
+	check(g.done.has("sling"), "I ile taş atınca SAPAN tamamlandı")
 	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_GO, 5.0), "ardından İLERLE ipucu")
 	check(_hint_keys(hint) == ["D"] and _hint_text(hint).contains("DÜKKÂN"), "İLERLE: D tuşu, tezgâh hatırlatması (%s)" % str(_hint_keys(hint)))
 	check(not g.finished_flag and not g.done.has("parry"), "savaş dersleri bekliyor: öğretici henüz bitmedi")
@@ -6844,7 +6983,7 @@ func _test_tutorial_view() -> void:
 	var hint := TutorialHint.new()
 	_world.add_child(hint)
 	await _frames(2)
-	var ids := [Tutorial.STEP_MOVE, Tutorial.STEP_JUMP, Tutorial.STEP_DASH, Tutorial.STEP_ATTACK, Tutorial.STEP_GO, Tutorial.STEP_PARRY, Tutorial.STEP_PARRY_SHOT, Tutorial.STEP_PARRY_MISS, Tutorial.STEP_STRIKE, Tutorial.STEP_RED]
+	var ids := [Tutorial.STEP_MOVE, Tutorial.STEP_JUMP, Tutorial.STEP_DASH, Tutorial.STEP_ATTACK, Tutorial.STEP_SLING, Tutorial.STEP_GO, Tutorial.STEP_PARRY, Tutorial.STEP_PARRY_SHOT, Tutorial.STEP_PARRY_MISS, Tutorial.STEP_STRIKE, Tutorial.STEP_RED]
 	var complete := true
 	var fits := true
 	var worst := 0.0
@@ -6929,6 +7068,8 @@ func _test_tutorial_real_parry() -> void:
 	check(await _wait_until_real(func() -> bool: return g.active == Tutorial.STEP_STRIKE, 5.0), "tikten sonra 'VUR' ipucu")
 	# Gerçek vuruş
 	p.global_position.x = taurus.global_position.x - 50.0
+	taurus.stun(1.5)  # tik animasyonu gerçek zamanla aktı; sersemlik süresi sınırda kalmasın
+	g._strike_t = TutorialGuide.STRIKE_TIME  # ipucu süresi de gerçek zamanlı: yavaş makinede dolmasın
 	await _frames(3)
 	p.intent.attack_pressed = true
 	var hit := await _wait_until(func() -> bool: return g.done.has("strike"), 40)
@@ -8013,3 +8154,741 @@ func _test_umbra_room() -> void:
 	check(boss_room.floor_exit.is_open(), "kat geçidi açıldı")
 	run.queue_free()
 	await _frames(2)
+
+
+# ------------------------------------------------------------------ silah sistemi
+
+func _test_weapon_db() -> void:
+	await _new_world("Silah verisi: kılıç / yumruk / sapan, 5 seviye")
+	check(WeaponDB.ids() == ["sword", "fist", "sling"], "3 silah: kılıç, yumruk, sapan")
+	var all_ok := true
+	for id in WeaponDB.ids():
+		if WeaponDB.max_level(id) != 5 or WeaponDB.display_name(id) == "" or WeaponDB.description(id) == "":
+			all_ok = false
+	check(all_ok, "her silahın 5 seviyesi, adı ve açıklaması var")
+	check(WeaponDB.combo("sword", 1).size() == 3 and WeaponDB.combo("fist", 1).size() == 4, "kombo uzunluğu: kılıç 3, yumruk 4")
+	check(WeaponDB.combo("sling", 1).is_empty() and WeaponDB.shot("sword", 1).is_empty(), "tür ayrımı: sapanın kombosu, kılıcın atışı yok")
+	var rising := true
+	for id in ["sword", "fist"]:
+		var prev := 0
+		for lv in range(1, 6):
+			var tot := WeaponDB.combo_damage(id, lv)
+			if tot <= prev:
+				rising = false
+			prev = tot
+	check(rising, "toplam kombo hasarı her seviyede artar")
+	check(WeaponDB.combo_damage("sword", 1) == 4 and WeaponDB.combo_damage("sword", 5) == 12, "kılıç 4 -> 12 hasar")
+	check(WeaponDB.combo_damage("fist", 1) == 5 and WeaponDB.combo_damage("fist", 5) == 12, "yumruk 5 -> 12 hasar")
+	var c3 := WeaponDB.combo("sword", 3)
+	check(is_equal_approx(float(c3[0]["reach"]), 48.0), "kılıç 3. seviye: menzil %20 uzun (48)")
+	var c4 := WeaponDB.combo("sword", 4)
+	check(is_equal_approx(float(c4[0]["startup"]), 0.05 / 1.15), "kılıç 4. seviye: hazırlık kısa (hız +%15)")
+	check(is_equal_approx(float(WeaponDB.combo("sword", 5)[0]["knock"]), 1.3), "kılıç 5. seviye: geri itme x1.3")
+	check(float(WeaponDB.combo("fist", 1)[0]["reach"]) < float(WeaponDB.combo("sword", 1)[0]["reach"]), "yumruk kılıçtan kısa menzilli")
+	var s1 := WeaponDB.shot("sling", 1)
+	var s4 := WeaponDB.shot("sling", 4)
+	var s5 := WeaponDB.shot("sling", 5)
+	check(float(s1["damage"]) == 1.0 and float(s1["cooldown"]) == 0.5 and int(s1["pierce"]) == 0 and int(s1["count"]) == 1, "sapan 1. seviye: 1 hasar, 0.5 sn, delmez, tek taş")
+	check(int(s4["pierce"]) == 1 and int(s5["count"]) == 2 and float(s5["cooldown"]) < float(s1["cooldown"]), "sapan 4: deler, 5: çift taş ve daha sık")
+	check(WeaponDB.upgrade_cost("sword", 2) == 30 and WeaponDB.upgrade_cost("sword", 5) == 140, "yükseltme bedeli 30 .. 140")
+	check(WeaponDB.upgrade_cost("sword", 1) == -1 and WeaponDB.upgrade_cost("sword", 6) == -1 and WeaponDB.upgrade_cost("yok", 2) == -1, "geçersiz seviye -1")
+	check(WeaponDB.unlock_price("fist") == 45 and WeaponDB.unlock_price("sword") == 0 and WeaponDB.is_starter("sling"), "yumruk 45 altın; kılıç/sapan başlangıç silahı")
+	check(WeaponDB.upgrade_name("sling", 4) == "DELİCİ TAŞ" and WeaponDB.upgrade_name("sling", 1) == "", "yükseltme adları")
+	check(WeaponDB.level_text("sword", 3) == "SEVİYE 3" and WeaponDB.level_text("sword", 5).contains("EN ÜST"), "seviye metni")
+	var lines := WeaponDB.stat_lines("sword", 3)
+	check(lines[0].contains("2-2-3") and lines[0].contains("TOPLAM 7") and lines.any(func(l: String) -> bool: return l.contains("MENZİL")), "özet satırları (%s)" % str(lines))
+	var it := WeaponDB.display_item("fist", 2)
+	check(it.slot == ItemData.Slot.WEAPON and not it.is_equippable() and it.id == "weapon_fist" and it.color() == WeaponDB.color("fist"), "gösterim eşyası: silah slotu, takılmaz, silah rengi")
+	check(it.description.contains(WeaponDB.description("fist")) and ItemDB.get_item("weapon_fist") == null, "açıklama silah metni; ItemDB'ye karışmaz")
+	check(ItemDB.get_item("super_scope") != null and ItemDB.get_item("super_scope").rarity != ItemData.Rarity.EPIC, "Süperteknolojik Nişangâh tanımlı, Efsanevi değil (dükkâna düşebilir)")
+
+
+func _test_weapon_loadout() -> void:
+	await _new_world("Silah donanımı: slotlar, kazanma, yükseltme, kayıt")
+	var l := WeaponLoadout.new()
+	check(l.weapon_in(0) == "sword" and l.weapon_in(1) == "sling" and l.weapon_in(2) == "", "başlangıç: J kılıç, I sapan")
+	check(l.owned_ids() == ["sword", "sling"] and l.reserve_ids().is_empty() and l.level_of("sword") == 1 and l.level_of("fist") == 0, "iki silah sahipli, yedek yok")
+	check(l.grant("fist") == "" and l.weapon_in(0) == "fist" and l.weapon_in(1) == "sling" and l.reserve_ids() == ["sword"], "yumruk alınınca aynı türün (kılıç) yerine takıldı, kılıç yedekte")
+	check(l.grant("fist") == "ZATEN VAR" and l.grant("yok") != "", "tekrar alınamaz, olmayan silah reddedilir")
+	check(l.equip(1, "sword") == "" and l.weapon_in(1) == "sword" and l.reserve_ids() == ["sling"], "kılıç I slotuna: sapan yedeğe")
+	check(l.equip(0, "sword") == "" and l.weapon_in(0) == "sword" and l.weapon_in(1) == "fist", "öbür slottaki silah seçilince iki slot yer değiştirir")
+	check(l.equip(0, "sling") == "" and l.slot_of("sling") == 0, "sapan J slotunda da çalışır (Cuphead gibi)")
+	check(l.equip(5, "sword") != "" and not l.owns("yok") and l.equip(0, "yok") != "", "geçersiz slot / silah reddedilir")
+	l.reset()
+	check(l.cycle(0, 1) == "" and l.weapon_in(0) == "sling" and l.weapon_in(1) == "sword", "döndürme: bir sonraki silah (öbür slotta olduğu için yer değiştirdi)")
+	check(l.upgrade("sword") == "" and l.level_of("sword") == 2 and l.upgrade("fist") != "", "yükseltme: sahip olunana evet, olmayana hayır")
+	for i in 5:
+		l.upgrade("sword")
+	check(l.level_of("sword") == 5 and not l.can_upgrade("sword") and l.upgrade("sword") == "EN ÜST SEVİYE", "5. seviyede durur")
+	var n := [0]
+	l.changed.connect(func() -> void: n[0] += 1)
+	l.grant("fist")
+	l.swap_slots()
+	check(n[0] == 2, "her değişiklik changed yayar")
+	var d := l.to_dict()
+	var j := JSON.parse_string(JSON.stringify(d)) as Dictionary
+	var l2 := WeaponLoadout.new()
+	l2.from_dict(j)
+	check(l2.slots == l.slots and l2.levels == l.levels and l2.level_of("sword") == 5, "JSON kayıt gidiş-dönüş aynı")
+	l2.from_dict({})
+	check(l2.slots == ["sword", "sling"] and l2.owned_ids() == ["sword", "sling"], "boş/eski kayıt: başlangıç silahları")
+	l2.from_dict({"slots": ["fist", "fist"], "levels": {"fist": 9, "uzay": 3}})
+	check(l2.weapon_in(0) == "fist" and l2.weapon_in(1) != "fist" and l2.weapon_in(1) != "" and l2.level_of("fist") == 5 and not l2.owns("uzay") and l2.owns("sword"), "bozuk kayıt: seviye sınırlanır, yinelenen slot ve bilinmeyen silah düzeltilir")
+
+
+func _test_aiming() -> void:
+	await _new_world("Nişan: 8 yön, hedef seçimi, önden hedefleme")
+	var r := Aiming.DIAG
+	check(Aiming.manual(0, 0, 1, true) == Vector2(1, 0) and Aiming.manual(0, 0, -1, true) == Vector2(-1, 0), "tuşsuz: baktığın yön")
+	check(Aiming.manual(-1, 0, 1, true) == Vector2(-1, 0), "yatay tuş bakıştan önceliklidir")
+	check(Aiming.manual(0, -1, 1, true) == Vector2(0, -1), "yukarı: dik yukarı")
+	check(Aiming.manual(1, -1, -1, true).is_equal_approx(Vector2(r, -r)) and Aiming.manual(-1, -1, 1, false).is_equal_approx(Vector2(-r, -r)), "yatay + yukarı: çapraz")
+	check(Aiming.manual(0, 1, 1, true) == Vector2(1, 0) and Aiming.manual(1, 1, 1, true) == Vector2(1, 0), "yerde aşağı tuşu etkisiz")
+	check(Aiming.manual(0, 1, 1, false) == Vector2(0, 1) and Aiming.manual(-1, 1, 1, false).is_equal_approx(Vector2(-r, r)), "havada aşağı: dik / çapraz aşağı")
+	var mk := func(x: float, y: float) -> Node2D:
+		var n := Node2D.new()
+		_world.add_child(n)
+		n.global_position = Vector2(x, y)
+		return n
+	var near_back: Node2D = mk.call(100.0, 600.0)  # arkada, 200 px
+	var far_front: Node2D = mk.call(500.0, 600.0)  # önde, 200 px
+	var origin := Vector2(300.0, 600.0)
+	check(Aiming.pick_target(origin, 1, [near_back, far_front]) == far_front, "eşit mesafede öndeki seçilir")
+	check(Aiming.pick_target(origin, -1, [near_back, far_front]) == near_back, "sola bakarken soldaki seçilir")
+	var out: Node2D = mk.call(1500.0, 600.0)
+	check(Aiming.pick_target(origin, 1, [out]) == null, "menzil dışı seçilmez")
+	var dead_e := TAURUS.instantiate() as Taurus
+	_world.add_child(dead_e)
+	dead_e.global_position = Vector2(350.0, 612.0)
+	dead_e.dead = true
+	check(Aiming.pick_target(origin, 1, [dead_e, far_front]) == far_front, "ölü düşman seçilmez")
+	check(Aiming.pick_target(origin, 1, [far_front], Aiming.AUTO_RANGE, func(_n: Node2D) -> bool: return false) == null, "görüş denetimi reddederse seçilmez")
+	check(Aiming.pick_target(origin, 1, []) == null, "düşman yok: null")
+	check(Aiming.lead(Vector2.ZERO, Vector2(400, 0), Vector2.ZERO, 880.0).is_equal_approx(Vector2.RIGHT), "duran hedef: doğrudan")
+	var vel := Vector2(0.0, -200.0)
+	var dir := Aiming.lead(Vector2.ZERO, Vector2(500, 0), vel, 880.0)
+	var best := INF
+	for i in range(1, 120):
+		var t := float(i) * 0.01
+		best = minf(best, (dir * 880.0 * t).distance_to(Vector2(500, 0) + vel * t))
+	check(dir.y < -0.1 and best < 12.0, "hareketli hedefin önüne atar (en yakın geçiş %.1f px)" % best)
+
+
+func _test_weapon_input() -> void:
+	await _new_world("Silah tuşları: I ikinci slot, Tab envanter, W/S nişan, zıplama yalnız Space")
+	var has_key := func(action: String, code: Key) -> bool:
+		for e in InputMap.action_get_events(action):
+			var k := e as InputEventKey
+			if k != null and k.physical_keycode == code:
+				return true
+		return false
+	check(has_key.call("attack2", KEY_I) and not has_key.call("inventory", KEY_I) and has_key.call("inventory", KEY_TAB), "I = ikinci silah, Tab = envanter")
+	check(has_key.call("jump", KEY_SPACE) and not has_key.call("jump", KEY_W) and not has_key.call("jump", KEY_UP), "zıplama Space; W/↑ zıplatmaz")
+	check(has_key.call("aim_up", KEY_W) and has_key.call("aim_up", KEY_UP) and has_key.call("aim_down", KEY_S) and has_key.call("aim_down", KEY_DOWN), "W/↑ yukarı, S/↓ aşağı nişan")
+	var p := PLAYER.instantiate() as Player
+	_world.add_child(p)
+	p.global_position = Vector2(300, 612)
+	Input.action_press("aim_up")
+	Input.action_press("attack2")
+	p._gather_intent()
+	check(p.intent.aim_y == -1.0 and p.intent.attack2_held, "girdi: yukarı nişan ve ikinci slot basılı okunur")
+	Input.action_release("aim_up")
+	Input.action_release("attack2")
+	Input.action_press("aim_down")
+	p._gather_intent()
+	check(p.intent.aim_y == 1.0 and not p.intent.attack2_held, "girdi: aşağı nişan")
+	Input.action_release("aim_down")
+
+
+func _weapon_target(x: float, y: float = 612.0, hp: int = 99) -> Taurus:
+	var b := TAURUS.instantiate() as Taurus
+	_world.add_child(b)
+	b.set_physics_process(false)
+	b.global_position = Vector2(x, y)
+	b.health = hp
+	return b
+
+
+func _test_fist() -> void:
+	await _new_world("Yumruk: hızlı dörtlü kombo, silah değişince kombo baştan")
+	var p := _spawn_player(300.0)
+	check(p.loadout.grant("fist") == "" and p.weapon_in(0) == "fist", "yumruk J slotunda")
+	var b := _weapon_target(360.0)
+	await _frames(20)
+	p.dash_charges = 0
+	var dmg_log: Array[int] = []
+	var anims: Array[String] = []
+	for hit in 4:
+		var hp_before := b.health
+		p.intent.attack_pressed = true
+		for i in 60:
+			await get_tree().physics_frame
+			if p.state == Player.State.ATTACK and anims.size() == hit:
+				anims.append(p.pick_animation())
+			if b.health < hp_before:
+				break
+		dmg_log.append(hp_before - b.health)
+		for i in 40:
+			await get_tree().physics_frame
+			if p.state != Player.State.ATTACK:
+				break
+	check(dmg_log == [1, 1, 1, 2], "yumruk kombosu 1-1-1-2 (%s)" % str(dmg_log))
+	check(anims == ["punch1", "punch2", "punch3", "punch4"], "animasyon adları punch1..4 (%s)" % str(anims))
+	await _frames(30)
+	p.loadout.equip(0, "sword")
+	p.intent.attack_pressed = true
+	await _frames(2)
+	check(p._attack_cur == 0 and p.pick_animation() == "attack1" and is_equal_approx(p.melee.position.x, 40.0), "kılıca geçince kombo baştan, kılıç menzili 40")
+	await _frames(60)
+	p.loadout.equip(0, "fist")
+	p.intent.attack_pressed = true
+	await _frames(2)
+	check(is_equal_approx(p.melee.position.x, 30.0), "yumruk menzili 30 (kılıçtan kısa)")
+
+
+func _test_sling() -> void:
+	await _new_world("Sapan: fırlatma, soğuma, tampon, yönler, duvar, delme, çift taş")
+	var p := _spawn_player(300.0)
+	var dirs: Array[Vector2] = []
+	p.ranged_started.connect(func(_s: int, d: Vector2) -> void: dirs.append(d))
+	var b := _weapon_target(900.0)
+	await _frames(20)
+	p.intent.attack2_pressed = true
+	await _frames(1)
+	check(p.state == Player.State.THROW and p.pick_animation() == "throw", "I: fırlatma durumu, 'throw' animasyonu")
+	var stones := func() -> Array:
+		return get_tree().get_nodes_in_group("projectiles").filter(func(n: Node) -> bool: return n is SlingStone and not n.is_queued_for_deletion())
+	await _wait_until(func() -> bool: return stones.call().size() == 1, 20)
+	var st: SlingStone = stones.call()[0]
+	check(st.faction == "player" and not st.parryable and st.velocity.is_equal_approx(Vector2(WeaponDB.SLING_SPEED, 0.0)), "taş: oyuncu tarafı, parry'lenmez, sağa 880 px/sn")
+	var hit := await _wait_until(func() -> bool: return b.health < 99, 120)
+	check(hit and b.health == 98, "taş düşmana 1 hasar verdi (%d)" % (99 - b.health))
+	await _frames(2)
+	check(stones.call().is_empty(), "taş çarpınca kayboldu")
+	# soğuma ve tampon: ilk fırlatmadan ~0.33 sn sonra bas, soğuma bitince kendiliğinden fırlar
+	var thrown := dirs.size()
+	await _wait_until(func() -> bool: return p.state != Player.State.THROW, 30)
+	p._weapon_cd["sling"] = 0.15  # soğumanın sonu yaklaşıyor (tampon süresi içinde)
+	p.intent.attack2_pressed = true
+	await _frames(1)
+	check(p.state != Player.State.THROW and dirs.size() == thrown, "soğuma sürerken fırlatmaz")
+	var buffered := await _wait_until(func() -> bool: return dirs.size() == thrown + 1, 40)
+	check(buffered, "basış tamponlandı, soğuma bitince fırlattı")
+	await _frames(60)
+	# basılı tutma: otomatik tekrar
+	b.health = 99
+	var before_hold := dirs.size()
+	p.intent.attack2_held = true
+	await _frames(125)
+	p.intent.attack2_held = false
+	var holds := dirs.size() - before_hold
+	check(holds >= 3 and holds <= 5, "basılı tutunca ~0.5 sn aralıkla tekrar eder (%d atış / ~2 sn)" % holds)
+	await _frames(60)
+	# yönler
+	var cases := [
+		["yukarı", 0.0, -1.0, Vector2(0, -1)],
+		["çapraz yukarı", 1.0, -1.0, Vector2(Aiming.DIAG, -Aiming.DIAG)],
+		["sola", -1.0, 0.0, Vector2(-1, 0)],
+	]
+	for c in cases:
+		p.intent.move_x = float(c[1])
+		p.intent.aim_y = float(c[2])
+		p.intent.attack2_pressed = true
+		var n0 := dirs.size()
+		await _wait_until(func() -> bool: return dirs.size() > n0, 5)
+		check(dirs.size() > n0 and dirs[dirs.size() - 1].is_equal_approx(c[3]), "yön: %s (%s)" % [c[0], str(dirs[dirs.size() - 1])])
+		p.intent.move_x = 0.0
+		p.intent.aim_y = 0.0
+		await _frames(50)
+	check(p.facing == -1, "sola atınca oyuncu sola döndü")
+	# havada aşağı
+	p.global_position = Vector2(1500.0, 300.0)
+	p.velocity = Vector2.ZERO
+	await _frames(4)
+	p.intent.aim_y = 1.0
+	p.intent.attack2_pressed = true
+	var n1 := dirs.size()
+	await _wait_until(func() -> bool: return dirs.size() > n1, 5)
+	check(dirs.size() > n1 and dirs[dirs.size() - 1].is_equal_approx(Vector2(0, 1)), "havada aşağı tuşu: dik aşağı")
+	p.intent.aim_y = 0.0
+	await _frames(120)
+	# duvar
+	for s in stones.call():
+		s.queue_free()
+	p.global_position = Vector2(300.0, 612.0)
+	p.facing = 1
+	p.velocity = Vector2.ZERO
+	var wall := StaticBody2D.new()
+	wall.collision_layer = Layers.WORLD
+	var ws := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = Vector2(40, 500)
+	ws.shape = rs
+	wall.add_child(ws)
+	_world.add_child(wall)
+	wall.global_position = Vector2(550.0, 400.0)
+	var b2 := _weapon_target(700.0)
+	await _frames(10)
+	p.intent.attack2_pressed = true
+	await _frames(90)
+	check(b2.health == 99 and stones.call().is_empty(), "taş duvara çarpınca durdu, arkadakine vurmadı")
+	wall.queue_free()
+	b2.queue_free()
+	b.queue_free()
+	await _frames(5)
+	# seviyeler: 4. seviye deler, 5. seviye çift taş
+	var f1 := _weapon_target(600.0)
+	var f2 := _weapon_target(760.0)
+	await _frames(10)
+	p.loadout.levels["sling"] = 1
+	p.intent.attack2_pressed = true
+	await _frames(70)
+	check(f1.health == 98 and f2.health == 99, "1. seviye: ilk düşmanda biter")
+	f1.health = 99
+	p.loadout.levels["sling"] = 4
+	p.intent.attack2_pressed = true
+	await _frames(70)
+	check(f1.health == 97 and f2.health == 97, "4. seviye: 2 hasar, ilk düşmanın içinden geçip ikincisine de vurur (%d, %d)" % [f1.health, f2.health])
+	p.loadout.levels["sling"] = 5
+	p.intent.attack2_pressed = true
+	await _wait_until(func() -> bool: return stones.call().size() >= 2, 20)
+	check(stones.call().size() == 2, "5. seviye: iki taş")
+	await _frames(70)
+	# parry sonrası güçlü atış
+	f1.health = 99
+	f2.health = 99
+	p.loadout.levels["sling"] = 1
+	p._empower_t = 1.5
+	await _frames(60)
+	p.intent.attack2_pressed = true
+	await _wait_until(func() -> bool: return f1.health < 99, 90)
+	check(f1.health == 97 and p._empower_t == 0.0, "parry sonrası ilk atış çift hasar, hak tüketildi (%d)" % (99 - f1.health))
+	await _frames(60)
+	# zaman durunca taş uçmaya devam eder
+	f1.health = 99
+	TimeStop.start(5.0)
+	p.intent.attack2_pressed = true
+	var flew := await _wait_until(func() -> bool: return f1.health < 99, 90)
+	TimeStop.stop()
+	check(flew, "zaman durmuşken sapan taşı uçar")
+
+
+func _test_auto_aim() -> void:
+	await _new_world("Süperteknolojik Nişangâh: otomatik hedef")
+	var p := _spawn_player(300.0)
+	var dirs: Array[Vector2] = []
+	p.ranged_started.connect(func(_s: int, d: Vector2) -> void: dirs.append(d))
+	var e := _weapon_target(800.0, 300.0)
+	await _frames(5)
+	check(p.aim_target == null and p.stats.value("auto_aim") == 0.0, "eşya yokken otomatik nişan kapalı")
+	p.intent.attack2_pressed = true
+	await _frames(5)
+	check(dirs.size() == 1 and dirs[0] == Vector2(1, 0), "eşyasız: düz öne")
+	await _frames(60)
+	p.inventory.give(_item("super_scope"))
+	p.inventory.equip(_item("super_scope"))
+	await _frames(3)
+	check(p.stats.value("auto_aim") > 0.0 and p.aim_target == e, "nişangâh takılı: hedef kilitlendi")
+	p.intent.attack2_pressed = true
+	await _frames(5)
+	var want := (e.global_position - (p.global_position + Vector2(0, -6))).normalized()
+	check(dirs.size() == 2 and dirs[1].dot(want) > 0.999 and dirs[1].y < -0.3, "atış hedefe doğru (yukarı-sağ çapraz)")
+	await _frames(60)
+	p.intent.aim_y = -1.0
+	p.intent.attack2_pressed = true
+	await _frames(5)
+	check(dirs.size() == 3 and dirs[2].is_equal_approx(Vector2(0, -1)), "yukarı tuşu otomatik nişanı geçersiz kılar (elle)")
+	p.intent.aim_y = 0.0
+	await _frames(60)
+	# arada duvar: hedef seçilmez
+	var wall := StaticBody2D.new()
+	wall.collision_layer = Layers.WORLD
+	var ws := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = Vector2(40, 900)
+	ws.shape = rs
+	wall.add_child(ws)
+	_world.add_child(wall)
+	wall.global_position = Vector2(550.0, 300.0)
+	await _frames(3)
+	check(p.aim_target == null, "araya duvar girince hedef seçilmez")
+	wall.queue_free()
+	await _frames(3)
+	check(p.aim_target == e, "duvar kalkınca yeniden kilitlenir")
+	e.dead = true
+	await _frames(2)
+	check(p.aim_target == null, "ölü düşman hedef olmaz")
+	p.loadout.equip(1, "fist") if p.loadout.owns("fist") else p.loadout.grant("fist", false)
+	p.loadout.slots = ["sword", "fist"] as Array[String]
+	e.dead = false
+	await _frames(2)
+	check(p.aim_target == null, "elde menzilli silah yoksa hedef aranmaz")
+
+
+func _test_weapon_save() -> void:
+	await _new_world("Silah kaydı: slotlar ve seviyeler kayda yazılır, eski kayıtta başlangıç silahları")
+	var p := _spawn_player(300.0)
+	await _frames(2)
+	var snap0 := RunSnapshot.capture_player(p)
+	var w0: Dictionary = snap0["weapons"]
+	check(w0["slots"] == ["sword", "sling"] and int(w0["levels"]["sword"]) == 1 and int(w0["levels"]["sling"]) == 1 and w0["levels"].size() == 2, "capture: varsayılan silahlar (J kılıç, I sapan, 1. seviye)")
+	check(p.loadout.grant("fist") == "" and p.loadout.upgrade("sword") == "" and p.loadout.upgrade("sword") == "" and p.loadout.upgrade("sling") == "", "yumruk alındı, kılıç 3, sapan 2. seviye")
+	check(p.loadout.equip(1, "sword") == "", "kılıç I slotuna")
+	var disk := _json_roundtrip(RunSnapshot.capture_player(p)) as Dictionary
+	check(disk["weapons"]["slots"] == ["fist", "sword"], "capture: slotlar yumruk/kılıç " + str(disk["weapons"]["slots"]))
+	var q := _spawn_player(500.0)
+	await _frames(2)
+	check(q.loadout.slots == ["sword", "sling"], "diğer oyuncu başlangıç donanımında")
+	RunSnapshot.apply_player(q, disk)
+	check(q.loadout.slots == ["fist", "sword"] and q.loadout.level_of("sword") == 3 and q.loadout.level_of("sling") == 2 and q.loadout.level_of("fist") == 1, "apply: slotlar ve seviyeler geri geldi")
+	check(q.weapon_in(0) == "fist" and q.weapon_in(1) == "sword" and q.loadout.reserve_ids() == ["sling"], "apply: sapan yedekte")
+	# Eski kayıt (silah sistemi öncesi): anahtar yok -> başlangıç silahları
+	RunSnapshot.apply_player(q, {"health": 3, "gold": 5})
+	check(q.loadout.slots == ["sword", "sling"] and q.loadout.owned_ids() == ["sword", "sling"] and q.loadout.level_of("sword") == 1, "eski kayıt: başlangıç silahlarına döner")
+	# Bozuk kayıt
+	RunSnapshot.apply_player(q, {"weapons": "bozuk"})
+	check(q.loadout.slots == ["sword", "sling"], "bozuk silah verisi: başlangıç silahları")
+	RunSnapshot.apply_player(q, {"weapons": {"slots": ["sling", "sling"], "levels": {"sling": 99, "sword": 0, "fist": "2"}}})
+	check(q.loadout.weapon_in(0) == "sling" and q.loadout.weapon_in(1) != "sling" and q.loadout.weapon_in(1) != "" and q.loadout.level_of("sling") == 5, "bozuk silah verisi: yinelenen slot ve seviye düzeltilir")
+	# Gerçek oyunda: yükleyince silah çalışır
+	RunSnapshot.apply_player(q, disk)
+	var swings: Array[int] = []
+	q.attack_started.connect(func(i: int) -> void: swings.append(i))
+	q.intent.attack_pressed = true
+	await _frames(3)
+	check(swings.size() == 1 and q.state == Player.State.ATTACK, "yüklenen yumruk J ile çalışır")
+
+
+func _test_inventory_weapons() -> void:
+	await _new_world("Envanterde silah kutuları: J/I, sıradaki silahı takma, yedek, gezinme, fare")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	var run := _start_run(73)
+	await _frames(5)
+	var p := run.player
+	var scr := run.hud.inventory_screen
+	scr._unhandled_input(_ui_key(KEY_TAB))
+	check(scr.is_open, "envanter açıldı")
+	var cells := {}
+	for i in scr.cell_count():
+		if scr._cells[i]["kind"] == "weapon":
+			cells[int(scr._cells[i]["idx"])] = i
+	check(cells.size() == 2 and cells.has(0) and cells.has(1), "iki silah kutusu (J, I)")
+	check(scr.cell_rect(cells[0]).get_center().x < scr.cell_rect(cells[1]).get_center().x and is_equal_approx(scr.cell_rect(cells[0]).get_center().y, scr.cell_rect(cells[1]).get_center().y), "J solda, I sağda, aynı hizada")
+	check(scr._first_cursor() < scr.cell_count() and scr._cells[scr._first_cursor()]["kind"] == "slot", "boş envanterde ilk imleç bir eşya slotunda (silah kutusunda değil)")
+	scr._cursor = cells[0]
+	var it0 := scr.cursor_item()
+	check(it0 != null and it0.id == "weapon_sword" and it0.slot == ItemData.Slot.WEAPON and it0.rarity_name() == "SEVİYE 1", "J kutusu: Kılıç, 'SEVİYE 1'")
+	scr._cursor = cells[1]
+	check(scr.cursor_item().id == "weapon_sling", "I kutusu: Sapan")
+	# yalnız iki silah: Enter slotları değiştirir
+	scr._cursor = cells[0]
+	check(scr.next_weapon(0) == "sling", "J için sıradaki silah sapan")
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(p.weapon_in(0) == "sling" and p.weapon_in(1) == "sword" and scr._msg == "J SLOTU  SAPAN" and scr._msg_good, "Enter: sapan J'ye geldi, kılıç I'ya geçti (%s)" % scr._msg)
+	check(scr.cursor_item().id == "weapon_sling", "kutu yeni silahı gösteriyor")
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(p.weapon_in(0) == "sword" and p.weapon_in(1) == "sling", "Enter yine: eski düzen")
+	# üç silah: sırayla döner, yedek silah yazılır
+	p.loadout.grant("fist", false)
+	p.loadout.upgrade("fist")
+	check(p.loadout.reserve_ids() == ["fist"], "yumruk alındı, yedekte")
+	scr._cursor = cells[0]
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(p.weapon_in(0) == "fist" and p.weapon_in(1) == "sling" and p.loadout.reserve_ids() == ["sword"], "J: kılıçtan yumruğa; kılıç yedeğe")
+	check(scr.cursor_item().id == "weapon_fist" and scr.cursor_item().rarity_name() == "SEVİYE 2", "kutu: Yumruk, SEVİYE 2")
+	check(scr.next_weapon(0) == "sling" and scr.next_weapon(1) == "sword", "sıradakiler: J için sapan, I için kılıç")
+	scr._cursor = cells[1]
+	scr._unhandled_input(_ui_key(KEY_ENTER))
+	check(p.weapon_in(1) == "sword" and p.loadout.reserve_ids() == ["sling"], "I: sapandan kılıca; sapan yedeğe")
+	# silahlar seviyelerini korur
+	check(p.loadout.level_of("fist") == 2 and p.loadout.level_of("sword") == 1, "seviyeler değişmedi")
+	# fare: tıklayınca da değişir
+	scr._gui_input(_mouse_click(scr.cell_rect(cells[0]).get_center()))
+	check(p.weapon_in(0) == "sling" and p.weapon_in(1) == "sword" and p.loadout.reserve_ids() == ["fist"], "fare tıklaması: J'ye sıradaki silah (sapan) geldi; yumruk yedeğe")
+	# gezinme: ayak slotundan silah kutularına, silah kutusundan bebek altına
+	var feet := -1
+	for i in scr.cell_count():
+		if scr._cells[i]["kind"] == "slot" and scr._cells[i]["slot"] == ItemData.Slot.FEET:
+			feet = i
+	scr._cursor = feet
+	scr._unhandled_input(_ui_key(KEY_LEFT))
+	check(scr.cursor_index() == cells[0], "ayaktan sola: J silah kutusu")
+	scr._cursor = feet
+	scr._unhandled_input(_ui_key(KEY_RIGHT))
+	check(scr.cursor_index() == cells[1], "ayaktan sağa: I silah kutusu")
+	# çizim hatasız (yedek satırı dahil)
+	scr.queue_redraw()
+	await _frames(3)
+	check(scr.is_open, "çizim çalıştı")
+	scr.close()
+	# tek silah varsa (bozuk kayıt dışında olmaz) değişim reddi: yük
+	var lone := WeaponLoadout.new()
+	lone.levels = {"sword": 1}
+	lone.slots = ["sword", ""] as Array[String]
+	check(lone.cycle(0, 1) != "", "tek silahla döndürme reddedilir")
+	run.queue_free()
+	await _frames(3)
+
+
+func _test_shop_weapons() -> void:
+	await _new_world("Dükkânda silah teklifleri: yeni silah, yükseltme, fiyat, doğrulama, kayıt, menü")
+	GameState.god_mode = false
+	TimeStop.reset()
+	ItemView.active_menu = null
+	# --- üretim
+	var lo := WeaponLoadout.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	check(not ShopStock.generate(rng, 1, [], []).has_weapon_offers(), "donanım verilmezse silah teklifi yok")
+	rng.seed = 7
+	var stock := ShopStock.generate(rng, 1, [], [], lo)
+	var wo: Array[ShopStock.Offer] = []
+	for o in stock.offers:
+		if o.is_weapon():
+			wo.append(o)
+	check(wo.size() == 3, "başlangıç donanımında 3 silah teklifi (kılıç ve sapan yükseltmesi, yumruk) (%d)" % wo.size())
+	check(wo[0].weapon_id == "sword" and wo[0].weapon_kind == ShopStock.WEAPON_UPGRADE and wo[0].to_level == 2 and wo[0].price == WeaponDB.upgrade_cost("sword", 2), "1. teklif: Kılıç 1 > 2, taban fiyat")
+	check(wo[1].weapon_id == "sling" and wo[1].weapon_kind == ShopStock.WEAPON_UPGRADE and wo[1].to_level == 2, "2. teklif: Sapan 1 > 2")
+	check(wo[2].weapon_id == "fist" and wo[2].weapon_kind == ShopStock.WEAPON_UNLOCK and wo[2].price == WeaponDB.unlock_price("fist"), "3. teklif: Yumruk satın alma")
+	check(wo[2].item.badge == "YENİ" and wo[0].item.badge == "+2" and wo[0].item.glyph() == "K" and wo[1].item.glyph() == "S", "kutu rozetleri: YENİ / +2, baş harfler K / S")
+	check(wo[0].item.rarity_name() == "KILIÇ  1 > 2" and wo[0].item.upper_name() == WeaponDB.upgrade_name("sword", 2), "yükseltme: ad = yükseltmenin adı, alt başlık 'KILIÇ  1 > 2'")
+	check(wo[0].item.description.contains("ŞİMDİ") and wo[0].item.description.contains("SONRA"), "açıklamada şimdiki ve yeni değerler")
+	var s5 := ShopStock.generate(rng, 5, [], [], lo)
+	var w5: Array[ShopStock.Offer] = []
+	for o in s5.offers:
+		if o.is_weapon():
+			w5.append(o)
+	check(w5[0].price == ShopStock.scaled_price(WeaponDB.upgrade_cost("sword", 2), 5) and w5[0].price > wo[0].price, "fiyat kata göre artar (kat 5: %d > %d)" % [w5[0].price, wo[0].price])
+	check(ShopStock.scaled_price(45, 1) == 45 and ShopStock.scaled_price(100, 6) == 160, "kat fiyat çarpanı: kat 1 aynı, kat 6 %60 pahalı")
+	# en üst seviye / sahip olunan: teklif yok
+	var maxed := WeaponLoadout.new()
+	maxed.grant("fist")
+	for id in ["sword", "fist", "sling"]:
+		while maxed.upgrade(id) == "":
+			pass
+	var s_max := ShopStock.generate(rng, 3, [], [], maxed)
+	check(not s_max.has_weapon_offers(), "bütün silahlar en üstteyse ve yumruk alındıysa silah teklifi yok")
+	var half := WeaponLoadout.new()
+	half.grant("fist")
+	var s_half := ShopStock.new()
+	s_half.add_weapon_offers(half, 1)
+	var half_kinds: Array = []
+	for o in s_half.offers:
+		half_kinds.append(o.weapon_kind)
+	check(s_half.size() == 3 and not (ShopStock.WEAPON_UNLOCK in half_kinds), "yumruk alınmışsa yeni silah teklifi yok; 3 yükseltme")
+	check(s_half.offers[0].weapon_id == "fist", "slottaki silahın yükseltmesi önce (J = yumruk)")
+	s_half.add_weapon_offers(half, 1)
+	check(s_half.size() == 3, "ikinci çağrı teklifleri çoğaltmaz")
+	# --- satın alma
+	var run := _start_run(82)
+	await _frames(5)
+	var p := run.player
+	var menu := run.hud.shop_menu
+	var shop := ShopStock.new()
+	shop.add_weapon_offers(p.loadout, 1)
+	shop._add(_item("tower_bread"), 1)
+	check(shop.size() == 4 and shop.offers[0].is_weapon() and not shop.offers[3].is_weapon(), "elle kurulan raf: 3 silah + 1 yemek")
+	p.gold = 10
+	check(shop.buy(p, 0) == "YETERLİ ALTIN YOK" and p.gold == 10 and p.loadout.level_of("sword") == 1 and not shop.offers[0].sold, "altın yetmezse reddedilir, altın düşmez, seviye aynı")
+	p.gold = 500
+	var purchases: Array = []
+	EventBus.item_purchased.connect(func(_a: Node, it: ItemData, pr: int) -> void: purchases.append([it.id, pr]))
+	check(shop.buy(p, 0) == "" and p.gold == 500 - shop.offers[0].price and p.loadout.level_of("sword") == 2 and shop.offers[0].sold, "Kılıç 2. seviyeye yükseldi, altın düştü, teklif satıldı")
+	check(purchases.size() == 1 and purchases[0][0] == "weapon_up_sword_2", "item_purchased sinyali silah teklifi için de yayıldı")
+	check(shop.buy(p, 0) == "SATILDI" and p.loadout.level_of("sword") == 2, "aynı teklif ikinci kez satılmaz")
+	# bayat teklif: seviye başka yoldan yükselmiş
+	var stale := ShopStock.new()
+	stale.add_weapon_offers(p.loadout, 1)  # kılıç 2 > 3, sapan 1 > 2, yumruk
+	p.loadout.upgrade("sling")
+	var g := p.gold
+	var sling_offer := -1
+	for i in stale.size():
+		if stale.offers[i].weapon_id == "sling":
+			sling_offer = i
+	check(sling_offer >= 0 and stale.buy(p, sling_offer) == "ZATEN YÜKSELTİLDİ" and p.gold == g and p.loadout.level_of("sling") == 2, "bayat teklif: seviye zaten yükselmişse reddedilir, altın düşmez")
+	# çanta doluyken de silah satın alınır
+	for i in Inventory.BAG_SIZE:
+		p.inventory.give(_dummy_item("dolgu_%d" % i))
+	check(not p.inventory.can_give(_item("tower_bread")), "çanta dolu")
+	var fist_i := -1
+	for i in stale.size():
+		if stale.offers[i].weapon_id == "fist":
+			fist_i = i
+	g = p.gold
+	check(stale.buy(p, fist_i) == "" and p.loadout.owns("fist") and p.weapon_in(0) == "fist" and p.loadout.reserve_ids().has("sword") and p.gold == g - stale.offers[fist_i].price, "yumruk satın alındı (çanta dolu olsa da): J'ye takıldı, kılıç yedekte")
+	check(stale.buy(p, fist_i) == "SATILDI", "yumruk ikinci kez satılmaz")
+	var again := ShopStock.new()
+	again._add_weapon("fist", ShopStock.WEAPON_UNLOCK, 1, 1)
+	check(again.buy(p, 0) == "ZATEN SAHİPSİN" and p.gold == g - stale.offers[fist_i].price, "sahip olunan silah yeniden satın alınmaz")
+	var lone := ShopStock.new()
+	lone._add_weapon("sling", ShopStock.WEAPON_UPGRADE, 5, 1)
+	check(lone.buy(p, 0) == "ÖNCE ÖNCEKİ SEVİYE", "atlanan seviye reddedilir (sapan 2 iken 5. seviye)")
+	p.dead = true
+	check(shop.buy(p, 1) == "ÖLÜSÜN", "ölüyken satın alınmaz")
+	p.dead = false
+	# --- kayıt
+	var saved := shop.to_array()
+	var disk := _json_roundtrip(saved) as Array
+	var back := ShopStock.from_array(disk)
+	check(back.size() == shop.size(), "kayıttan aynı sayıda teklif (%d/%d)" % [back.size(), shop.size()])
+	var same := true
+	for i in shop.size():
+		var a := shop.offers[i]
+		var b := back.offers[i]
+		if a.weapon_id != b.weapon_id or a.weapon_kind != b.weapon_kind or a.to_level != b.to_level or a.price != b.price or a.sold != b.sold or a.item.id != b.item.id:
+			same = false
+	check(same, "silah teklifleri (tür, seviye, fiyat, satıldı, kimlik) kayıttan aynen geri geldi")
+	var bad := ShopStock.from_array([{"id": "x", "weapon": "kılıç_yok", "kind": "upgrade", "level": 2}, {"id": "y", "weapon": "sword", "kind": "gizli", "level": 2}, {"id": "z", "weapon": "sword", "kind": "upgrade", "level": 1}, {"id": "w", "weapon": "sword", "kind": "upgrade", "level": 99, "price": "40"}])
+	check(bad.size() == 1 and bad.offers[0].to_level == WeaponDB.max_level("sword") and bad.offers[0].price == 40, "bozuk silah teklifleri atlanır, seviye sınırlanır")
+	var old := ShopStock.from_array([{"id": "tower_bread", "price": 9, "sold": false}])
+	check(old.size() == 1 and not old.has_weapon_offers(), "silah öncesi kayıt: teklif yok (koşu denetleyicisi ekler)")
+	old.add_weapon_offers(p.loadout, 2)
+	check(old.has_weapon_offers(), "eski rafa silah teklifleri eklenebilir")
+	# --- menü: üç satır, imleç, satın alma mesajları
+	var shop2 := ShopStock.new()
+	for id in ["watcher_band", "viper_fang", "mirror_boots"]:
+		shop2._add(_item(id), 1)
+	shop2._add(_item("tower_bread"), 1)
+	shop2._add(_item("baked_sweet_potato"), 1)
+	var fresh := WeaponLoadout.new()
+	p.loadout.reset()
+	shop2.add_weapon_offers(fresh, 1)
+	check(shop2.size() == 5 + 3, "menü rafı: 3 eşya + 2 yemek + 3 silah")
+	for i in Inventory.BAG_SIZE:
+		p.inventory.take_from_bag("dolgu_%d" % i)
+	p.gold = 400
+	check(menu.open_shop(p, shop2) and menu.cell_count() == 8, "menü açıldı, 8 kutu")
+	var inside := true
+	var overlap := false
+	for i in menu.cell_count():
+		var r := menu.cell_rect(i)
+		if not ShopMenu.PANEL.encloses(r) or r.intersects(ShopMenu.DETAIL):
+			inside = false
+		for j in range(i + 1, menu.cell_count()):
+			if r.intersects(menu.cell_rect(j)):
+				overlap = true
+	check(inside and not overlap, "8 kutu panelin içinde, ayrıntı paneline taşmıyor, birbirine binmiyor")
+	var ys := {}
+	for i in menu.cell_count():
+		ys[snappedf(menu.cell_rect(i).position.y, 1.0)] = true
+	check(ys.size() == 3, "üç satır: eşya, yemek, silah (%d)" % ys.size())
+	check(menu.cell_rect(5).position.y > menu.cell_rect(3).position.y and menu.cell_rect(3).position.y > menu.cell_rect(0).position.y, "silah teklifleri en altta, yemekler ortada")
+	var price_bottom := menu.cell_rect(5).end.y + 22.0 + 10.0
+	check(price_bottom < ShopMenu.PANEL.end.y - 96.0 + 10.0, "son satırın fiyatı alttaki mesaj şeridine binmiyor (%.0f)" % price_bottom)
+	# gezinme: bütün kutulara ulaşılır
+	var reach := {0: true}
+	var queue := [0]
+	while not queue.is_empty():
+		var from: int = queue.pop_back()
+		for d: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			menu.focus(from)
+			menu._move_cursor(d)
+			if not reach.has(menu.cursor_index()):
+				reach[menu.cursor_index()] = true
+				queue.append(menu.cursor_index())
+	check(reach.size() == menu.cell_count(), "bütün kutulara yön tuşlarıyla ulaşılıyor (%d/%d)" % [reach.size(), menu.cell_count()])
+	# satın alma mesajları
+	menu.focus(5)
+	check(menu.cursor_offer().is_weapon() and menu.cursor_offer().weapon_id == "sword", "imleç Kılıç yükseltmesinde")
+	var g3 := p.gold
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu._msg == "YÜKSELDİ  KILIÇ  SEVİYE 2" and menu._msg_good and p.loadout.level_of("sword") == 2 and p.gold == g3 - shop2.offers[5].price, "mesaj: " + menu._msg)
+	menu.focus(7)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu._msg == "SATIN ALINDI  YUMRUK" and p.loadout.owns("fist") and p.weapon_in(0) == "fist", "mesaj: " + menu._msg)
+	menu.focus(5)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu._msg == "SATILDI" and not menu._msg_good, "satılan teklif: SATILDI")
+	p.gold = 0
+	menu.focus(6)
+	menu._unhandled_input(_ui_key(KEY_ENTER))
+	check(menu._msg == "YETERLİ ALTIN YOK" and p.loadout.level_of("sling") == 1, "altın yoksa yükseltme reddedilir: " + menu._msg)
+	menu.queue_redraw()
+	await _frames(3)
+	check(menu.is_open, "çizim çalıştı")
+	menu.close()
+	run.queue_free()
+	await _frames(2)
+
+
+func _test_umbra_homing() -> void:
+	await _new_world("Gölge'ye kalan Süperteknolojik Nişangâh: fırlattığı bıçaklar hafifçe yön değiştirir")
+	GameState.reset()
+	# --- saf mermi: yön takibi hızı değiştirmez, açıyı hedefe çevirir
+	var scene: PackedScene = load("res://combat/projectile.tscn")
+	var dummy := Node2D.new()
+	_world.add_child(dummy)
+	dummy.global_position = Vector2(900.0, 300.0)
+	var homing := scene.instantiate() as Projectile
+	_world.add_child(homing)
+	homing.global_position = Vector2(100.0, 520.0)
+	homing.set_faction("enemy")
+	homing.launch(Vector2(500.0, 0.0), true, null, 1)
+	homing.homing_target = dummy
+	homing.homing_turn = 0.8
+	var plain := scene.instantiate() as Projectile
+	_world.add_child(plain)
+	plain.global_position = Vector2(100.0, 560.0)
+	plain.set_faction("enemy")
+	plain.launch(Vector2(500.0, 0.0), true, null, 1)
+	await _frames(30)
+	check(homing.velocity.y < -20.0 and absf(homing.velocity.length() - 500.0) < 1.0, "takipli mermi hedefe (yukarı) döndü, hızı aynı (%s)" % str(homing.velocity))
+	check(absf(homing.velocity.angle()) <= 0.8 * 0.55 + 0.05, "yarım saniyede ~0.4 radyanı geçmedi (%.2f)" % homing.velocity.angle())
+	check(is_equal_approx(plain.velocity.y, 0.0) and is_equal_approx(plain.velocity.x, 500.0), "takipsiz mermi dümdüz")
+	# hedef arkada kalınca dönmez
+	var away := scene.instantiate() as Projectile
+	_world.add_child(away)
+	away.global_position = Vector2(1200.0, 520.0)
+	away.set_faction("enemy")
+	away.launch(Vector2(500.0, 0.0), true, null, 1)
+	away.homing_target = dummy
+	away.homing_turn = 0.8
+	await _frames(10)
+	check(is_equal_approx(away.velocity.y, 0.0), "hedef arkada kalınca dönmüyor")
+	# parry'lenince takip biter
+	var shooter := Node2D.new()
+	_world.add_child(shooter)
+	shooter.global_position = Vector2(100.0, 520.0)
+	var parried := scene.instantiate() as Projectile
+	_world.add_child(parried)
+	parried.global_position = Vector2(500.0, 520.0)
+	parried.set_faction("enemy")
+	parried.launch(Vector2(500.0, 0.0), true, shooter, 1)
+	parried.homing_target = dummy
+	parried.homing_turn = 0.8
+	parried._on_parried(dummy)
+	check(parried.homing_turn == 0.0 and parried.homing_target == null and parried.faction == "player", "parry'lenen bıçak takibi bırakır")
+	homing.queue_free()
+	plain.queue_free()
+	away.queue_free()
+	parried.queue_free()
+	await _frames(2)
+	# --- Gölge: eşya yoksa takip yok, varsa elle fırlatılan bıçaklarda var
+	var p := _spawn_player(300.0)
+	p.health = 999
+	var u := _spawn_umbra(800.0, 2)
+	u.red_override = 0
+	await _frames(10)
+	u.force_move(UM.THROW)
+	await _wait_until(func() -> bool: return u._own_projectiles() >= 1, 120)
+	var k0: Projectile = _umbra_knives(u)[0]
+	check(k0.homing_turn == 0.0 and k0.homing_target == null, "Nişangâh yokken bıçak takipsiz")
+	for k in _umbra_knives(u):
+		k.queue_free()
+	await _frames(3)
+	GameState.leave_behind(_item("super_scope"))
+	check(GameState.umbra_has("super_scope"), "Nişangâh Gölge'ye kaldı")
+	await _wait_until(func() -> bool: return u.current_move == UmbraKit.Move.NONE, 200)
+	u.force_move(UM.THROW)
+	await _wait_until(func() -> bool: return u._own_projectiles() >= 1, 160)
+	var k1: Projectile = _umbra_knives(u)[0]
+	check(k1.homing_turn > 0.0 and k1.homing_target == p, "Nişangâh varken fırlatılan bıçak oyuncuyu takip ediyor (%.2f)" % k1.homing_turn)
+	for k in _umbra_knives(u):
+		k.queue_free()
+	await _frames(2)
+	var rain := u._spawn_knife(Vector2(600.0, 100.0), Vector2(0.0, 900.0), false)
+	check(rain.homing_turn == 0.0, "yağmur / yer dalgası bıçağı takip etmez (elle fırlatılmaz)")
+	rain.queue_free()
+	GameState.reset()

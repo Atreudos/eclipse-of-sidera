@@ -1,11 +1,12 @@
 class_name InventoryScreen
 extends GameMenu
-## Envanter ekranı (I ya da Tab): karakter, takılı eşyalar (slotlar) ve çanta. Açıkken oyun durur.
+## Envanter ekranı (Tab): karakter, takılı eşyalar (slotlar) ve çanta. Açıkken oyun durur.
 ## Geçici ve idare eder: çizimlerin gelince görünüm yeniden yapılacak; mantık (slotlar, çanta) aynı kalır.
 ##
 ## Kontroller: yön tuşları / WASD / D-pad gezinir. Enter / Space / E / J ya da fare tıklaması işlem yapar:
 ## çantadaki eşya takılır (tek kapasiteli slot doluysa yer değiştirir), takılı eşya çıkar, yemek yenir.
-## Esc / I / Tab kapatır.
+## Ayak slotunun iki yanındaki SİLAH kutuları (J solda, I sağda): işlem, o slottaki silahı sahip olunan sıradaki silahla değiştirir
+## (öbür slottaki silah seçilirse iki slot yer değiştirir). Esc / Tab kapatır. (I artık ikinci silah slotudur: sapan.)
 ##
 ## Slot sayıları ItemData.SLOT_CAPACITY'den okunur: orada sayıyı değiştirmek ekranı da günceller.
 
@@ -17,6 +18,8 @@ const PANEL := Rect2(50.0, 28.0, 1180.0, 664.0)
 const DETAIL := Rect2(926.0, 92.0, 284.0, 500.0)
 const BAG_ORIGIN := Vector2(490.0, 118.0)
 const DOLL_CENTER := Vector2(262.0, 332.0)
+## Silah kutularının merkezleri (slot 0 = J, 1 = I): bebeğin altında, ayak slotunun iki yanı.
+const WEAPON_CENTERS: Array[Vector2] = [Vector2(118.0, 520.0), Vector2(406.0, 520.0)]
 ## Çantanın altındaki sayılar iki sütun: ikinci sütunun çanta sol kenarına uzaklığı ve yazı boyu.
 const STATS_X2 := 204.0
 const STATS_SIZE := 18
@@ -26,7 +29,7 @@ const SLOT_LABELS := {
 	S.HEAD: "KAFA", S.CHARM: "CHARM", S.ARMOR: "ZIRH", S.WRIST: "BİLEK", S.POCKET: "CEP", S.FEET: "AYAK",
 }
 
-## Tıklanabilir kutular: {"kind": "slot"|"bag", "slot": Slot (kind=slot), "idx": int, "rect": Rect2}
+## Tıklanabilir kutular: {"kind": "slot"|"bag"|"weapon", "slot": Slot (kind=slot), "idx": int (weapon: 0 = J, 1 = I), "rect": Rect2}
 var _cells: Array[Dictionary] = []
 ## Slot gruplarının üstündeki küçük başlıklar: {"text": String, "pos": Vector2}
 var _captions: Array[Dictionary] = []
@@ -60,6 +63,11 @@ func _build_cells() -> void:
 	for i in Inventory.BAG_SIZE:
 		var pos := BAG_ORIGIN + Vector2(i % BAG_COLUMNS, i / BAG_COLUMNS) * (CELL + GAP)
 		_cells.append({"kind": "bag", "slot": -1, "idx": i, "rect": Rect2(pos, Vector2(CELL, CELL))})
+	# Silahlar: ayak slotunun iki yanında (J solda, I sağda). Çantadan sonra eklenir: imleç başlangıcı ve çanta numaraları değişmez.
+	for w in WeaponDB.SLOT_COUNT:
+		var c := WEAPON_CENTERS[w]
+		_cells.append({"kind": "weapon", "slot": -1, "idx": w, "rect": Rect2(c - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))})
+		_captions.append({"text": "SİLAH  " + WeaponLoadout.key_of(w), "pos": Vector2(c.x, c.y - CELL * 0.5 - 12.0)})
 
 
 ## `n` kutuyu `center` etrafında ortalayarak yan yana (ya da alt alta) dizer.
@@ -100,16 +108,15 @@ func cursor_item() -> ItemData:
 	return _item_of(_cells[_cursor]) if is_open and not _cells.is_empty() else null
 
 
-## İlk imleç: dolu ilk çanta kutusu; çanta boşsa ilk takılı eşya; o da yoksa ilk kutu.
+## İlk imleç: dolu ilk çanta kutusu; çanta boşsa ilk takılı eşya; o da yoksa ilk kutu. (Silah kutuları hep doludur; sayılmaz.)
 func _first_cursor() -> int:
-	var inv := player.inventory
 	for i in _cells.size():
 		if _cells[i]["kind"] == "bag" and _item_of(_cells[i]) != null:
 			return i
 	for i in _cells.size():
-		if _item_of(_cells[i]) != null:
+		if _cells[i]["kind"] == "slot" and _item_of(_cells[i]) != null:
 			return i
-	return 0 if inv != null else 0
+	return 0
 
 
 ## İmleci verilen eşyanın bulunduğu kutuya götürür (önce çanta, sonra slotlar). Bulursa true.
@@ -126,6 +133,9 @@ func focus_item(item_id: String) -> bool:
 func _item_of(cell: Dictionary) -> ItemData:
 	var inv := player.inventory
 	var idx: int = cell["idx"]
+	if cell["kind"] == "weapon":
+		var id := player.weapon_in(idx)
+		return WeaponDB.display_item(id, player.loadout.level_of(id)) if id != "" else null
 	if cell["kind"] == "slot":
 		var list := inv.equipped_in(cell["slot"])
 		return list[idx] if idx < list.size() else null
@@ -251,6 +261,9 @@ func activate() -> void:
 	if not is_open or player == null or _cells.is_empty():
 		return
 	var cell := _cells[_cursor]
+	if cell["kind"] == "weapon":
+		_cycle_weapon(int(cell["idx"]))
+		return
 	var item := _item_of(cell)
 	if item == null:
 		_say("BOŞ", false)
@@ -277,6 +290,25 @@ func activate() -> void:
 		Sfx.play("equip", -3.0)
 
 
+## `slot`taki silahı sahip olunan sıradaki silahla değiştirir ("J SLOTU  YUMRUK").
+func _cycle_weapon(slot: int) -> void:
+	var reason := player.loadout.cycle(slot, 1)
+	if reason != "":
+		_say(reason, false)
+		Sfx.play("ui_deny", -4.0)
+		return
+	_say("%s SLOTU  %s" % [WeaponLoadout.key_of(slot), WeaponDB.display_name(player.weapon_in(slot))], true)
+	Sfx.play("equip", -3.0)
+
+
+## `slot`ta Enter'a basınca takılacak silah ("" = değiştirecek başka silah yok).
+func next_weapon(slot: int) -> String:
+	var owned := player.loadout.owned_ids()
+	if owned.size() < 2:
+		return ""
+	return owned[posmod(owned.find(player.weapon_in(slot)) + 1, owned.size())]
+
+
 # ---------------------------------------------------------------- çizim
 
 func _draw() -> void:
@@ -298,10 +330,12 @@ func _draw() -> void:
 	var hint := "Boş kutu."
 	if not _cells.is_empty() and _cells[_cursor]["kind"] == "slot":
 		hint = "%s slotu boş." % SLOT_LABELS.get(_cells[_cursor]["slot"], "")
+	elif not _cells.is_empty() and _cells[_cursor]["kind"] == "weapon":
+		hint = "Silah slotu boş."
 	ItemView.draw_detail(self, DETAIL, focused, hint)
 	_draw_action_hint(focused)
 	_draw_message(Vector2(PANEL.get_center().x, 644.0), MESSAGE_MAX_W)
-	GameFont.draw_centered(self, "YÖN TUŞLARI / WASD GEZİN     ENTER TAK / ÇIKAR / YE     ESC KAPAT", Vector2(_w() * 0.5, 676.0), 15, Color(ItemView.DIM, 0.85), false)
+	GameFont.draw_centered(self, "YÖN TUŞLARI / WASD GEZİN     ENTER TAK / ÇIKAR / YE / SİLAH DEĞİŞTİR     ESC KAPAT", Vector2(_w() * 0.5, 676.0), 15, Color(ItemView.DIM, 0.85), false)
 
 
 ## Karakter: sprite varsa onun ilk idle karesi, yoksa oyundaki yer tutucu kutunun 3 kat büyüğü.
@@ -356,6 +390,13 @@ func _draw_stats() -> void:
 	if not is_equal_approx(dmg_taken, 1.0):
 		GameFont.draw_runs_left(self, [["ALINAN HASAR  ", ItemView.DIM], ["%%%d" % roundi(dmg_taken * 100.0), GameFont.WHITE]], Vector2(x, y), STATS_SIZE)
 		y += step
+	var reserve := p.loadout.reserve_ids() if p.loadout != null else []
+	if not reserve.is_empty():
+		var parts: Array[String] = []
+		for id in reserve:
+			parts.append("%s %d" % [WeaponDB.display_name(id), p.loadout.level_of(id)])
+		GameFont.draw_runs_left(self, [["YEDEK SİLAH  ", ItemView.DIM], [", ".join(parts), GameFont.WHITE]], Vector2(x, y), STATS_SIZE)
+		y += step
 	var text_w := DETAIL.position.x - 16.0 - x
 	for tag in p.inventory.active_synergies():
 		GameFont.draw_runs_left(self, [["SİNERJİ  ", ItemView.DIM], [str(tag), GameFont.YELLOW]], Vector2(x, y), 17)
@@ -376,4 +417,9 @@ func _draw_action_hint(item: ItemData) -> void:
 	var text := "ENTER  ÇIKAR"
 	if _cells[_cursor]["kind"] == "bag":
 		text = "ENTER  YE" if item.is_food() else "ENTER  TAK"
+	elif _cells[_cursor]["kind"] == "weapon":
+		var nxt := next_weapon(int(_cells[_cursor]["idx"]))
+		if nxt == "":
+			return
+		text = "ENTER  %s" % WeaponDB.display_name(nxt)
 	GameFont.draw_centered(self, text, Vector2(DETAIL.get_center().x, DETAIL.end.y + 22.0), 20, GameFont.YELLOW)

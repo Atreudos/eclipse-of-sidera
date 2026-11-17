@@ -20,14 +20,15 @@ var _body_bottom := 26.0
 var _visual: Node
 
 
-func setup(visual: Node, folder: String, spec: Dictionary, body_bottom: float) -> void:
+## `owner`: çizim listesindeki karakter adı ("sidera", "taurus"...); `<ad>_<hareket>.png` dosyaları bununla bulunur.
+func setup(visual: Node, folder: String, spec: Dictionary, body_bottom: float, owner: String = "") -> void:
 	_visual = visual
 	_spec = spec
 	_body_bottom = body_bottom
 	_placeholder = visual.get_node_or_null("Placeholder") as CanvasItem
-	if folder == "":
+	if folder == "" and owner == "":
 		return
-	var frames := SpriteSetLoader.build(folder, spec)
+	var frames := SpriteSetLoader.build(folder, spec, owner)
 	if frames != null:
 		use_frames(frames)
 

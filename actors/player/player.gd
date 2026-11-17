@@ -1,6 +1,6 @@
 class_name Player
 extends ActorBase
-## Oyuncu: koşma, zıplama, dash, 3'lü kombo, parry.
+## Oyuncu: koşma, zıplama, dash, parry ve iki silah slotu (J, I): yakın dövüş kombosu (kılıç/yumruk) ya da sapan (menzilli).
 ##
 ## HIZLI AYAR: Aşağıdaki BASE_STATS içindeki sayıları değiştirerek hissi ayarlayabilirsin.
 ## (Oyun içinde F3 ile açılan debug panelinden de bazılarını canlı değiştirebilirsin.)
@@ -22,8 +22,10 @@ signal gold_changed(total: int)
 signal jumped(air: bool)
 ## Bir saldırı başladı (combo_index: kombonun kaçıncı vuruşu, 0'dan). Öğretici dinler.
 signal attack_started(combo_index: int)
+## Menzilli silah (sapan) fırlatmaya başladı (slot: 0 = J, 1 = I; dir: nişan yönü). Öğretici dinler.
+signal ranged_started(slot: int, dir: Vector2)
 
-enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD }
+enum State { MOVE, DASH, ATTACK, PARRY, HURT, DEAD, THROW }
 
 ## Başarılı bir parry'den sonra bu süre (sn) içinde gelen altın saldırılar da parry'lenir (zincir).
 ## Aynı anda gelen iki saldırıyı yakalamayı mümkün kılar; Satürn'ün Kum Saati bunu kullanır.
@@ -68,6 +70,7 @@ const BASE_STATS := {
 	"hurt_iframes": 1.0,
 	"damage_taken": 1.0,     # alınan hasar çarpanı (Antika Muhafız Kaskı 0.85)
 	"knockback_mult": 1.0,   # vuruşlarının geri itme çarpanı (Yıldız Tozu Broşu)
+	"auto_aim": 0.0,         # > 0: sapan taşları menzildeki en yakın düşmana kendiliğinden yönelir (Süperteknolojik Nişangâh)
 	# --- kombo ---
 	"combo_window": 1.0,     # her vuruş/parry bu kadar saniye daha kombo süresi verir
 	# --- ritim (eşyalar bu çarpanları değiştirir) ---
@@ -75,12 +78,13 @@ const BASE_STATS := {
 	"rhythm_decay": 1.0,     # ritim düşüş hızı çarpanı
 }
 
-# Kombo: startup = hazırlık, active = vuruş açık, recovery = toparlanma (saniye)
-const ATTACKS := [
-	{"startup": 0.05, "active": 0.10, "recovery": 0.13, "dmg": 1.0, "size": Vector2(62, 46), "reach": 40.0, "lunge": 230.0},
-	{"startup": 0.05, "active": 0.10, "recovery": 0.13, "dmg": 1.0, "size": Vector2(66, 46), "reach": 42.0, "lunge": 250.0},
-	{"startup": 0.09, "active": 0.12, "recovery": 0.24, "dmg": 2.0, "size": Vector2(90, 56), "reach": 52.0, "lunge": 340.0},
-]
+## Sapan taşı sahnesi.
+const STONE := preload("res://combat/sling_stone.tscn")
+## Bekleyen (soğuma süren) menzilli silah tuşuna basılırsa, bu süre (sn) içinde soğuma bitince fırlatılır.
+const SLOT_BUFFER_TIME := 0.2
+
+# Kombo (vuruş süreleri, hasar, menzil) silah verisindedir: bkz. items/weapon_db.gd. Her vuruşta startup = hazırlık,
+# active = vuruş açık, recovery = toparlanma (saniye).
 
 # Animasyonlar (PNG'ler assets/sprites/sidera/ içine konunca otomatik kullanılır; bkz. docs/SPRITES.md).
 # fps: saniyedeki kare, loop: döngü, fallback: dosya yoksa yedek animasyon.
@@ -93,6 +97,13 @@ const ANIM_SPEC := {
 	"attack1": {"fps": 16.0, "loop": false, "fallback": "idle"},
 	"attack2": {"fps": 16.0, "loop": false, "fallback": "attack1"},
 	"attack3": {"fps": 16.0, "loop": false, "fallback": "attack2"},
+	"punch1": {"fps": 18.0, "loop": false, "fallback": "attack1"},
+	"punch2": {"fps": 18.0, "loop": false, "fallback": "punch1"},
+	"punch3": {"fps": 18.0, "loop": false, "fallback": "punch2"},
+	"punch4": {"fps": 16.0, "loop": false, "fallback": "punch3"},
+	"throw": {"fps": 16.0, "loop": false, "fallback": "attack1"},
+	"throw_up": {"fps": 16.0, "loop": false, "fallback": "throw"},
+	"throw_diag": {"fps": 16.0, "loop": false, "fallback": "throw"},
 	"parry": {"fps": 14.0, "loop": false, "fallback": "idle"},
 	"parry_fail": {"fps": 10.0, "loop": false, "fallback": "idle"},
 	"hurt": {"fps": 12.0, "loop": false, "fallback": "idle"},
@@ -127,6 +138,10 @@ var death_savers: Array[Callable] = []
 var statuses := {}
 ## Altın (mağazada harcanacak). Koşu bitince sıfırlanır.
 var gold := 0
+## Silahlar: iki slot (J, I), sahip olunanlar ve seviyeleri (WeaponLoadout).
+var loadout: WeaponLoadout
+## Otomatik nişanın kilitlendiği düşman (Süperteknolojik Nişangâh takılıysa; yoksa null). Üstünde hedef işareti çizilir.
+var aim_target: Node2D = null
 
 var _last_absorbed := 0
 
@@ -147,8 +162,23 @@ var _parry_recovering := false
 var _attack_t := 0.0
 var _attack_cur := 0
 var _attack_next := 0
-var _attack_queued := false
+## Saldırı/fırlatma sürerken tuşuna basılıp sıraya alınan slot (-1 = yok).
+var _queued_slot := -1
+## Kombonun silahı ve o silahın (seviyesine göre ölçeklenmiş) vuruş listesi.
+var _combo_weapon := ""
+var _combo_list: Array[Dictionary] = []
 var _combo_window_t := 0.0
+## Menzilli silahların kalan soğuma süresi ve ilk değeri (silah kimliğine göre: silahı slottan çıkarıp geri takmak soğumayı atlatmaz).
+var _weapon_cd := {}
+var _weapon_cd_max := {}
+## Soğuması süren menzilli silaha basışın kısa süreli tamponu (slot başına).
+var _slot_buffer: Array[float] = [0.0, 0.0]
+var _throw_t := 0.0
+var _throw_slot := 0
+var _throw_dir := Vector2.RIGHT
+var _throw_face := 1
+var _throw_released := false
+var _throw_shot := {}
 var _melee_empowered := false
 var _empower_t := 0.0
 
@@ -194,6 +224,7 @@ func _ready() -> void:
 	inventory = Inventory.new()
 	inventory.name = "Inventory"
 	add_child(inventory)
+	loadout = WeaponLoadout.new()
 
 
 # ---------------------------------------------------------------- giriş
@@ -205,6 +236,10 @@ func _gather_intent() -> void:
 	intent.dash_pressed = Input.is_action_just_pressed("dash")
 	intent.parry_pressed = Input.is_action_just_pressed("parry")
 	intent.attack_pressed = Input.is_action_just_pressed("attack")
+	intent.attack2_pressed = Input.is_action_just_pressed("attack2")
+	intent.attack_held = Input.is_action_pressed("attack")
+	intent.attack2_held = Input.is_action_pressed("attack2")
+	intent.aim_y = Input.get_axis("aim_up", "aim_down")
 	intent.interact_pressed = Input.is_action_just_pressed("interact")
 
 
@@ -215,9 +250,13 @@ func _physics_process(delta: float) -> void:
 		if input_locked:
 			intent.move_x = 0.0
 			intent.jump_held = false
+			intent.attack_held = false
+			intent.attack2_held = false
+			intent.aim_y = 0.0
 		else:
 			_gather_intent()
 	_tick_timers(delta)
+	_update_aim_target()
 	match state:
 		State.MOVE:
 			_state_move(delta)
@@ -231,6 +270,8 @@ func _physics_process(delta: float) -> void:
 			_state_hurt(delta)
 		State.DEAD:
 			_state_dead(delta)
+		State.THROW:
+			_state_throw(delta)
 	if _parry_chain_t > 0.0 and state != State.PARRY and not dead:
 		_try_parry_zone()  # başarılı parry'nin hemen ardından gelen altın saldırılar da parry'lenir
 	_sync_enemy_collision()
@@ -328,7 +369,9 @@ func pick_animation() -> String:
 		State.DASH:
 			return "dash"
 		State.ATTACK:
-			return "attack%d" % (_attack_cur + 1)
+			return "%s%d" % [WeaponDB.anim_prefix(_combo_weapon), _attack_cur + 1]
+		State.THROW:
+			return throw_animation()
 		State.PARRY:
 			return "parry_fail" if _parry_recovering else "parry"
 		State.HURT:
@@ -349,6 +392,14 @@ func _tick_timers(delta: float) -> void:
 	_parry_chain_t = maxf(_parry_chain_t - delta, 0.0)
 	_empower_t = maxf(_empower_t - delta, 0.0)
 	_combo_window_t = maxf(_combo_window_t - delta, 0.0)
+	for id in _weapon_cd.keys():
+		var left := maxf(float(_weapon_cd[id]) - delta, 0.0)
+		if left > 0.0:
+			_weapon_cd[id] = left
+		else:
+			_weapon_cd.erase(id)
+	for i in _slot_buffer.size():
+		_slot_buffer[i] = maxf(_slot_buffer[i] - delta, 0.0)
 	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
 	if intent.jump_pressed:
 		_jump_buffer = stats.value("jump_buffer")
@@ -428,8 +479,10 @@ func _handle_actions() -> void:
 		_start_dash()
 	elif intent.parry_pressed:
 		_start_parry()
-	elif intent.attack_pressed:
-		_start_attack()
+	else:
+		var slot := _wanted_slot(true)
+		if slot >= 0:
+			_use_slot(slot)
 
 
 # ---------------------------------------------------------------- dash
@@ -564,29 +617,116 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 	return true
 
 
-# ---------------------------------------------------------------- saldırı
+# ---------------------------------------------------------------- silahlar (slotlar)
 
-func _start_attack() -> void:
+## `slot`taki silahın kimliği ("sword", "fist", "sling"; boşsa "").
+func weapon_in(slot: int) -> String:
+	return loadout.weapon_in(slot) if loadout != null else ""
+
+
+## Slot tuşuna şu an basılabilir mi? (Menzilli silahta soğuma bitmiş olmalı; yakın silahta hep evet.)
+func _slot_usable(slot: int) -> bool:
+	var id := weapon_in(slot)
+	if id == "":
+		return false
+	if WeaponDB.is_ranged(id):
+		return float(_weapon_cd.get(id, 0.0)) <= 0.0
+	return true
+
+
+## Slottaki silahın soğuma durumu: 0 = hazır, 1 = az önce atıldı (HUD'da dolan halka/çubuk için). Yakın silahlar hep hazırdır.
+func weapon_cooldown_k(slot: int) -> float:
+	var id := weapon_in(slot)
+	var left := float(_weapon_cd.get(id, 0.0))
+	if left <= 0.0:
+		return 0.0
+	return clampf(left / maxf(float(_weapon_cd_max.get(id, left)), 0.001), 0.0, 1.0)
+
+
+## Bu karede hangi slotun kullanılmak istendiği (-1 = hiçbiri): önce yeni basışlar (J, sonra I), sonra soğuma bekleyen
+## tamponlanmış basışlar, en son (`include_held`) basılı tutulan menzilli silahlar. Soğuması süren menzilli silaha basış kısa
+## süre tamponlanır, soğuma bitince kendiliğinden fırlatılır.
+func _wanted_slot(include_held: bool) -> int:
+	for slot in WeaponDB.SLOT_COUNT:
+		var pressed := intent.attack_pressed if slot == 0 else intent.attack2_pressed
+		if not pressed:
+			continue
+		if _slot_usable(slot):
+			return slot
+		if weapon_in(slot) != "":
+			_slot_buffer[slot] = SLOT_BUFFER_TIME
+	for slot in WeaponDB.SLOT_COUNT:
+		if _slot_buffer[slot] > 0.0 and _slot_usable(slot):
+			_slot_buffer[slot] = 0.0
+			return slot
+	if include_held:
+		for slot in WeaponDB.SLOT_COUNT:
+			var held := intent.attack_held if slot == 0 else intent.attack2_held
+			if held and WeaponDB.is_ranged(weapon_in(slot)) and _slot_usable(slot):
+				return slot
+	return -1
+
+
+## Slottaki silahı kullanır: yakın silah kombo vuruşu, menzilli silah fırlatma.
+func _use_slot(slot: int) -> void:
+	var id := weapon_in(slot)
+	if id == "":
+		return
+	if WeaponDB.is_ranged(id):
+		_start_throw(slot)
+	else:
+		_start_attack(slot)
+
+
+## Slotlardan birinde menzilli silah (sapan) var mı?
+func has_ranged_weapon() -> bool:
+	for slot in WeaponDB.SLOT_COUNT:
+		if WeaponDB.is_ranged(weapon_in(slot)):
+			return true
+	return false
+
+
+# ---------------------------------------------------------------- yakın dövüş
+
+func _start_attack(slot: int = 0) -> void:
+	var id := weapon_in(slot)
+	if not WeaponDB.is_melee(id):
+		return
+	var list := WeaponDB.combo(id, loadout.level_of(id))
+	if list.is_empty():
+		return
+	if id != _combo_weapon or list.size() != _combo_list.size():
+		_combo_window_t = 0.0  # silah değişti: kombo baştan başlar
+	_combo_weapon = id
+	_combo_list = list
 	_attack_cur = _attack_next if _combo_window_t > 0.0 else 0
-	_attack_next = (_attack_cur + 1) % ATTACKS.size()
-	var a: Dictionary = ATTACKS[_attack_cur]
+	if _attack_cur >= _combo_list.size():
+		_attack_cur = 0
+	_attack_next = (_attack_cur + 1) % _combo_list.size()
+	var a: Dictionary = _combo_list[_attack_cur]
 	state = State.ATTACK
 	_attack_t = 0.0
-	_attack_queued = false
+	_queued_slot = -1
 	_combo_window_t = float(a["startup"]) + float(a["active"]) + float(a["recovery"]) + 0.25
 	(melee_shape.shape as RectangleShape2D).size = a["size"]
 	melee.position = Vector2(facing * float(a["reach"]), 0.0)
 	_melee_empowered = _empower_t > 0.0
 	var mult := stats.value("empower_mult") if _melee_empowered else 1.0
 	melee.damage = maxi(roundi(stats.value("attack_damage") * float(a["dmg"]) * mult), 1)
+	melee.knock_mult = float(a["knock"])
 	melee.active = false
-	anim.trigger("attack%d" % (_attack_cur + 1), float(a["startup"]) + float(a["active"]) + float(a["recovery"]))
-	Sfx.play("slash", -4.0, 1.0 + 0.08 * _attack_cur, 0.04)
+	anim.trigger("%s%d" % [WeaponDB.anim_prefix(id), _attack_cur + 1], float(a["startup"]) + float(a["active"]) + float(a["recovery"]))
+	var pitch := 1.0 + 0.08 * _attack_cur if id == WeaponDB.SWORD else 1.3 + 0.05 * _attack_cur
+	Sfx.play("slash", -4.0 if id == WeaponDB.SWORD else -7.0, pitch, 0.04)
 	attack_started.emit(_attack_cur)
 
 
 func _state_attack(delta: float) -> void:
-	var a: Dictionary = ATTACKS[_attack_cur]
+	if _attack_cur >= _combo_list.size():
+		melee.active = false
+		state = State.MOVE
+		return
+	var a: Dictionary = _combo_list[_attack_cur]
 	var startup: float = a["startup"]
 	var active_end: float = startup + float(a["active"])
 	var total: float = active_end + float(a["recovery"])
@@ -599,8 +739,13 @@ func _state_attack(delta: float) -> void:
 	var hit_on := _attack_t >= startup and _attack_t < active_end
 	if hit_on != melee.active:
 		melee.active = hit_on
-	if intent.attack_pressed:
-		_attack_queued = true
+	var wanted := _wanted_slot(false)
+	if wanted >= 0:
+		if WeaponDB.is_ranged(weapon_in(wanted)) and _attack_t >= active_end:
+			melee.active = false
+			_start_throw(wanted)  # vuruş bittikten sonra menzilli silaha geçiş (iptal)
+			return
+		_queued_slot = wanted
 	# iptal: dash her zaman (vuruş başladıktan sonra), parry vuruş bittikten sonra
 	if intent.dash_pressed and can_dash() and _attack_t >= startup:
 		melee.active = false
@@ -612,8 +757,10 @@ func _state_attack(delta: float) -> void:
 		return
 	if _attack_t >= total:
 		melee.active = false
-		if _attack_queued:
-			_start_attack()
+		var queued := _queued_slot
+		_queued_slot = -1
+		if queued >= 0 and _slot_usable(queued):
+			_use_slot(queued)
 		else:
 			state = State.MOVE
 
@@ -622,9 +769,126 @@ func _on_melee_landed(_target: Hurtbox) -> void:
 	if _melee_empowered:
 		_empower_t = 0.0
 		_melee_empowered = false
-	Hitstop.freeze(0.04 + 0.02 * _attack_cur)
-	EventBus.screen_shake.emit(3.0 + 2.0 * _attack_cur, 0.14)
-	EventBus.camera_kick.emit(Vector2(facing, 0.0), 3.5 + 2.5 * _attack_cur)
+	var weight := float(_attack_cur)
+	if _attack_cur < _combo_list.size():
+		weight = float(_combo_list[_attack_cur].get("weight", weight))
+	Hitstop.freeze(0.04 + 0.02 * weight)
+	EventBus.screen_shake.emit(3.0 + 2.0 * weight, 0.14)
+	EventBus.camera_kick.emit(Vector2(facing, 0.0), 3.5 + 2.5 * weight)
+
+
+# ---------------------------------------------------------------- menzilli (sapan)
+
+## Fırlatma animasyonunun adı: yukarı, çapraz ya da düz.
+func throw_animation() -> String:
+	if _throw_dir.y < -0.9:
+		return "throw_up"
+	if absf(_throw_dir.y) > 0.3:
+		return "throw_diag"
+	return "throw"
+
+
+## Taşın gideceği yön: nişangâh takılı ve hedef varsa (ve yukarı/aşağı tuşuna basılmıyorsa) hedefe doğru (hareketi de hesaba katarak),
+## yoksa elle nişan (8 yön).
+func aim_direction() -> Vector2:
+	if aim_target != null and is_instance_valid(aim_target) and absf(intent.aim_y) < 0.5:
+		var body := aim_target as CharacterBody2D
+		var vel := body.velocity if body != null else Vector2.ZERO
+		return Aiming.lead(global_position + Vector2(0.0, -6.0), aim_target.global_position, vel, WeaponDB.SLING_SPEED)
+	return Aiming.manual(intent.move_x, intent.aim_y, facing, is_on_floor())
+
+
+## Nişangâh için hedefi tazeler (her fizik karesi): yalnız `auto_aim` > 0 ve elde menzilli silah varsa çalışır.
+func _update_aim_target() -> void:
+	aim_target = null
+	if dead or loadout == null or stats.value("auto_aim") <= 0.0 or not has_ranged_weapon():
+		return
+	aim_target = Aiming.pick_target(global_position, facing, get_tree().get_nodes_in_group("enemies"), Aiming.AUTO_RANGE, _can_see)
+
+
+## Arada duvar yoksa true (taş duvara çarpacaksa nişangâh o düşmanı seçmez).
+func _can_see(n: Node2D) -> bool:
+	var query := PhysicsRayQueryParameters2D.create(global_position + Vector2(0.0, -6.0), n.global_position, Layers.WORLD)
+	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+
+
+func _start_throw(slot: int) -> void:
+	var id := weapon_in(slot)
+	if not WeaponDB.is_ranged(id) or float(_weapon_cd.get(id, 0.0)) > 0.0:
+		return
+	_throw_shot = WeaponDB.shot(id, loadout.level_of(id))
+	_throw_slot = slot
+	_throw_t = 0.0
+	_throw_released = false
+	_throw_dir = aim_direction()
+	if absf(_throw_dir.x) > 0.1:
+		facing = 1 if _throw_dir.x > 0.0 else -1
+	_throw_face = facing
+	_weapon_cd[id] = float(_throw_shot["cooldown"])
+	_weapon_cd_max[id] = float(_throw_shot["cooldown"])
+	_slot_buffer[slot] = 0.0
+	_queued_slot = -1
+	state = State.THROW
+	melee.active = false
+	anim.trigger(throw_animation(), float(_throw_shot["windup"]) + float(_throw_shot["recovery"]))
+	Sfx.play("slash", -10.0, 1.7, 0.05)
+	ranged_started.emit(slot, _throw_dir)
+
+
+func _state_throw(delta: float) -> void:
+	_throw_t += delta
+	_apply_horizontal(delta, 0.55)
+	facing = _throw_face
+	_apply_gravity(delta)
+	_handle_jump()
+	if not _throw_released and _throw_t >= float(_throw_shot["windup"]):
+		_release_stones()
+	if _throw_released:
+		# iptal: dash ve parry taş çıktıktan sonra her an; öbür silah slotu da (yakın silah vuruşu)
+		if intent.dash_pressed and can_dash():
+			_start_dash()
+			return
+		if intent.parry_pressed:
+			_start_parry()
+			return
+		var wanted := _wanted_slot(false)
+		if wanted >= 0 and wanted != _throw_slot:
+			_use_slot(wanted)
+			return
+	if _throw_t >= float(_throw_shot["windup"]) + float(_throw_shot["recovery"]):
+		state = State.MOVE
+
+
+## Taşları (seviyeye göre 1-2 tane) fırlatır. Parry sonrası "güçlü vuruş" hakkı ilk atışa geçer (tüketilir).
+func _release_stones() -> void:
+	_throw_released = true
+	var parent := get_parent()
+	if parent == null:
+		return
+	var shot := _throw_shot
+	var empowered := _empower_t > 0.0
+	var mult := 1.0
+	if empowered:
+		mult = stats.value("empower_mult")
+		_empower_t = 0.0
+	var dmg := maxi(roundi(stats.value("attack_damage") * float(shot["damage"]) * mult), 1)
+	var n: int = shot["count"]
+	var origin := global_position + Vector2(_throw_dir.x * 20.0, -6.0 + _throw_dir.y * 18.0)
+	for i in n:
+		var d := _throw_dir.rotated((float(i) - float(n - 1) * 0.5) * float(shot["spread"]))
+		var stone := STONE.instantiate() as SlingStone
+		parent.add_child(stone)
+		stone.global_position = origin
+		stone.empowered = empowered
+		stone.fire(d * float(shot["speed"]), dmg, self, int(shot["pierce"]), float(shot["lifetime"]))
+		stone.landed.connect(_on_stone_landed)
+	Sfx.play("shoot", -9.0, 1.5, 0.05)
+	RingFx.spawn(parent, origin, Color(1, 1, 1, 0.35), 3.0, 14.0, 0.12)
+
+
+func _on_stone_landed(_target: Hurtbox) -> void:
+	Hitstop.freeze(0.025)
+	EventBus.screen_shake.emit(1.6, 0.09)
 
 
 # ---------------------------------------------------------------- hasar / ölüm
@@ -839,3 +1103,26 @@ func _draw() -> void:
 		var size := (melee_shape.shape as RectangleShape2D).size
 		var color := Color(1.0, 0.9, 0.4, 0.6) if _melee_empowered else Color(1, 1, 1, 0.5)
 		draw_rect(Rect2(melee.position - size * 0.5, size), color)
+	_draw_aim()
+
+
+## Sapan nişanı: otomatik hedef varsa üstünde hedef işareti; yukarı/aşağı tuşuna basılıyorsa elle nişan yönünde küçük ok.
+func _draw_aim() -> void:
+	if loadout == null or dead or not has_ranged_weapon():
+		return
+	var manual := absf(intent.aim_y) > 0.5
+	if aim_target != null and is_instance_valid(aim_target) and not manual:
+		var pos := to_local(aim_target.global_position)
+		var t := Time.get_ticks_msec() / 1000.0
+		var c := Color(0.45, 1.0, 0.9, 0.9)
+		var r := 26.0 + 2.0 * sin(t * 7.0)
+		draw_arc(pos, r, 0.0, TAU, 32, c, 2.0)
+		for i in 4:
+			var d := Vector2.from_angle(float(i) * PI * 0.5 + t * 0.8)
+			draw_line(pos + d * (r - 7.0), pos + d * (r + 7.0), c, 2.0)
+		draw_circle(pos, 2.5, c)
+	elif manual:
+		var dir := Aiming.manual(intent.move_x, intent.aim_y, facing, is_on_floor())
+		var col := Color(0.72, 0.86, 0.45, 0.85)
+		draw_line(dir * 40.0, dir * 62.0, Color(col, 0.5), 2.0)
+		draw_circle(dir * 54.0, 4.0, col)

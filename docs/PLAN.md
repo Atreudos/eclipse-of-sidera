@@ -88,9 +88,20 @@ Oda gir → Düşmanları temizle (dash/parry/saldır) → 2 eşya çıkar
   - Umbra'nın eşya saldırısıysa: **eşya çalma ilerlemesi** kazanılır (bkz. 5.4).
 - **Parry'lenemez (kırmızı) saldırılar:** kaçman (dash) gerekir. Bu denge Cuphead pembe/normal ayrımı gibi çalışır.
 
-### 4.4 Saldırı
-- Ana silah: hızlı yakın dövüş (3'lü kombo) + menzilli zayıf alternatif (cooldown'lu).
-- Silahlar run başında seçilmez; eşyalar silahı değiştirir (basit tutmak için tek taban silah + modifikasyonlar).
+### 4.4 Silahlar (Cuphead gibi birden çok saldırı türü)
+Oyuncunun **iki silah slotu** vardır: **J** (birinci) ve **I** (ikinci). Silahlar envanter ekranında (`Tab`) istenen slota takılır. Koşu **KILIÇ (J)** ve **SAPAN (I)** ile başlar; **YUMRUK** dükkândan alınır. Her silahın **5 seviyesi** vardır, seviyeler **dükkândan** satın alınır; her seviye kendi tam değerlerini taşır (toplanma yok), böylece tablodan düz okunur (`items/weapon_db.gd` `DATA`).
+
+| Silah | Tür | Tasarım | Seviye yükseltmeleri |
+|---|---|---|---|
+| KILIÇ | yakın | Dengeli üçlü kombo; son vuruş ağır, geniş ve ileri atılır. Menzil orta | Keskin Kenar (hasar) > Uzun Sap (hasar, menzil +%20) > Çevik Bilek (hasar, hız +%15) > Tutulma Kılıcı (hasar çok, alan + geri itme) |
+| YUMRUK | yakın | Çok hızlı **dörtlü** kombo, kısa menzil, son vuruş sert. Yakında kılıçtan baskın, uzakta zayıf | Sert Eklemler > Demir Yumruklük (menzil +%25) > Çevik Parmaklar (hız +%15) > Tutulma Yumruğu (hasar çok, geri itme +%50) |
+| SAPAN | menzilli | Baktığın yöne taş fırlatır: sağ/sol, **yukarı** (W/↑), **çapraz** ve havada aşağı (S/↓). Taş parry'lenmez, oyuncuya zarar vermez, duvara çarpınca durur, zaman durunca (Satürn'ün Kum Saati) bile uçar. Bekleme 0.50 sn | Sağlam İp (bekleme 0.40) > Sivri Taş (2 hasar) > Delici Taş (iki düşmana vurur) > Çift Taş (iki taş, bekleme 0.36) |
+
+- **Nişan:** elle: yatay yön + W/S ile 8 yön (`combat/aiming.gd`). **Süperteknolojik Nişangâh** (Kafa, Nadir, 70 altın) takılıysa sapan taşı menzildeki en yakın düşmana kendiliğinden yönelir (hareketini de hesaplayıp önden atar); yukarı/aşağı tuşu nişanı yeniden elle verir. **Gölge** bu eşyayı alırsa bıçakları sana doğru hafifçe yön değiştirir.
+- **Dükkân:** her sahip olunan ve en üst seviyede olmayan silah için bir **yükseltme teklifi**, sahip olunmayan silah için **satın alma teklifi** çıkar. Yükseltme 30 / 55 / 90 / 140 altındır (taban), fiyatlar kat başına %12 artar; bir kat içinde silah başına tek yükseltme alınır. Silah teklifleri tezgâhta durmaz, yalnız dükkân menüsünde görünür.
+- **HUD:** ekranın altında ortada iki **silah kartı** (tuş, ad, seviye kutucukları, sapanın beklemesi).
+- **Kayıt:** slotlar, sahip olunan silahlar ve seviyeleri koşu kaydına işlenir.
+- Kılıç ve yumruk, saldırı süresine göre animasyon hızını otomatik uydurur (seviye hızı artırınca da); animasyon adları `sidera_attack1-3`, `sidera_punch1-4`, `sidera_throw`, `sidera_throw_up`, `sidera_throw_diag`.
 
 ### 4.5 Agresiflik Metresi ("Ritim")
 Ultrakill'in stil sistemi ilhamlı, kan yok.
@@ -240,6 +251,7 @@ Eşyalar slotlara takılır; sayılar tek yerden okunur (`ItemData.SLOT_CAPACITY
 | Charm | **Vampir Yadigarı** | Başarılı her parry +3 can yeniler | Gölge parryleyince kendine +1 can çeker | Efsanevi | 95 |
 | Kafa | **Antika Muhafız Kaskı** | Aldığın hasar %15 azalır | Gölge de senden %15 daha az hasar alır | Yaygın | 35 |
 | Kafa | **Gözcü Bandı** | Parry penceresi +0.1 sn | Gölgenin de parry penceresi +0.1 sn genişler | Yaygın | 35 |
+| Kafa | **Süperteknolojik Nişangâh** | Sapan taşları menzildeki en yakın düşmana kendiliğinden yönelir (bkz. 4.4) | Gölge'nin bıçakları sana doğru hafifçe yön değiştirir | Nadir | 70 |
 | Cep | **Çatlak El Aynası** | Can sıfıra inince ölümcül darbeyi engeller, 1 canla kurtarır, 2 sn ölümsüz yapar; tek kullanımlık, kırılır | Gölge son savaşta canı sıfırlanınca 2. evresine geçer, tam canla dirilir | Nadir | 60 |
 | Cep | **Satürn'ün Kum Saati** | İki saldırıyı aynı anda parry'lersen zaman 1.5 sn durur; yalnız sen hareket edersin | (yazılacak) | Efsanevi | 120 |
 | Bilek | **Hırsızın Zinciri** | Parry'lediğin düşman fazladan antika para düşürür | (yazılacak) | Nadir | 50 |
@@ -355,11 +367,13 @@ res://
 │       └── (taurus, sagitta, scorpius, vault, auctioneer)
 ├── combat/
 │   ├── hitbox.gd / hurtbox.gd
+│   ├── aiming.gd, sling_stone.gd # silah nişanı (elle/otomatik) ve sapan taşı
 │   ├── parry_system.gd       # pencere, altın saldırı işaretleme
 │   ├── projectile.gd         # parry'lenebilir/lenemez tipi
 │   └── hitstop.gd
 ├── items/
 │   ├── item_data.gd          # Resource: ad, etiketler, nadirlik, umbra_dahil
+│   ├── weapon_db.gd, weapon_loadout.gd # silah verisi (5 seviye) ve J/I slotları
 │   ├── effects/              # her eşyanın etkisi (script)
 │   └── data/                 # .tres dosyaları
 ├── rooms/
@@ -368,8 +382,9 @@ res://
 │   └── templates/
 ├── ui/
 │   ├── hud.gd, run_overlay.gd   # kalpler (+bağışıklık), altın, ritim, durum satırları
+│   ├── weapon_bar.gd            # ekranın altında J/I silah kartları
 │   ├── game_menu.gd             # oyunu durduran menülerin ortak tabanı
-│   ├── inventory_screen.gd      # envanter ekranı (I / Tab)
+│   ├── inventory_screen.gd      # envanter ekranı (Tab)
 │   ├── dev_menu.gd              # F5 eşya (deneme) menüsü
 │   ├── item_view.gd             # ortak çizimler: eşya kutusu, ayrıntı paneli
 │   ├── auction_screen.tscn      # (yapılacak) 2 eşya seçim ekranı
@@ -439,11 +454,12 @@ Meta ilerleme için `ConfigFile` veya JSON (basit). Run içi kayıt MVP'de yok.
 
 ### Aşama 3: Eşya sistemi (hafta 3)
 - [x] ItemData + modifier + EventBus
-- [x] Slotlar + çanta + envanter ekranı (I / Tab) + F5 eşya menüsü
+- [x] Slotlar + çanta + envanter ekranı (Tab) + F5 eşya menüsü
 - [x] 10 eşya + 3 yemek (tasarımcının listesi), refleks statı, zaman durdurma
 - [x] Etiket sinerji bonusu
 - [x] Ödül ekranı: Gölge yenilince iki sunak, ödül menüsü, seçim (`RewardChoice`, `RewardStand`, `RewardMenu`)
 - [x] **Mağaza: her katın başında** (lobi + dükkân ekranı)
+- [x] **Silahlar** (bkz. 4.4): kılıç / yumruk / sapan, iki slot (J, I), 5 seviye, dükkândan yükseltme ve satın alma, silah kartları (HUD), envanterde silah kutuları, Süperteknolojik Nişangâh (otomatik nişan), kayıt
 
 ### Aşama 4: UMBRA (hafta 4)  ← oyunu farklı kılan
 - [x] Seçilmeyen eşya Umbra envanterine gider (`GameState.leave_behind`; Gölge sayısal etkilerini kendine alır)

@@ -19,15 +19,16 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | Tuş | İşlev |
 |---|---|
 | A / D veya ← / → | Koş |
-| Space / W | Zıpla |
+| Space | Zıpla (W artık zıplatmaz: nişan yönü için ayrıldı) |
 | Shift | Dash |
 | K | Parry |
-| J | Saldırı |
+| J | **Birinci silah** (yakın dövüş: kılıç ya da yumruk; basılı tutunca kombo sürer) |
+| I | **İkinci silah** (menzilli: Sapan). Baktığın yöne taş fırlatır; **W / ↑** basılı = yukarı, **S / ↓** basılı = çapraz/aşağı (havada). Süperteknolojik Nişangâh takılıysa kendiliğinden hedefler |
 | F3 | Debug paneli (parry penceresi, dash hızı vb. canlı ayar) |
 | R | Yeniden başla (ölünce ya da istediğin an) |
 | F4 | **Deneme modu (god)**: can düşmez, dash ve parry bekleme yok. Tekrar basınca kapanır, ölüp yeniden başlasan da açık kalır |
-| I / Tab | **Envanter ekranı**: karakter, slotlar, çanta. Oyunu durdurur. Yön tuşları/WASD/fare ile gez; Enter/E/J ya da tıkla: tak, çıkar, ye. Esc kapatır |
-| F5 | **Eşya menüsü (deneme)**: listeden eşya seçip envantere ekler. Enter/E/J ekle, T yalnız çantaya, G +50 altın, H canı doldur, B +1 bağışıklık kalbi, C hepsini sil |
+| Tab | **Envanter ekranı**: karakter, slotlar, silahlar, çanta. Oyunu durdurur. Yön tuşları/WASD/fare ile gez; Enter/E/J ya da tıkla: tak, çıkar, ye; **silah kutusunda** Enter = elindeki sıradaki silaha geç. Esc kapatır |
+| F5 | **Eşya menüsü (deneme)**: listeden eşya seçip envantere ekler. Enter/E/J ekle, T yalnız çantaya, G +50 altın, H canı doldur, B +1 bağışıklık kalbi, C hepsini sil, **Y yumruğu ver, U silahları bir seviye yükselt** |
 | F6 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
 | F7 | Geliştirici kısayolu: bir sonraki katın lobisine geç (kararma olmadan) |
 | Esc | **Duraklatma menüsü**: devam, yeniden başla, ana menü, oyundan çık (koşuyu kaybettirenler ikinci basışta onaylanır) |
@@ -67,13 +68,23 @@ Ayrıntılar: arka arkaya 3 sersemletme alırsa 1.5 sn zırhlanır (sonsuz serse
 
 **Gölge ödülü: 2 eşyadan 1** (`game/reward_choice.gd`, `levels/reward_stand.gd`, `ui/reward_menu.gd`): 18. kat dışında Gölge yenilince odanın ortasında **iki sunak** yükselir, her birinin üstünde bir eşya süzülür. Yaklaşıp `E` → ödül menüsü (oyun durur): ←/→ ya da A/D gezin, `Enter`/`E`/`J` ya da seçiliye ikinci tıklama **alır**, `Esc` kapatır (sonra yine seçebilirsin). **Seçmediğin eşya Gölge'nin olur** ve sonraki katlarda sana karşı kullanılır (menü "bunu alırsan Gölge şunu alır" bedelini gösterir; "Sadece Oyuncu" eşyalar Gölge'ye gitmez, yok olur). **Kat geçidi seçim yapılana kadar kapalı** kalır; seçince açılır ve koşu bir sonraki katın lobisinden kaydedilir. Eşyalar, sahip olduğun ve Gölge'nin elindekiler dışından, aynı koşu tohumuyla hep aynı çift olarak gelir; Efsanevi eşya kat ilerledikçe sıklaşır (1. katta ağırlık 0,4 → 9. katta tam; `ItemDB.roll_pair`). Son katta (18) ödül yoktur, zafer vardır. Sunakların ve Gölge elinin çizimleri `altar_rise/idle/take/dim` ve `fx_umbra_grab` adlarıyla `assets/` altına konunca kendiliğinden kullanılır. Ekran görüntüsü: `res://tools/screenshots_reward.tscn`.
 
-Sıradaki: silah sistemi (kılıç/yumruk/sapan, nişangâh), sınırsız kip.
+**Silahlar** (`items/weapon_db.gd`, `items/weapon_loadout.gd`, `combat/aiming.gd`, `combat/sling_stone.gd`, `ui/weapon_bar.gd`): Cuphead gibi birden çok saldırı türü. İki silah slotu vardır: **J** (birinci) ve **I** (ikinci); ekranın altında ortada iki **silah kartı** (tuş, ad, seviye, sapanın beklemesi) durur. Koşu **KILIÇ** (J) ve **SAPAN** (I) ile başlar; **YUMRUK** dükkândan alınır. Silahı istediğin slota envanter ekranından (`Tab`) takarsın (iki yakın silahı birlikte de taşıyabilirsin). Her silahın **5 seviyesi** vardır; seviye **dükkândan** satın alınır (her silah için raf teklifi: yükseltme ya da henüz yoksa yeni silah; kat başına silah başına tek yükseltme, fiyat kat zammıyla artar) ve her seviye kendi tam değerlerini taşır (tablo `WeaponDB.DATA`).
+
+| Silah | Tür | Özellik |
+|---|---|---|
+| **KILIÇ** | yakın | Dengeli üçlü kombo, son vuruş ağır ve geniş. Seviyeler: hasar, menzil +%20, hız +%15, vuruş alanı + geri itme |
+| **YUMRUK** | yakın | Çok hızlı **dörtlü** kombo, kısa menzil, son vuruş sert (öne atılır). Aynı yükseltme çizgisi |
+| **SAPAN** | menzilli | Baktığın yöne (sağ/sol, **yukarı**, **çapraz**) taş fırlatır; taş parry'lenmez, duvara çarpınca durur, zaman durunca (Satürn'ün Kum Saati) bile uçar. Seviyeler: daha sık, 2 hasar, **delici** (iki düşmana vurur), **çift taş** |
+
+**Süperteknolojik Nişangâh** (kafa, Nadir): sapan taşları menzildeki en yakın düşmana kendiliğinden yönelir (hareketini de hesaba katarak); yukarı/aşağı tuşuna basarsan nişanı sen yönetirsin. **Gölge** bu eşyayı alırsa fırlattığı bıçaklar sana doğru hafifçe yön değiştirir. Silahlar koşu kaydına işlenir (kaldığın yerden devam edince aynı silahlar, seviyeler ve slotlar gelir).
+
+Sıradaki: sınırsız kip, duvardan sekme (Reçineli Eldivenler eşyasıyla).
 
 **Yazı tipi**: oyun **Fraunces** (SIL OFL) kullanıyor: Times'ın klasik "Roman" serif iskeleti ama yumuşak/tombul, biraz çizgi film afişi gibi. Türkçe harflerin tamamı var (Ğ ğ Ş ş İ fontun kendi parçalarından eklendi). Tek yerden okunur: `ui/game_font.gd` `PATH` + proje ayarı `gui/theme/custom_font`; ayrıntı ve değiştirme adımları `assets/fonts/README.md`. Eski AGENTORANGE projeden çıkarıldı (lisansı belirsizdi; artık depoyu bu açıdan herkese açmak engel değil).
 
 ## Sprite eklemek
 
-Çizimleri `assets/sprites/<karakter>/` klasörüne koymak yeterli, kod değişmez. İsimler, boyutlar ve hizalama kuralları: [`docs/SPRITES.md`](docs/SPRITES.md)
+Çizimi `assets/` altında **herhangi bir klasöre** koymak yeterli, kod değişmez; **dosya adı** önemlidir (`sidera_walk.png`, `taurus_lunge.png`, `item_viper_fang.png`, `ui_logo.png`...). Tam liste (ad, boyut, kare sayısı, süre, ne zaman oynar) `art/art_manifest.gd` içindedir; doküman halini `tools/export_art_list.tscn` üretir. Kurallar: [`docs/SPRITES.md`](docs/SPRITES.md)
 
 ## Geliştirici notları
 

@@ -23,6 +23,8 @@ const NONE := "—"
 ## Karakter karesi (Sidera, Taurus, Sagitta, Scorpius, Umbra): hepsi aynı tuvalde çizilir.
 const CHAR_SIZE := Vector2i(96, 96)
 const MERCHANT_SIZE := Vector2i(128, 128)
+## Gölge minyonu küçük bir yaratıktır (çarpışma kutusu 22x36).
+const MINION_SIZE := Vector2i(64, 64)
 
 ## Bölümler: dokümanda sırayla başlık olurlar.
 const SECTIONS: Array[Dictionary] = [
@@ -43,7 +45,7 @@ const PACKS := {
 	1: "Paket 1: Oynanabilir çekirdek (Sidera, Taurus, Sagitta, temel efektler, para)",
 	2: "Paket 2: Kat 1 ortamı ve ekran göstergeleri",
 	3: "Paket 3: Scorpius",
-	4: "Paket 4: Eşyalar, envanter ve duvar sekmesi",
+	4: "Paket 4: Eşyalar, silahlar (yumruk, sapan), envanter ve duvar sekmesi",
 	5: "Paket 5: Ana menü ve kayıt ekranları",
 	6: "Paket 6: Lobi, dükkân ve ödül sunağı",
 	7: "Paket 7: Kat 2-5 ortamları",
@@ -64,6 +66,7 @@ const THEMES: Array[Dictionary] = [
 
 static var _entries: Array[Dictionary] = []
 static var _by_file: Dictionary = {}
+static var _owner_cache: Dictionary = {}
 
 
 static func entries() -> Array[Dictionary]:
@@ -101,10 +104,14 @@ static func in_group(section: String, group: String) -> Array[Dictionary]:
 
 ## Bir karakterin (owner) oyun içi animasyon adı -> manifest satırı.
 static func owner_anims(owner: String) -> Dictionary:
+	entries()
+	if _owner_cache.has(owner):
+		return _owner_cache[owner]
 	var out := {}
-	for e in entries():
+	for e in _entries:
 		if e.get("owner", "") == owner and e.has("anim"):
 			out[e["anim"]] = e
+	_owner_cache[owner] = out
 	return out
 
 
@@ -127,6 +134,7 @@ static func count_in_pack(pack: int) -> int:
 static func _build() -> void:
 	_entries.clear()
 	_by_file.clear()
+	_owner_cache.clear()
 	_sidera()
 	_enemies()
 	_umbra()
@@ -181,6 +189,17 @@ static func _sidera() -> void:
 		["double_jump", "double_jump", "Havada ikinci zıplama (takla ya da tur)", "4", false, 0.3, false, 1],
 		["land", "land", "Sert inişte çömelme", "3", false, 0.15, false, 1],
 	])
+	# Silahlar: J/I slotlarına KILIÇ, YUMRUK ya da SAPAN takılır. Kılıç `attack1-3`'ü, yumruk `punch1-4`'ü, sapan `throw*`'u oynatır.
+	# Süreler silah hızına (seviye) uyar: animasyon vuruş süresine otomatik sıkıştırılır/uzatılır.
+	_chars("sidera", "Sidera: yumruk ve sapan (silahlar)", "sidera", CHAR_SIZE, [
+		["punch1", "punch1", "YUMRUK 1. vuruş: hızlı düz yumruk (kısa menzil)", "3-5", false, 0.18, true, 4],
+		["punch2", "punch2", "YUMRUK 2. vuruş: ters elle yumruk", "3-5", false, 0.18, true, 4],
+		["punch3", "punch3", "YUMRUK 3. vuruş: kanca", "3-5", false, 0.19, true, 4],
+		["punch4", "punch4", "YUMRUK 4. vuruş: ağır, sert yumruk (öne atılır)", "4-6", false, 0.37, true, 4],
+		["throw", "throw", "SAPAN atışı, düz ileri: sapanı savurup bırakıyor (taş hazırlık bitince çıkar)", "3-5", false, 0.17, true, 4],
+		["throw_up", "throw_up", "SAPAN atışı, yukarı (W ya da yukarı ok basılıyken): kol yukarı", "3-5", false, 0.17, true, 4],
+		["throw_diag", "throw_diag", "SAPAN atışı, çapraz (yukarı ya da aşağı + öne): kol eğik", "3-5", false, 0.17, true, 4],
+	])
 	_chars("sidera", "Sidera: eşyalarla ve yerlerle ilgili hareketler", "sidera", CHAR_SIZE, [
 		["wall_slide", "wall_slide", "Duvara tutunmuş, aşağı kayıyor (Reçineli Eldivenler eşyası)", "3-4", true, 0.4, true, 4],
 		["wall_jump", "wall_jump", "Duvardan itip sıçrıyor (Reçineli Eldivenler eşyası)", "3", false, 0.2, true, 4],
@@ -208,6 +227,8 @@ static func _enemies() -> void:
 	_chars("dusman", "Sagitta (yılan okçu)", "sagitta", CHAR_SIZE, [
 		["idle", "idle", "Bekliyor", "4", true, 0.5, true, 1],
 		["run", "walk", "Mesafe ayarlıyor: yavaş ileri/geri adımlar", "6", true, 0.6, true, 1],
+		["jump", "jump", "Platforma zıplıyor", "2", false, 0.3, false, 1],
+		["fall", "fall", "Düşüyor", "2", true, 0.2, false, 1],
 		["telegraph", "aim", "Nişan alıyor, ok hazırlığı (0.45 sn). Üstüne altın ya da kırmızı uyarı biner", "4", false, 0.45, true, 1],
 		["attack", "shooting", "Ateş ediyor (ateş sonrası kısa toparlanmayı da içerir)", "3-4", false, 0.35, true, 1],
 		["stun", "stunned", "Parry sonrası sersemleme (süre boyunca döner)", "2-4", true, 0.5, true, 1],
@@ -234,20 +255,47 @@ static func _enemies() -> void:
 	])
 
 
-## Umbra: Sidera ile aynı hareket seti (gölge hali: koyu, mor-siyah ton) + kendine özgü iki animasyon.
+## Umbra (Gölge, patron): 20 animasyonu `UMBRA_ANIM_SPEC`'tir (actors/enemies/umbra.gd); eksik olan yedeğine düşer.
+## Hamlelerin ve hangi animasyonu oynattıklarının tam listesi game/umbra_kit.gd'dedir.
 static func _umbra() -> void:
-	var rows: Array = []
-	for e in _entries:
-		if e.get("owner", "") == "sidera" and bool(e["core"]) and int(e["pack"]) == 1:
-			var suffix := String(e["file"]).trim_prefix("sidera_")
-			rows.append([e["anim"], suffix, e["desc"], e["frames"], e["loop"], e["dur"], true, 8])
-	_chars("umbra", "Umbra: Sidera ile aynı hareketler (gölge hali)", "umbra", CHAR_SIZE, rows)
-	_chars("umbra", "Umbra: kendine özgü hareketler", "umbra", CHAR_SIZE, [
-		["appear", "appear", "Pusuda beliriş: gölgeden çıkış", "6", false, 0.7, true, 8],
-		["revive", "revive", "Çatlak El Aynası ile 2. evreye geçiş: tam canla dirilir", "8", false, 1.0, true, 8],
-		["wall_slide", "wall_slide", "Duvara tutunmuş kayıyor (Umbra Reçineli Eldivenleri aldıysa)", "3-4", true, 0.4, false, 8],
-		["wall_jump", "wall_jump", "Duvardan sıçrıyor (Umbra Reçineli Eldivenleri aldıysa)", "3", false, 0.2, false, 8],
-		["double_jump", "double_jump", "Havada ikinci zıplama", "4", false, 0.3, false, 8],
+	_chars("umbra", "Umbra: temel hareketler", "umbra", CHAR_SIZE, [
+		["idle", "idle", "Bekliyor (nefes alıyor, gölge dumanı hafifçe oynar)", "4-6", true, 0.7, true, 8],
+		["run", "walk", "Yürüyor, mesafe ayarlıyor; duvara koşarken de bu oynar", "6-8", true, 0.6, true, 8],
+		["jump", "jump", "Havada yükseliyor", "2-3", false, 0.25, true, 8],
+		["fall", "fall", "Havada düşüyor", "2", true, 0.2, true, 8],
+		["hurt", "hurt", "Vurulunca (zırhlıyken, saldırı hazırlarken oynamaz)", "2", false, 0.2, true, 8],
+		["stun", "stunned", "Parry sonrası sersemleme (süre boyunca döner)", "2-4", true, 0.5, true, 8],
+		["death", "death", "Ölüm: dağılıp çöküyor (son karede kalır, sonra söner)", "6-8", false, 0.9, true, 8],
+	])
+	_chars("umbra", "Umbra: saldırı hamleleri", "umbra", CHAR_SIZE, [
+		["telegraph", "windup", "Saldırı hazırlığı: bıçak geride (Bıçak, Kombo, Yer darbesi öncesi). Üstüne altın ya da kırmızı uyarı biner", "4", false, 0.45, true, 8],
+		["attack", "slash", "Bıçak darbesi (Bıçak ve Kombo vuruşları)", "3-4", false, 0.28, true, 8],
+		["recover", "recover", "Hamle sonrası soluklanma: oyuncunun vurma fırsatı", "3", false, 0.7, true, 8],
+		["throw", "throw", "Bıçak fırlatma (Fırlatma, Üçlü fırlatma, Duvardan atış)", "3-4", false, 0.3, true, 8],
+		["slam", "slam", "Yer darbesi: zıplayıp yere çakılıyor (kazanılınca 7. katta)", "4-6", false, 0.5, true, 8],
+		["counter", "counter", "Karşı duruş: savunmada bekliyor, vurulursa karşılık verir (döner; 17. kat)", "3-4", true, 0.5, true, 8],
+	])
+	_chars("umbra", "Umbra: gölge yetenekleri", "umbra", CHAR_SIZE, [
+		["climb", "climb", "Duvara tırmanıyor (döngü; 3. kat)", "4-6", true, 0.5, true, 8],
+		["cling", "cling", "Duvarda asılı, nişan alıyor (döngü)", "2-4", true, 0.6, true, 8],
+		["dive", "dive", "Tepeden üstüne dalıyor (havada, döngü)", "2-4", true, 0.3, true, 8],
+		["summon", "summon", "Minyon çağırıyor: elini yere vuruyor (4. kat, Sürü 11. kat)", "4-6", false, 0.6, true, 8],
+		["cast", "cast", "Büyü: Bıçak yağmuru, Dönen bıçaklar, Klon hazırlığı", "4-6", false, 0.6, true, 8],
+		["vanish", "vanish", "Kayboluyor: Gölge adımı ve Gizlenme (gölgeye dağılır)", "3-5", false, 0.45, true, 8],
+		["roar", "roar", "İkinci nefes: yeniden kalkıp öfkeyle kükrüyor (döner; 2. evre)", "4-6", true, 0.8, true, 8],
+	])
+	# Gölge minyonu (Minyon çağırma, Sürü): küçük, Taurus gibi atılır. Gölge Klonu da aynı çizimleri kullanır (oyun mavimsi renk verir).
+	_chars("umbra", "Gölge minyonu (küçük gölge yaratık)", "umbra_minion", MINION_SIZE, [
+		["idle", "idle", "Bekliyor", "4", true, 0.5, true, 8],
+		["run", "walk", "Yürüyor / koşuyor", "4-6", true, 0.5, true, 8],
+		["jump", "jump", "Platforma zıplıyor", "2", false, 0.3, false, 8],
+		["fall", "fall", "Düşüyor", "2", true, 0.2, false, 8],
+		["telegraph", "windup", "Atılma hazırlığı (0.55 sn). Üstüne altın ya da kırmızı uyarı biner", "3-4", false, 0.55, true, 8],
+		["attack", "lunge", "Atılış", "3", false, 0.2, true, 8],
+		["recover", "recover", "Atılış sonrası soluklanma", "3", false, 0.95, true, 8],
+		["stun", "stunned", "Parry sonrası sersemleme (döner)", "2-4", true, 0.5, true, 8],
+		["hurt", "hurt", "Vurulunca", "2", false, 0.2, true, 8],
+		["death", "death", "Ölüm: gölge dumanına dönüşüp dağılır", "5-6", false, 0.5, true, 8],
 	])
 
 
@@ -290,6 +338,8 @@ static func _effects() -> void:
 	_add(S, g, "fx_mirror_crack", "Çatlak El Aynası kırılıyor ve seni kurtarıyor", 192, 192, "8", false, 0.5, "merkez (Sidera)", 4, false)
 	_add(S, g, "fx_timestop_ring", "Zaman durmuşken Sidera'nın etrafındaki saat halkası (mavi-gri)", 128, 128, "8", true, 1.0, "merkez (Sidera)", 4, false)
 	_add(S, g, "fx_timestop_burst", "Zamanın durduğu an: saat çarkı patlaması (mavi-gri)", 256, 256, "8", false, 0.4, "merkez (Sidera)", 4, false)
+	g = "Silah efektleri"
+	_add(S, g, "fx_sling_stone", "Sapan taşı: uçarken dönen taş, arkasında kısa iz (SAĞA doğru uçar, oyun yöne göre çevirir; oyunda ~29 piksele ölçeklenir)", 32, 32, "4", true, 0.25, CENTER, 4)
 	g = "Lobi, dükkân ve sunak efektleri"
 	_add(S, g, "fx_item_pickup", "Eşya alınınca ya da satın alınınca ışık patlaması", 160, 160, "8", false, 0.4, CENTER, 6, false)
 	_add(S, g, "fx_umbra_grab", "Umbra'nın gölge eli sunakta seçilmeyen eşyayı alıyor", 256, 256, "10", false, 0.8, "alt orta (sunak)", 6, false)
@@ -362,6 +412,10 @@ static func _items() -> void:
 	const S := "esya"
 	_add(S, "Paralar", "coin_small", "Küçük para (1 altın). Dönüyor", 16, 16, "6", true, 0.5, CENTER, 1)
 	_add(S, "Paralar", "coin_antique", "Antika para (3 altın). Daha büyük ve bronz, dönüyor", 20, 20, "6", true, 0.5, CENTER, 1)
+	# Silah simgeleri: envanterde, dükkânda ve ekranın altındaki J/I kartlarında görünür (yükseltme/satın alma teklifleri de kullanır).
+	for wid in WeaponDB.ids():
+		var we := _add(S, "Silahlar", "item_weapon_" + wid, "%s silahının simgesi (envanter, dükkân, J/I kartları)" % WeaponDB.display_name(wid), 64, 64, "1-8", true, 1.0, CENTER, 4)
+		we["item_id"] = "weapon_" + wid
 	for it in ItemDB.all():
 		var kind := "yemek" if it.is_food() else it.slot_name().to_lower()
 		var group := "Yemekler" if it.is_food() else "Takılan eşyalar"
@@ -395,7 +449,7 @@ static func _hud() -> void:
 
 static func _inventory_ui() -> void:
 	const S := "arayuz"
-	var g := "Envanter ekranı (I / Tab)"
+	var g := "Envanter ekranı (Tab)"
 	_add(S, g, "ui_inv_panel", "Pencere çerçevesi (9 dilim: köşeler 24 pikselden büyük olmasın, ortası boş/doku)", 96, 96, "1", false, 0.0, NONE, 4).merge({"nine": 24})
 	_add(S, g, "ui_detail_panel", "Eşya ayrıntı paneli çerçevesi (9 dilim)", 96, 96, "1", false, 0.0, NONE, 4).merge({"nine": 24})
 	_add(S, g, "ui_inv_title", "ENVANTER başlık yazısı (isteğe bağlı; yoksa yazı tipi kullanılır)", 320, 64, "1", false, 0.0, NONE, 4, false)

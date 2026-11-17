@@ -11,6 +11,8 @@ const TELEGRAPH_FLOOR := 0.3
 const RECOVER_FLOOR := 0.5
 const PARRY_STUN_FLOOR := 0.45
 const ATTACK_LEVEL_TOLERANCE := 72.0
+## Klonun (çizim varsa) minyon çiziminin üstüne binen mavimsi rengi: gerçek minyondan ayırt edilsin.
+const CLONE_TINT := Color(0.62, 0.9, 1.0)
 
 @export var walk_speed := 165.0
 @export var lunge_range := 150.0
@@ -32,6 +34,7 @@ var _red := false
 @onready var attack_hitbox: Hitbox = $AttackHitbox
 
 
+## Klon da minyonun çizimlerini (`umbra_minion_*`) kullanır; çizim geldiğinde mavimsi renk verilir.
 func anim_folder() -> String:
 	return "res://assets/sprites/umbra_minion"
 
@@ -51,6 +54,8 @@ func _ready() -> void:
 		var rect := get_node_or_null("Visual/Placeholder/Rect") as ColorRect
 		if rect != null:
 			rect.color = Color(0.45, 0.8, 0.95, 0.85)
+		if anim.has_art:
+			base_tint = CLONE_TINT
 
 
 func _apply_tuning() -> void:

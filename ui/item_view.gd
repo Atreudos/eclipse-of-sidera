@@ -1,8 +1,8 @@
 class_name ItemView
 extends RefCounted
 ## Envanter ekranı ile F5 menüsünün ortak çizimleri: çerçeve, eşya kutusu, ayrıntı paneli.
-## Hepsi koddan çizilir (yer tutucu). Kendi eşya çizimlerin `assets/items/<id>.png` olarak gelince
-## `ItemData.icon()` onları otomatik kullanır; harf yer tutucusu kaybolur.
+## Hepsi koddan çizilir (yer tutucu). Kendi eşya çizimlerin `item_<id>.png` (çizim listesindeki ad; animasyonlu şerit) ya da eski
+## `assets/items/<id>.png` olarak gelince otomatik kullanılır; harf yer tutucusu kaybolur.
 
 const BG := Color(0.05, 0.035, 0.09, 0.97)
 const EDGE := Color(0.36, 0.28, 0.58)
@@ -32,15 +32,20 @@ static func draw_cell(ci: CanvasItem, rect: Rect2, item: ItemData, count: int, f
 		var c := item.color()
 		ci.draw_rect(rect.grow(-3.0), Color(c, 0.1))
 		ci.draw_rect(rect, Color(c, 0.9), false, 2.0)
-		var tex := item.icon()
-		if tex != null:
-			ci.draw_texture_rect(tex, rect.grow(-6.0), false)
-		else:
-			GameFont.draw_centered(ci, item.glyph(), rect.get_center() + Vector2(0.0, -2.0), 32, c, false)
+		if not Art.draw(ci, item.art_name(), rect.grow(-6.0), t):
+			var tex := item.icon()
+			if tex != null:
+				ci.draw_texture_rect(tex, rect.grow(-6.0), false)
+			else:
+				GameFont.draw_centered(ci, item.glyph(), rect.get_center() + Vector2(0.0, -2.0), 32, c, false)
 		if count > 1:
 			var label := "x%d" % count
 			var w := GameFont.width(label, 15)
 			GameFont.draw_left(ci, label, Vector2(rect.end.x - w - 5.0, rect.end.y - 11.0), 15, GameFont.WHITE)
+		if item.badge != "":
+			var bw := GameFont.width(item.badge, 14)
+			ci.draw_rect(Rect2(rect.position + Vector2(3.0, 3.0), Vector2(bw + 8.0, 17.0)), Color(0.04, 0.02, 0.07, 0.85))
+			GameFont.draw_left(ci, item.badge, rect.position + Vector2(7.0, 12.0), 14, GameFont.YELLOW)
 	else:
 		ci.draw_rect(rect, CELL_EDGE, false, 2.0)
 		if empty_label != "":

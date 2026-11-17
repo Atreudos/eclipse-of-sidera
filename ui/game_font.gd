@@ -29,20 +29,24 @@ static func upper(text: String) -> String:
 	return text.replace("i", "İ").replace("ı", "I").replace("ğ", "Ğ").replace("ş", "Ş").replace("ç", "Ç").replace("ö", "Ö").replace("ü", "Ü").to_upper()
 
 
-## Yazıyı `max_width` pikseli aşmayacak şekilde kelime sınırlarında satırlara böler.
-## (Tek başına sığmayan uzun kelime kendi satırında taşar.)
+## Yazıyı `max_width` pikseli aşmayacak şekilde kelime sınırlarında satırlara böler. Yazıdaki "\n" satır sonu sayılır
+## (her bölüm ayrı sarılır; boş bölüm boş satır olur). (Tek başına sığmayan uzun kelime kendi satırında taşar.)
 static func wrap(text: String, size: int, max_width: float) -> Array[String]:
 	var lines: Array[String] = []
-	var cur := ""
-	for word in text.split(" ", false):
-		var trial: String = word if cur == "" else cur + " " + word
-		if cur == "" or width(trial, size) <= max_width:
-			cur = trial
-		else:
+	var paragraphs := text.split("\n")
+	for para in paragraphs:
+		var cur := ""
+		for word in para.split(" ", false):
+			var trial: String = word if cur == "" else cur + " " + word
+			if cur == "" or width(trial, size) <= max_width:
+				cur = trial
+			else:
+				lines.append(cur)
+				cur = word
+		if cur != "":
 			lines.append(cur)
-			cur = word
-	if cur != "":
-		lines.append(cur)
+		elif paragraphs.size() > 1:
+			lines.append("")
 	return lines
 
 

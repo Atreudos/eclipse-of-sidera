@@ -69,6 +69,8 @@ const POISE_LIMIT := 3
 const POISE_MEMORY := 1.6
 const POISE_ARMOR := 1.5
 const KNIFE_SPEED := 540.0
+## "Süperteknolojik Nişangâh" Gölge'deyse elle fırlattığı bıçakların saniyede dönebileceği en çok açı (rad; ~46 derece).
+const KNIFE_HOMING_TURN := 0.8
 const SHOCK_SPEED := 430.0
 const RAIN_SPEED := 950.0
 const RAIN_HEIGHT := 760.0
@@ -377,11 +379,16 @@ func _aim_at(origin: Vector2, speed: float) -> Vector2:
 	return (tp - origin).normalized()
 
 
-func _spawn_knife(pos: Vector2, vel: Vector2, parryable: bool, dmg: int = -1) -> Projectile:
+## `homing`: elle fırlatılan bıçak (yağmur ve yer dalgası değil). Gölge "Süperteknolojik Nişangâh"ı almışsa bu bıçaklar oyuncuya
+## doğru hafifçe yön değiştirir (KNIFE_HOMING_TURN).
+func _spawn_knife(pos: Vector2, vel: Vector2, parryable: bool, dmg: int = -1, homing: bool = false) -> Projectile:
 	var p := PROJECTILE.instantiate() as Projectile
 	get_parent().add_child(p)
 	p.global_position = pos
 	p.launch(vel, parryable, self, _dmg(1) if dmg < 0 else dmg)
+	if homing and target != null and GameState.umbra_has("super_scope"):
+		p.homing_target = target
+		p.homing_turn = KNIFE_HOMING_TURN
 	return p
 
 
@@ -688,7 +695,7 @@ func _fire_throw() -> void:
 	var spread := 0.0 if _shots == 1 else 0.3
 	for i in _shots:
 		var ang := base_angle + (float(i) - float(_shots - 1) * 0.5) * spread
-		_spawn_knife(origin, Vector2.from_angle(ang) * speed, not _red)
+		_spawn_knife(origin, Vector2.from_angle(ang) * speed, not _red, -1, true)
 	_play("throw", 0.3)
 	Sfx.play("shoot", -3.0, 0.9, 0.05)
 	stage = T_RECOVER
@@ -820,7 +827,7 @@ func _tick_volley(delta: float) -> void:
 	var speed := KNIFE_SPEED * _spd_factor()
 	var dir := _aim_at(origin, speed)
 	dir.y = maxf(dir.y, -0.1)
-	_spawn_knife(origin, dir.normalized() * speed, _shots != 1)  # sonuncu kırmızı
+	_spawn_knife(origin, dir.normalized() * speed, _shots != 1, -1, true)  # sonuncu kırmızı
 	_play("throw", 0.25)
 	Sfx.play("shoot", -3.0, 0.95, 0.05)
 	_shots -= 1

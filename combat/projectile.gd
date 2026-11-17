@@ -12,7 +12,16 @@ const PARRIED := Color(0.45, 0.95, 1.0)
 @export var parried_speed_mult := 1.6
 
 var velocity := Vector2.ZERO
+## true ise zaman durunca (Satürn'ün Kum Saati) da uçar (oyuncunun sapan taşı).
+var ignores_time_stop := false
+## Yön takibi (Gölge "Süperteknolojik Nişangâh"ı aldıysa fırlattığı bıçaklar): saniyede en çok `homing_turn` radyan hedefe döner.
+## Parry'lenince ya da hedef arkaya düşünce biter. 0 = takip yok.
+var homing_target: Node2D = null
+var homing_turn := 0.0
 var _age := 0.0
+
+## Hedef bu açıdan (rad) fazla yan/arka tarafta kaldıysa mermi dönmez (geri dönüp çarpmaz).
+const HOMING_MAX_ANGLE := 1.6
 
 
 func _ready() -> void:
@@ -36,13 +45,27 @@ func launch(vel: Vector2, is_parryable: bool, shooter: Node, dmg: int = 1) -> vo
 
 
 func _physics_process(delta: float) -> void:
-	if TimeStop.active:
+	if TimeStop.active and not ignores_time_stop:
 		return  # zaman durdu: mermi havada asılı kalır
 	super._physics_process(delta)
+	_steer(delta)
 	position += velocity * delta
 	_age += delta
 	if _age >= lifetime:
 		queue_free()
+
+
+## Hafif yön takibi: hızın yönü hedefe doğru, saniyede `homing_turn` radyanı aşmayacak kadar döner (hız aynı kalır).
+func _steer(delta: float) -> void:
+	if homing_turn <= 0.0 or faction != "enemy" or homing_target == null or not is_instance_valid(homing_target):
+		return
+	var want := (homing_target.global_position + Vector2(0.0, -6.0) - global_position).angle()
+	var diff := wrapf(want - velocity.angle(), -PI, PI)
+	if absf(diff) > HOMING_MAX_ANGLE:
+		return
+	var step := clampf(diff, -homing_turn * delta, homing_turn * delta)
+	velocity = velocity.rotated(step)
+	rotation = velocity.angle()
 
 
 func _on_landed(_target: Hurtbox) -> void:
@@ -62,6 +85,8 @@ func _on_parried(by: Node) -> void:
 		dir = (shooter_pos - global_position).normalized()
 	velocity = dir * speed
 	rotation = velocity.angle()
+	homing_turn = 0.0
+	homing_target = null
 	source = by
 	damage *= parried_damage_mult
 	parryable = false

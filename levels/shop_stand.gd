@@ -122,14 +122,18 @@ func _draw_sign() -> void:
 	GameFont.draw_centered(self, "DÜKKÂN", board.get_center(), 22, GameFont.YELLOW)
 
 
-## Tezgâhın üstünde süzülen eşyalar: fiyatları altında yazar; satılanlar boş kalır.
+## Tezgâhın üstünde süzülen eşyalar: fiyatları altında yazar; satılanlar boş kalır. (Silah teklifleri tezgâhta durmaz: yalnız menüde.)
 func _draw_offers() -> void:
 	if stock == null:
 		return
-	var n := stock.size()
+	var shown: Array[ShopStock.Offer] = []
+	for o in stock.offers:
+		if not o.is_weapon():
+			shown.append(o)
+	var n := shown.size()
 	var gap := CELL + 10.0
 	for i in n:
-		var o: ShopStock.Offer = stock.offers[i]
+		var o: ShopStock.Offer = shown[i]
 		var x := (float(i) - float(n - 1) * 0.5) * gap
 		var bob := 3.0 * sin(_t * 2.2 + float(i) * 0.9)
 		var r := Rect2(x - CELL * 0.5, COUNTER.position.y - CELL - 14.0 + bob, CELL, CELL)

@@ -376,6 +376,7 @@ func _free_old_rooms() -> void:
 # ---------------------------------------------------------------- dükkân
 
 ## Lobiye tezgâhı koyar. Raf: kayıttan gelen varsa o, yoksa tohumdan üretilir (sahip olunan ve Umbra'ya kalan eşyalar çıkmaz).
+## Silah teklifleri (yeni silah / yükseltme) oyuncunun o anki silahlarından kurulur; silah sistemi öncesi bir kayıttan gelen rafa da eklenir.
 func _setup_shop(room: Room) -> void:
 	if room.shop != null:
 		return
@@ -383,9 +384,12 @@ func _setup_shop(room: Room) -> void:
 	if _restored_shop != null and _restored_shop.size() > 0:
 		stock = _restored_shop
 	_restored_shop = null
+	var loadout: WeaponLoadout = player.loadout if player != null else null
 	if stock == null:
 		var owned: Array = player.inventory.owned_ids() if player != null and player.inventory != null else []
-		stock = ShopStock.generate(rng_for(room.index, "shop"), room.floor_no, owned, GameState.umbra_ids())
+		stock = ShopStock.generate(rng_for(room.index, "shop"), room.floor_no, owned, GameState.umbra_ids(), loadout)
+	else:
+		stock.add_weapon_offers(loadout, room.floor_no)
 	shop_stock = stock
 	var stand := ShopStand.new()
 	stand.name = "Shop"

@@ -110,7 +110,7 @@ func _game_phase(scene: Node) -> void:
 	if g > 30 and g < 290 and g % 67 == 0:
 		_tap(KEY_SPACE)
 	if g == 300:
-		_tap(KEY_I)
+		_tap(KEY_TAB)
 	if g == 330:
 		_tap(KEY_ESCAPE)
 	if g == 350:

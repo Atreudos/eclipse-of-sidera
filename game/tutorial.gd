@@ -6,7 +6,7 @@ extends RefCounted
 ##     yalnız son odada), yavaştır, ilk derslerde yalnız ALTIN (parry'lenebilir) saldırı yapar; sonra KIRMIZI (dash) gelir,
 ##     sonra karışık. Kat 2'den itibaren normal dalgalar başlar.
 ##  2) İPUÇLARI (profilde `tutorial_done` yokken): ekrandaki tuş ipuçları (TutorialGuide + TutorialHint). Lobide hareket
-##     (A/D), zıplama (W/Space), dash (Shift), saldırı (J); savaşta parry (K) ve kırmızı işarette dash.
+##     (A/D), zıplama (Space), dash (Shift), saldırı (J), sapan (I); savaşta parry (K) ve kırmızı işarette dash.
 ##
 ## Bu sınıf yalnız VERİdir (müfredat, ipucu metinleri); akışı TutorialGuide yürütür.
 
@@ -27,6 +27,7 @@ const STEP_MOVE := "move"
 const STEP_JUMP := "jump"
 const STEP_DASH := "dash"
 const STEP_ATTACK := "attack"
+const STEP_SLING := "sling"
 const STEP_GO := "go"
 const STEP_PARRY := "parry"
 const STEP_PARRY_SHOT := "parry_shot"
@@ -35,9 +36,9 @@ const STEP_STRIKE := "strike"
 const STEP_RED := "red"
 
 ## Lobideki ipuçları, sırayla.
-const LOBBY_STEPS := [STEP_MOVE, STEP_JUMP, STEP_DASH, STEP_ATTACK, STEP_GO]
+const LOBBY_STEPS := [STEP_MOVE, STEP_JUMP, STEP_DASH, STEP_ATTACK, STEP_SLING, STEP_GO]
 ## Öğreticinin tamamlanması için yapılması gerekenler (ipucu kimlikleri).
-const REQUIRED := [STEP_MOVE, STEP_JUMP, STEP_DASH, STEP_ATTACK, STEP_PARRY, STEP_RED]
+const REQUIRED := [STEP_MOVE, STEP_JUMP, STEP_DASH, STEP_ATTACK, STEP_SLING, STEP_PARRY, STEP_RED]
 
 ## Saldırı adımının istediği vuruş sayısı (3'lü kombo).
 const ATTACKS_NEEDED := 3
@@ -154,7 +155,7 @@ static func hint(id: String, n: int = 0) -> Dictionary:
 				_row([_t("OK TUŞLARI DA ÇALIŞIR")], 15, true)]}
 		STEP_JUMP:
 			return {"id": id, "title": "ZIPLAMA", "rows": [
-				_row([_k("W"), _t("  YA DA  "), _k("SPACE"), _t("   ZIPLA")]),
+				_row([_k("SPACE"), _t("   ZIPLA")]),
 				_row([_t("HAVADAYKEN TEKRAR BAS: ÇİFT ZIPLAMA")], 15, true)]}
 		STEP_DASH:
 			return {"id": id, "title": "DASH", "rows": [
@@ -164,6 +165,10 @@ static func hint(id: String, n: int = 0) -> Dictionary:
 			return {"id": id, "title": "SALDIRI", "rows": [
 				_row([_k("J"), _t("   SALDIR  "), _t("%d/%d" % [mini(n, ATTACKS_NEEDED), ATTACKS_NEEDED], GameFont.YELLOW)]),
 				_row([_t("ARKA ARKAYA BAS: 3'LÜ KOMBO")], 15, true)]}
+		STEP_SLING:
+			return {"id": id, "title": "SAPAN", "rows": [
+				_row([_k("I"), _t("   TAŞ FIRLAT")]),
+				_row([_t("W: YUKARI NİŞAN   HAVADAYKEN S: AŞAĞI")], 15, true)]}
 		STEP_GO:
 			return {"id": id, "title": "İLERLE", "rows": [
 				_row([_t("SAĞDAKİ KAPIYA GİT   "), _k("D")]),

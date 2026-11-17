@@ -64,6 +64,8 @@ var _tell := Tell.NONE
 var _tell_age := 0.0
 ## Görünürlük çarpanı (0 = görünmez). Scorpius'un gölge adımı kullanır.
 var visual_alpha := 1.0
+## Çizime kalıcı renk çarpanı (durum renklerinin üstüne biner). Gölge Klonu kullanır.
+var base_tint := Color.WHITE
 ## Yanma: kalan süre ve bir sonraki hasar tiki.
 var burn_t := 0.0
 var _burn_tick := 0.0
@@ -158,6 +160,7 @@ func _process(delta: float) -> void:
 		tint = POISON_COLOR.lerp(Color.WHITE, 0.45 + 0.35 * sin(Time.get_ticks_msec() / 110.0))
 	if TimeStop.active and not dead:
 		tint = Color(0.62, 0.78, 1.0)  # zaman durdu: buz mavisi, animasyon donuk
+	tint *= base_tint
 	tint.a = visual_alpha
 	anim.set_paused(TimeStop.active and not dead)
 	anim.play(pick_animation())
@@ -327,7 +330,7 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 	if not dead and not armored:
 		var dir := signf(global_position.x - hitbox.global_position.x)
 		var heavy := hitbox.damage >= 2
-		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force * (1.6 if heavy else 1.0) * ActorBase.knockback_mult_of(hitbox.source)
+		velocity.x = (dir if dir != 0.0 else 1.0) * knockback_force * (1.6 if heavy else 1.0) * ActorBase.knockback_mult_of(hitbox.source) * hitbox.knock_mult
 		velocity.y = -110.0
 		stagger(STAGGER_HEAVY if heavy else STAGGER_LIGHT)
 		anim.trigger("hurt", 0.2)

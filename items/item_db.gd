@@ -137,6 +137,12 @@ static func _build() -> void:
 		"shadow": "Gölgenin de parry yapma penceresi 0.1 saniye genişler. İki taraf da usta birer parryci olur.",
 		"mods": [["parry_window", 0.1, 1.0]],
 	})
+	_add({
+		"id": "super_scope", "name": "Süperteknolojik Nişangâh", "slot": S.HEAD, "tags": ["MERMI"], "rarity": R.RARE, "price": 70,
+		"desc": "Sapan taşların menzildeki en yakın düşmana kendiliğinden yönelir (hareketini de hesaba katar). Yukarı ya da aşağı tuşuna basarsan nişanı sen yönetirsin.",
+		"shadow": "Gölge'nin fırlattığı bıçaklar sana doğru hafifçe yön değiştirir; atışlarını kaçırmaz.",
+		"mods": [["auto_aim", 1.0, 1.0]],
+	})
 	# ------------------------------------------------------------ CEP (1 slot)
 	_add({
 		"id": "cracked_mirror", "name": "Çatlak El Aynası", "slot": S.POCKET, "tags": ["SAVUNMA", "CAN"], "rarity": R.RARE, "price": 60,

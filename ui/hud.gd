@@ -22,9 +22,11 @@ var announcer: Announcer
 var tutorial_hint: TutorialHint
 ## Ritim (agresiflik) çubuğu.
 var rhythm_bar: RhythmBar
+## Altta ortada J / I silah kartları (ad, seviye, sapan soğuması).
+var weapon_bar: WeaponBar
 ## Patron (Gölge) can barı: ekranın üstünde, patron belirince görünür.
 var boss_bar: BossBar
-## Envanter ekranı (I / Tab) ve F5 deneme menüsü: oyunu durdurur.
+## Envanter ekranı (Tab) ve F5 deneme menüsü: oyunu durdurur.
 var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
 ## Dükkân menüsü (lobide tezgâhta E).
@@ -123,13 +125,16 @@ func _build() -> void:
 		_pip_fills.append(fill)
 
 	_hint_label = _make_label(root, Vector2(24, 682), 14)
-	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J saldır  I envanter  R yeniden  F3 debug  F4 deneme modu  F5 eşya menüsü"
+	_hint_label.text = "A/D hareket  Space zıpla  Shift dash  K parry  J / I silahlar  W / S nişan  Tab envanter  R yeniden  F3 debug  F4 deneme modu  F5 eşya menüsü"
 	_hint_label.modulate = Color(1, 1, 1, 0.55)
 	rhythm_bar = RhythmBar.new()
 	rhythm_bar.name = "RhythmBar"
 	rhythm_bar.position = Vector2(24, 82)
 	rhythm_bar.size = Vector2(260, 60)
 	root.add_child(rhythm_bar)
+	weapon_bar = WeaponBar.new()
+	weapon_bar.name = "WeaponBar"
+	root.add_child(weapon_bar)
 	_debug_label = _make_label(root, Vector2(24, 160), 15)
 	_debug_label.visible = false
 	overlay = RunOverlay.new()
@@ -235,6 +240,8 @@ func _process(_delta: float) -> void:
 			_pip_fills[i].color = Color(0.85, 0.95, 1.0)
 		_pip_fills[i].size.x = fill_w
 	overlay.dead = player.dead
+	weapon_bar.player = player
+	weapon_bar.visible = not player.dead and not overlay.victory
 	overlay.gold = player.gold
 	overlay.time_stop_k = TimeStop.progress()
 	overlay.statuses = player.status_lines()

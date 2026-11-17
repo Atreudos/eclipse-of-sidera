@@ -45,10 +45,16 @@ func anim_spec() -> Dictionary:
 	return {}
 
 
+## Çizim listesindeki karakter adı ("sidera", "taurus"...): `<ad>_<hareket>.png` dosyaları (örn. sidera_walk.png) `assets/` altında
+## nerede durursa durur bulunur. Varsayılan: sprite klasörünün adı.
+func art_owner() -> String:
+	return anim_folder().get_file()
+
+
 func _setup_visual() -> void:
 	if visual == null:
 		return
-	anim.setup(visual, anim_folder(), anim_spec(), _body_bottom())
+	anim.setup(visual, anim_folder(), anim_spec(), _body_bottom(), art_owner())
 	_flash_mat = ShaderMaterial.new()
 	_flash_mat.shader = FLASH_SHADER
 	_apply_flash_material(visual)

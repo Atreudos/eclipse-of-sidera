@@ -13,6 +13,8 @@ signal hit_world(body: Node)
 @export var parryable: bool = true
 @export_enum("player", "enemy") var faction: String = "enemy"
 @export var collides_with_world: bool = false
+## Vuruşun geri itme çarpanı (silah seviyesi verir; oyuncunun `knockback_mult` statıyla çarpılır). 1 = normal.
+var knock_mult := 1.0
 @export var active: bool = true:
 	set = set_active
 

@@ -2,8 +2,8 @@ class_name TutorialGuide
 extends Node
 ## Kat 1 öğretici rehberi: oyuncunun ne yaptığını izler ve o an uygun ipucunu TutorialHint'e koyar.
 ##
-## LOBİ: sırayla  hareket (A/D) -> zıplama (W/Space) -> dash (Shift) -> saldırı (J, 3 kez) -> "sağa ilerle".
-##       Bir beceriyi zaten yaptıysan (sırası gelmeden) o ipucu hiç gösterilmez.
+## LOBİ: sırayla  hareket (A/D) -> zıplama (Space) -> dash (Shift) -> saldırı (J, 3 kez) -> sapan (I, 1 kez) -> "sağa ilerle".
+##       Bir beceriyi zaten yaptıysan (sırası gelmeden) o ipucu hiç gösterilmez. Elinde sapan yoksa sapan adımı atlanır.
 ## SAVAŞ: altın uyarı çıkınca "K = PARRY" (parry yapana kadar), kaçırınca "tekrar dene", parry sonrası "J = VUR",
 ##        kırmızı uyarı çıkınca "SHIFT = DASH" (dash ile savuşturunca ya da 3 kez gösterilince biter).
 ## Hepsi yapılınca (ya da kat 1 bitince) profil `tutorial_done` olur ve rehber kapanır; ipuçları bir daha çıkmaz.
@@ -59,6 +59,7 @@ func setup(controller: RunController, p: Player, hint_panel: TutorialHint) -> vo
 	_last_x = player.global_position.x
 	player.jumped.connect(_on_jumped)
 	player.attack_started.connect(_on_attack_started)
+	player.ranged_started.connect(_on_ranged_started)
 	EventBus.dash_used.connect(_on_dash_used)
 	EventBus.parry_success.connect(_on_parry_success)
 	EventBus.parry_failed.connect(_on_parry_failed)
@@ -81,6 +82,8 @@ func _disconnect_all() -> void:
 			player.jumped.disconnect(_on_jumped)
 		if player.attack_started.is_connected(_on_attack_started):
 			player.attack_started.disconnect(_on_attack_started)
+		if player.ranged_started.is_connected(_on_ranged_started):
+			player.ranged_started.disconnect(_on_ranged_started)
 	var links := [
 		[EventBus.dash_used, _on_dash_used], [EventBus.parry_success, _on_parry_success], [EventBus.parry_failed, _on_parry_failed],
 		[EventBus.dodge_success, _on_dodge_success], [EventBus.enemy_tell, _on_enemy_tell], [EventBus.damage_dealt, _on_damage_dealt],
@@ -142,6 +145,9 @@ func pick() -> String:
 	if room.kind == FloorPlan.Kind.LOBBY:
 		for id: String in Tutorial.LOBBY_STEPS:
 			if not done.has(id):
+				if id == Tutorial.STEP_SLING and not player.has_ranged_weapon():
+					done[id] = true  # elinde sapan yok (slotlardan çıkarılmış): adım atlanır
+					continue
 				return id
 		return ""
 	if room.kind != FloorPlan.Kind.COMBAT:
@@ -246,6 +252,10 @@ func _on_attack_started(_combo_index: int) -> void:
 		_complete(Tutorial.STEP_ATTACK)
 	elif active == Tutorial.STEP_ATTACK and hint != null and is_instance_valid(hint):
 		hint.show_hint(Tutorial.hint(Tutorial.STEP_ATTACK, attacks))  # sayaç güncellenir
+
+
+func _on_ranged_started(_slot: int, _dir: Vector2) -> void:
+	_complete(Tutorial.STEP_SLING)
 
 
 func _on_enemy_tell(enemy: Node, _mode: int) -> void:

@@ -11,7 +11,7 @@ const PANEL := Rect2(40.0, 30.0, 1200.0, 660.0)
 ## Liste 20 satır alır: şimdiki 14 eşya + 6 slot başlığı kaydırmadan sığar. Eşya artınca kaydırma devreye girer.
 const LIST := Rect2(72.0, 100.0, 596.0, 494.0)
 const DETAIL := Rect2(706.0, 100.0, 502.0, 494.0)
-const ROW_H := 24.0
+const ROW_H := 23.0
 const GOLD_STEP := 50
 
 ## Satırlar: {"header": slot} ya da {"item": ItemData, "entry": int}
@@ -142,6 +142,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				player.inventory.clear_all()
 				_say("TÜM EŞYALAR SİLİNDİ", true)
 				Sfx.play("ui_deny", -6.0)
+			KEY_Y:
+				var reason := player.loadout.grant("fist")
+				_say("YUMRUK ALINDI (J SLOTUNA TAKILDI)" if reason == "" else "YUMRUK " + reason, reason == "")
+				Sfx.play("equip", -4.0)
+			KEY_U:
+				var upgraded := 0
+				for id in player.loadout.owned_ids():
+					if player.loadout.upgrade(id) == "":
+						upgraded += 1
+				_say("%d SİLAH BİR SEVİYE YÜKSELDİ" % upgraded if upgraded > 0 else "HEPSİ ZATEN EN ÜST SEVİYEDE", upgraded > 0)
+				Sfx.play("ui_select", -4.0)
 	if key != null or event is InputEventJoypadButton:
 		get_viewport().set_input_as_handled()
 
@@ -234,7 +245,7 @@ func _draw() -> void:
 	ItemView.draw_detail(self, DETAIL, selected_item(), "Eşya yok.")
 	_draw_message(Vector2(PANEL.get_center().x, 616.0), InventoryScreen.MESSAGE_MAX_W)
 	GameFont.draw_centered(self, "ENTER EKLE (SLOT BOŞSA TAK)    T YALNIZ ÇANTAYA    G +50 ALTIN    H CANI DOLDUR    B +1 BAĞIŞIKLIK", Vector2(_w() * 0.5, 644.0), 16, Color(ItemView.DIM, 0.95), false)
-	GameFont.draw_centered(self, "C HEPSİNİ SİL    YUKARI/AŞAĞI VEYA W/S GEZİN    F5 / ESC KAPAT", Vector2(_w() * 0.5, 668.0), 16, Color(ItemView.DIM, 0.95), false)
+	GameFont.draw_centered(self, "C HEPSİNİ SİL    Y YUMRUK AL    U SİLAHLAR +1 SEVİYE    W/S GEZİN    F5 / ESC KAPAT", Vector2(_w() * 0.5, 668.0), 16, Color(ItemView.DIM, 0.95), false)
 
 
 func _draw_list() -> void:

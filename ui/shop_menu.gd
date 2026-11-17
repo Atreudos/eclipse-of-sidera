@@ -8,12 +8,13 @@ extends GameMenu
 
 const PANEL := Rect2(100.0, 40.0, 1080.0, 640.0)
 const DETAIL := Rect2(852.0, 118.0, 300.0, 456.0)
-const CELL := 92.0
-const GAP := 26.0
-## Raf satırlarının ortası (x) ve ilk satırın üst kenarı (y).
+const CELL := 80.0
+const GAP := 30.0
+## Raf satırlarının ortası (x) ve ilk satırın üst kenarı (y). Satırlar: EŞYA, YEMEK, SİLAH (boş olan satır atlanır).
+## Satır arası: üstteki satırın fiyatı + alttaki satırın başlığı sığacak kadar.
 const GRID_CENTER_X := 470.0
-const GRID_TOP := 176.0
-const ROW_STEP := 190.0
+const GRID_TOP := 150.0
+const ROW_STEP := 146.0
 
 var stock: ShopStock
 ## Oyuncunun bu menüyü açtığı tezgâh (kapanınca tezgâh yeniden çizilir).
@@ -52,7 +53,7 @@ func close() -> void:
 
 # ---------------------------------------------------------------- düzen
 
-## Eşyalar üst satırda, yemekler alt satırda; her satır kendi içinde ortalanır.
+## Eşyalar üst satırda, yemekler ortada, silah teklifleri (yeni silah / yükseltme) altta; her satır kendi içinde ortalanır.
 func _build_layout() -> void:
 	_rects.clear()
 	_captions.clear()
@@ -60,14 +61,17 @@ func _build_layout() -> void:
 		return
 	var gear: Array[int] = []
 	var food: Array[int] = []
+	var weapons: Array[int] = []
 	for i in stock.size():
-		if stock.offers[i].item.is_food():
+		if stock.offers[i].is_weapon():
+			weapons.append(i)
+		elif stock.offers[i].item.is_food():
 			food.append(i)
 		else:
 			gear.append(i)
 	_rects.resize(stock.size())
 	var row := 0
-	for group in [["EŞYA", gear], ["YEMEK", food]]:
+	for group in [["EŞYA", gear], ["YEMEK", food], ["SİLAH", weapons]]:
 		var idxs: Array = group[1]
 		if idxs.is_empty():
 			continue
@@ -197,7 +201,8 @@ func _set_cursor(i: int) -> void:
 	Sfx.play("ui_move", -8.0, 1.0, 0.03)
 
 
-## İmleci `dir` yönündeki en yakın kutuya taşır (yönde ilerleme + yana sapma cezası).
+## İmleci `dir` yönündeki en yakın kutuya taşır. Yatay hamle aynı satırda kalmaya çalışır (yönde ilerleme + yana sapma cezası);
+## dikey hamle ÖNCE en yakın satırı seçer (satır atlamaz), sonra o satırda x'i en yakın kutuyu.
 func _move_cursor(dir: Vector2) -> void:
 	if _rects.is_empty():
 		return
@@ -211,7 +216,8 @@ func _move_cursor(dir: Vector2) -> void:
 		var along := d.dot(dir)
 		if along <= 4.0:
 			continue
-		var score := along + absf(d.cross(dir)) * 2.5
+		var cross := absf(d.cross(dir))
+		var score := along * 6.0 + cross if absf(dir.y) > 0.5 else along + cross * 2.5
 		if score < best_score:
 			best_score = score
 			best = i
@@ -234,7 +240,13 @@ func buy_cursor() -> bool:
 		_say(reason, false)
 		Sfx.play("ui_deny", -4.0)
 		return false
-	_say("SATIN ALINDI  " + item_name, true)
+	if offer.is_weapon():
+		if offer.weapon_kind == ShopStock.WEAPON_UPGRADE:
+			_say("YÜKSELDİ  %s  SEVİYE %d" % [WeaponDB.display_name(offer.weapon_id), offer.to_level], true)
+		else:
+			_say("SATIN ALINDI  %s" % WeaponDB.display_name(offer.weapon_id), true)
+	else:
+		_say("SATIN ALINDI  " + item_name, true)
 	Sfx.play("coin", -2.0)
 	if not offer.item.is_food():
 		Sfx.play("equip", -3.0)
@@ -297,10 +309,12 @@ func _draw_action_hint(offer: ShopStock.Offer) -> void:
 		return
 	var text := "ENTER  SATIN AL"
 	var col := GameFont.YELLOW
+	if offer.is_weapon() and offer.weapon_kind == ShopStock.WEAPON_UPGRADE:
+		text = "ENTER  YÜKSELT"
 	if player.gold < offer.price:
 		text = "YETERLİ ALTIN YOK"
 		col = Color(1.0, 0.45, 0.45)
-	elif player.inventory != null and not player.inventory.can_give(offer.item):
+	elif not offer.is_weapon() and player.inventory != null and not player.inventory.can_give(offer.item):
 		text = "ÇANTA DOLU"
 		col = Color(1.0, 0.45, 0.45)
 	GameFont.draw_centered(self, text, Vector2(DETAIL.get_center().x, DETAIL.end.y + 22.0), 20, col)

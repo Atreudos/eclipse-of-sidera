@@ -8,13 +8,17 @@ func _init() -> void:
 	var actions := {
 		"move_left": [_key(KEY_A), _key(KEY_LEFT), _joy_axis(JOY_AXIS_LEFT_X, -1.0), _joy_btn(JOY_BUTTON_DPAD_LEFT)],
 		"move_right": [_key(KEY_D), _key(KEY_RIGHT), _joy_axis(JOY_AXIS_LEFT_X, 1.0), _joy_btn(JOY_BUTTON_DPAD_RIGHT)],
-		"jump": [_key(KEY_SPACE), _key(KEY_W), _key(KEY_UP), _joy_btn(JOY_BUTTON_A)],
+		# W / yukarı ok artık zıplatmaz: sapan nişanı (aim_up) için ayrıldı.
+		"jump": [_key(KEY_SPACE), _joy_btn(JOY_BUTTON_A)],
 		"dash": [_key(KEY_SHIFT), _key(KEY_L), _joy_btn(JOY_BUTTON_RIGHT_SHOULDER)],
 		"attack": [_key(KEY_J), _mouse(MOUSE_BUTTON_LEFT), _joy_btn(JOY_BUTTON_X)],
+		"attack2": [_key(KEY_I), _joy_btn(JOY_BUTTON_LEFT_SHOULDER)],
+		"aim_up": [_key(KEY_W), _key(KEY_UP), _joy_axis(JOY_AXIS_LEFT_Y, -1.0), _joy_btn(JOY_BUTTON_DPAD_UP)],
+		"aim_down": [_key(KEY_S), _key(KEY_DOWN), _joy_axis(JOY_AXIS_LEFT_Y, 1.0), _joy_btn(JOY_BUTTON_DPAD_DOWN)],
 		"parry": [_key(KEY_K), _mouse(MOUSE_BUTTON_RIGHT), _joy_btn(JOY_BUTTON_B)],
 		"interact": [_key(KEY_E), _joy_btn(JOY_BUTTON_Y)],
 		"restart": [_key(KEY_R)],
-		"inventory": [_key(KEY_I), _key(KEY_TAB), _joy_btn(JOY_BUTTON_BACK)],
+		"inventory": [_key(KEY_TAB), _joy_btn(JOY_BUTTON_BACK)],
 		"debug_toggle": [_key(KEY_F3)],
 	}
 	for action_name in actions:

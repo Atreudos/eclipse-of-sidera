@@ -6,7 +6,7 @@ extends RefCounted
 ## {"seed", "floor", "room", "wave", "player": {...}, "umbra": [id], "umbra_carry", "stats": {...}, "seen": [sahne adı]}
 ##   floor: 1'den, room: kat içi 0'dan (Normal kip); wave: 1'den (Sınırsız kip).
 
-## Oyuncunun durumu: can, bağışıklık, altın, takılı eşyalar (sırayla) ve çanta.
+## Oyuncunun durumu: can, bağışıklık, altın, takılı eşyalar (sırayla), çanta ve silahlar (slotlar + seviyeler).
 static func capture_player(p: Player) -> Dictionary:
 	var equipped: Array = []
 	for it in p.inventory.items:
@@ -14,7 +14,8 @@ static func capture_player(p: Player) -> Dictionary:
 	var bag: Array = []
 	for e in p.inventory.bag:
 		bag.append({"id": (e["item"] as ItemData).id, "count": int(e["count"])})
-	return {"health": p.health, "immunity": p.immunity, "gold": p.gold, "equipped": equipped, "bag": bag}
+	var weapons := p.loadout.to_dict() if p.loadout != null else {}
+	return {"health": p.health, "immunity": p.immunity, "gold": p.gold, "equipped": equipped, "bag": bag, "weapons": weapons}
 
 
 ## Kayıttaki durumu oyuncuya uygular. Tanınmayan eşya kimlikleri (silinmiş eşyalar) atlanır.
@@ -39,6 +40,13 @@ static func apply_player(p: Player, d: Dictionary) -> void:
 			for k in n:
 				if inv.give(item) != "":
 					break
+	# Silahlar: eski kayıtlarda (silah sistemi öncesi) bu anahtar yoktur; başlangıç silahlarına (kılıç J, sapan I) dönülür.
+	if p.loadout != null:
+		var weapons: Variant = d.get("weapons", null)
+		if weapons is Dictionary:
+			p.loadout.from_dict(weapons as Dictionary)
+		else:
+			p.loadout.reset()
 	p.set_immunity(maxi(SaveSlot._int(d.get("immunity", 0)), 0))
 	p.gold = maxi(SaveSlot._int(d.get("gold", 0)), 0)
 	p.gold_changed.emit(p.gold)

@@ -56,10 +56,10 @@ func _run() -> void:
 	var dev_menu := run.hud.dev_menu
 
 	# 1) Boş envanter
-	inventory_screen._unhandled_input(_key(KEY_I))
+	inventory_screen._unhandled_input(_key(KEY_TAB))
 	await _frames(6)
 	await _shot("m1_envanter_bos")
-	inventory_screen._unhandled_input(_key(KEY_I))
+	inventory_screen._unhandled_input(_key(KEY_TAB))
 	await _frames(4)
 
 	# 2) Dolu envanter: slotlar takılı, çantada eşyalar, can 3/4 + 2 bağışıklık, altın
@@ -72,7 +72,7 @@ func _run() -> void:
 	player.add_gold(37)
 	await _frames(20)
 	await _shot("m2_oyun_hud")
-	inventory_screen._unhandled_input(_key(KEY_I))
+	inventory_screen._unhandled_input(_key(KEY_TAB))
 	await _frames(8)
 	await _shot("m3_envanter_dolu")
 	# Çanta eşyası üstünde (Satürn'ün Kum Saati: cep slotu dolu, yer değiştirme)
