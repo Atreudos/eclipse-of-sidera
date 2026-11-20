@@ -33,6 +33,11 @@ const PARRY_CHAIN_TIME := 0.3
 
 ## Düşmanın başına konulunca kayma hızı (px/sn).
 const SLIDE_OFF_SPEED := 220.0
+## Duvar kayma hızı, sekme hızı (yatay, duvardan uzağa), sekmeden sonra yatay girdinin kilitli kaldığı süre (sn), duvara değme payı (sn).
+const WALL_SLIDE_SPEED := 130.0
+const WALL_JUMP_SPEED_X := 380.0
+const WALL_LOCK_TIME := 0.18
+const WALL_COYOTE := 0.1
 ## Bu hızdan (px/sn) hızlı inişler ses/toz efekti verir.
 const HARD_LANDING_SPEED := 520.0
 
@@ -92,6 +97,8 @@ const ANIM_SPEC := {
 	"idle": {"fps": 8.0, "loop": true},
 	"run": {"fps": 12.0, "loop": true, "fallback": "idle"},
 	"jump": {"fps": 10.0, "loop": false, "fallback": "idle"},
+	"wall_slide": {"fps": 8.0, "loop": true, "fallback": "fall"},
+	"wall_jump": {"fps": 14.0, "loop": false, "fallback": "jump"},
 	"fall": {"fps": 10.0, "loop": true, "fallback": "jump"},
 	"dash": {"fps": 14.0, "loop": false, "fallback": "run"},
 	"attack1": {"fps": 16.0, "loop": false, "fallback": "idle"},
@@ -149,6 +156,11 @@ var _coyote := 0.0
 var _jump_buffer := 0.0
 var _air_jumps_left := 0
 var _jump_cut_done := true
+## Duvar sekmesi (Reçineli Eldivenler, `wall_jump` stat'ı): duvarın yönü (-1 sol, 1 sağ), duvara değme payı, kayıyor mu, sekme sonrası yatay kilit.
+var _wall_dir := 0
+var _wall_t := 0.0
+var _wall_sliding := false
+var _wall_lock := 0.0
 
 var _dash_recharge_t := 0.0
 var _dash_t := 0.0
@@ -378,6 +390,10 @@ func pick_animation() -> String:
 			return "hurt"
 		State.DEAD:
 			return "death"
+	if _wall_sliding:
+		return "wall_slide"
+	if _wall_lock > WALL_LOCK_TIME * 0.5 and not is_on_floor():
+		return "wall_jump"
 	if not is_on_floor():
 		return "jump" if velocity.y < 0.0 else "fall"
 	if absf(velocity.x) > 30.0 and absf(intent.move_x) > 0.05:
@@ -401,6 +417,9 @@ func _tick_timers(delta: float) -> void:
 	for i in _slot_buffer.size():
 		_slot_buffer[i] = maxf(_slot_buffer[i] - delta, 0.0)
 	_jump_buffer = maxf(_jump_buffer - delta, 0.0)
+	_wall_lock = maxf(_wall_lock - delta, 0.0)
+	_wall_t = maxf(_wall_t - delta, 0.0)
+	_wall_sliding = false
 	if intent.jump_pressed:
 		_jump_buffer = stats.value("jump_buffer")
 	if is_on_floor():
@@ -431,6 +450,8 @@ func is_invulnerable() -> bool:
 # ---------------------------------------------------------------- hareket
 
 func _apply_horizontal(delta: float, speed_mult: float) -> void:
+	if _wall_lock > 0.0:
+		return  # duvardan sekerken kısa süre girdi yok: karşı yöne gerçekten sıçrasın
 	var on_floor := is_on_floor()
 	if absf(intent.move_x) > 0.05:
 		var target := intent.move_x * stats.value("move_speed") * speed_mult
@@ -460,6 +481,34 @@ func _handle_jump() -> void:
 		_jump_cut_done = true
 
 
+## Reçineli Eldivenler (`wall_jump` > 0): havada duvara yaslanıp düşersen yavaş kayarsın; zıplarsan duvardan karşı yöne sekersin.
+## Duvar eldivensiz hiçbir şey yapmaz.
+func _handle_wall() -> void:
+	if stats.value("wall_jump") <= 0.0 or is_on_floor():
+		_wall_t = 0.0
+		return
+	if is_on_wall():
+		var n := get_wall_normal()
+		if absf(n.x) > 0.5:
+			_wall_dir = -1 if n.x > 0.0 else 1  # duvar normali bize doğru; duvar ters yönde
+			_wall_t = WALL_COYOTE
+			if velocity.y > 0.0 and intent.move_x * float(_wall_dir) > 0.05:
+				velocity.y = minf(velocity.y, WALL_SLIDE_SPEED)
+				_wall_sliding = true
+				facing = _wall_dir
+	if _jump_buffer > 0.0 and _wall_t > 0.0 and _wall_dir != 0:
+		velocity = Vector2(-float(_wall_dir) * WALL_JUMP_SPEED_X, -stats.value("jump_velocity") * 0.95)
+		facing = -_wall_dir
+		_wall_lock = WALL_LOCK_TIME
+		_wall_t = 0.0
+		_wall_sliding = false
+		_air_jumps_left = stats.int_value("air_jumps")
+		_jump_buffer = 0.0
+		_coyote = 0.0
+		_jump_cut_done = false
+		jumped.emit(true)
+
+
 func _do_jump() -> void:
 	velocity.y = -stats.value("jump_velocity")
 	_jump_buffer = 0.0
@@ -470,6 +519,7 @@ func _do_jump() -> void:
 func _state_move(delta: float) -> void:
 	_apply_horizontal(delta, 1.0)
 	_apply_gravity(delta)
+	_handle_wall()
 	_handle_jump()
 	_handle_actions()
 

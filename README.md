@@ -80,7 +80,9 @@ Ayrıntılar: arka arkaya 3 sersemletme alırsa 1.5 sn zırhlanır (sonsuz serse
 
 **Sınırsız kip** (`levels/endless.gd`): tek geniş arena (3000 px, 7 platform), bitmeyen dalgalar. Düşman sayısı `2.5 + 1.2 * dalga^0.8` (1. dalga 3, 10. dalga 10, 100. dalga 50) ve güçleri `EnemyScaling` ile büyür; ekranda aynı anda en çok 4..10 düşman olur (dalga parçalara bölünür). Scorpius 4. dalgada gelir, dalganın en çok %40'ı olur. 5/10/25/50/75/100. dalgalar bitince ortada dükkân açılır; hazır olunca arenanın sağ ucundaki ışık sütununa yürüyerek sonraki dalga başlar. Her 3. dalgada 1 can yenilenir. Koşu her dalga başında kaydedilir (menüden DEVAM), rekor "en iyi dalga" olarak tutulur. **Not:** bu bölüm Godot erişimi olmayan bir ortamda yazıldı; testleri (`sinirsiz_matematik`, `sinirsiz_akis`) ilk fırsatta çalıştır.
 
-Sıradaki: duvardan sekme (Reçineli Eldivenler eşyasıyla).
+**Duvar sekmesi:** yalnız Reçineli Eldivenler (`resin_gloves`) takılıyken. Havada duvara doğru basılı tutarsan yavaş kayarsın; Space ile duvardan karşı yöne sekersin (kısa süre yatay girdi kilitli). Animasyonlar `sidera_wall_slide`, `sidera_wall_jump`. Testi `duvar_sekmesi`; **henüz çalıştırılmadı** (Godot yok).
+
+Sıradaki: plan belgesi, sprite bağlama denetimi, son doğrulama.
 
 **Yazı tipi**: oyun **Fraunces** (SIL OFL) kullanıyor: Times'ın klasik "Roman" serif iskeleti ama yumuşak/tombul, biraz çizgi film afişi gibi. Türkçe harflerin tamamı var (Ğ ğ Ş ş İ fontun kendi parçalarından eklendi). Tek yerden okunur: `ui/game_font.gd` `PATH` + proje ayarı `gui/theme/custom_font`; ayrıntı ve değiştirme adımları `assets/fonts/README.md`. Eski AGENTORANGE projeden çıkarıldı (lisansı belirsizdi; artık depoyu bu açıdan herkese açmak engel değil).
 

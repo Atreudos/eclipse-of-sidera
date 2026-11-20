@@ -81,6 +81,7 @@ func _run_all() -> void:
 		"ritim_dodge": _test_rhythm_dodge_and_heal,
 		"ritim_gercek": _test_rhythm_real_fight,
 		"oda_yerlesim": _test_room_layouts,
+		"duvar_sekmesi": _test_wall_jump,
 		"sinirsiz_matematik": _test_endless_math,
 		"sinirsiz_akis": _test_endless_flow,
 		"oda_dalga": _test_run_waves,
@@ -1439,6 +1440,41 @@ func _test_endless_flow() -> void:
 	check(run.get_node_or_null("Rooms/Room0/WaveGate") == null, "dalga kapısı kalktı")
 	run.queue_free()
 	await _frames(3)
+
+
+func _test_wall_jump() -> void:
+	await _new_world("Duvar sekmesi (Reçineli Eldivenler)")
+	var wall := StaticBody2D.new()
+	wall.collision_layer = Layers.WORLD
+	wall.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var rs := RectangleShape2D.new()
+	rs.size = Vector2(60, 1600)
+	cs.shape = rs
+	cs.position = Vector2(930, 0)  # sol yüzey x = 900
+	wall.add_child(cs)
+	_world.add_child(wall)
+	var p := _spawn_player(860.0)
+	p.global_position = Vector2(860.0, 100.0)
+	p.intent.move_x = 1.0
+	await _frames(25)
+	check(not p._wall_sliding and p.velocity.y > 200.0, "eldivensiz duvarda kayma yok (vy %.0f)" % p.velocity.y)
+	p.inventory.add(_item("resin_gloves"))
+	check(p.stats.value("wall_jump") > 0.0, "Reçineli Eldivenler wall_jump stat'ını verir")
+	await _frames(3)
+	p.global_position = Vector2(860.0, 100.0)
+	p.velocity = Vector2.ZERO
+	await _frames(25)
+	check(p._wall_sliding and p.velocity.y <= Player.WALL_SLIDE_SPEED + 1.0, "eldivenle duvarda yavaş kayıyor (vy %.0f)" % p.velocity.y)
+	check(p.pick_animation() == "wall_slide", "kayarken wall_slide animasyonu")
+	p.intent.jump_pressed = true
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(p.velocity.x < -100.0 and p.velocity.y < -300.0, "duvardan zıplayınca karşı yöne sekiyor (%.0f, %.0f)" % [p.velocity.x, p.velocity.y])
+	check(p.facing == -1, "sekince duvardan uzağa bakıyor")
+	p.intent.move_x = 0.0
+	await _frames(60)
+	check(p.is_on_floor(), "sekmeden sonra yere indi")
 
 
 func _test_room_layouts() -> void:
@@ -5139,7 +5175,7 @@ func _test_art_loader() -> void:
 ## Çizim listesindeki animasyon adları ile koddaki animasyonlar birebir aynı olmalı (çizer boşuna çizmesin, kod çizimi bulsun).
 ## Listede olup kodda henüz oynatılmayan animasyonlar burada açıkça sayılır (ilgili özellik gelince listeden çıkar).
 const ART_NOT_WIRED := {
-	"sidera": ["wall_slide", "wall_jump", "double_jump", "land", "eat", "interact", "appear", "ascend"],
+	"sidera": ["double_jump", "land", "eat", "interact", "appear", "ascend"],
 	"taurus": ["spawn"],
 	"sagitta": ["spawn"],
 	"scorpius": ["spawn"],

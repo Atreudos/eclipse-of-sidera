@@ -57,6 +57,6 @@ Envanter ekranındaki karakter (ortadaki figür) `sidera_idle` karesini büyüt�
 
 ## Oyuna bağlı olanlar ve koddan çizilenler
 
-Oyun şu çizimleri şu an kullanır: **tüm karakter animasyonları** (Sidera, düşmanlar, Umbra, minyon), **eşya ve silah simgeleri**, **ana menü, başlık, kayıt ve krediler ekranları** (`ui_menu_*`, `ui_logo`, `ui_slot_*`...), **lobi/dükkân** (`shop_counter`, `merchant_idle`, `shop_sign`), **Gölge ödül sunakları** ve **kat geçidi kapısı**, `fx_umbra_grab` ve `fx_sling_stone`.
+Oyun şu çizimleri şu an kullanır: **tüm karakter animasyonları** (Sidera, duvar kayma/sekme dahil; düşmanlar, Umbra, minyon), **eşya ve silah simgeleri**, **ana menü, başlık, kayıt ve krediler ekranları** (`ui_menu_*`, `ui_logo`, `ui_slot_*`...), **lobi/dükkân** (`shop_counter`, `merchant_idle`, `shop_sign`), **Gölge ödül sunakları** ve **kat geçidi kapısı**, `fx_umbra_grab` ve `fx_sling_stone`.
 
 Henüz koddan çizilen (çizim listede var ama oyuna bağlanması sırada olan) yerler: ekran göstergeleri (kalp, dash, altın, ritim ve zaman barı), envanter/dükkân/ödül çerçeveleri, dünya temaları (arka plan, zemin, platform, duvar), çoğu efekt (kılıç izi, vuruş kıvılcımı, parry halkası, mermiler, toz, doğuş sütunu...). Altın elmas uyarısı, mermiler, parry halkası, vuruş kıvılcımları, dürtüş izi ve kılıç izi şimdilik koddan çizilir.
