@@ -10,6 +10,7 @@ const SAGITTA := preload("res://actors/enemies/sagitta.tscn")
 const TAURUS := preload("res://actors/enemies/taurus.tscn")
 const SCORPIUS := preload("res://actors/enemies/scorpius.tscn")
 const RUN := preload("res://levels/run.tscn")
+const ENDLESS_SCENE := preload("res://levels/endless.tscn")
 const UMBRA := preload("res://actors/enemies/umbra.tscn")
 const UM = UmbraKit.Move
 
@@ -80,6 +81,8 @@ func _run_all() -> void:
 		"ritim_dodge": _test_rhythm_dodge_and_heal,
 		"ritim_gercek": _test_rhythm_real_fight,
 		"oda_yerlesim": _test_room_layouts,
+		"sinirsiz_matematik": _test_endless_math,
+		"sinirsiz_akis": _test_endless_flow,
 		"oda_dalga": _test_run_waves,
 		"oda_akis": _test_run_flow,
 		"oda_dalga_akis": _test_run_wave_progression,
@@ -1359,6 +1362,83 @@ func _test_rhythm_real_fight() -> void:
 	check(r.value >= r.gain_hit * 2.0, "gerçek vuruşlar ritmi doldurdu (%.0f)" % r.value)
 	run.queue_free()
 
+
+
+func _test_endless_math() -> void:
+	print("\nSınırsız kip: dalga matematiği ve arena")
+	var probs := RoomLayouts.problems(RoomLayouts.ARENA_ID)
+	check(probs.is_empty(), "arena yerleşimi kurallara uyuyor %s" % str(probs))
+	check(not (RoomLayouts.ARENA_ID in RoomLayouts.ids()) and (RoomLayouts.ARENA_ID in RoomLayouts.all_ids()), "arena savaş odası havuzunda yok")
+	check(RoomLayouts.width_of(RoomLayouts.ARENA_ID) >= 2500.0 and RoomLayouts.spawn_points(RoomLayouts.ARENA_ID).size() >= 10, "arena geniş, çok doğma noktalı")
+	check(EndlessRun.wave_size(1) == 3 and EndlessRun.wave_size(10) == 10 and EndlessRun.wave_size(100) == 50, "dalga boyutu: 1->3, 10->10, 100->50 (%d/%d/%d)" % [EndlessRun.wave_size(1), EndlessRun.wave_size(10), EndlessRun.wave_size(100)])
+	var prev := 0
+	var monotone := true
+	for w in range(1, 301):
+		var n := EndlessRun.wave_size(w)
+		if n < prev:
+			monotone = false
+		prev = n
+	check(monotone, "dalga boyutu azalmaz")
+	check(EndlessRun.alive_cap(1) == 4 and EndlessRun.alive_cap(1000) == 10, "eşzamanlı üst sınır 4..10")
+	check(EndlessRun.scorpius_count(3, 8) == 0 and EndlessRun.scorpius_count(4, 6) == 1, "Scorpius 4. dalgada başlar")
+	check(EndlessRun.scorpius_count(100, 50) == 20 and EndlessRun.scorpius_count(100, 50) <= 50 * 2 / 5, "Scorpius en çok %40")
+	check(EndlessRun.is_shop_wave(5) and EndlessRun.is_shop_wave(100) and not EndlessRun.is_shop_wave(6) and not EndlessRun.is_shop_wave(26), "dükkân dalgaları 5/10/25/50/75/100")
+	check(EndlessRun.shop_floor(1) == 1 and EndlessRun.shop_floor(100) == FloorPlan.FLOOR_COUNT and EndlessRun.shop_floor(5) <= EndlessRun.shop_floor(10), "dükkân kat eşlemesi 1..18, azalmaz")
+	var all_ok := true
+	for w in [1, 2, 4, 5, 10, 25, 50, 100, 250]:
+		var r := RandomNumberGenerator.new()
+		r.seed = 77 + w
+		var bs := EndlessRun.batches(w, r)
+		var total := 0
+		var scorp := 0
+		for b in bs:
+			total += (b as Array).size()
+			if (b as Array).size() > EndlessRun.alive_cap(w) or (b as Array).is_empty():
+				all_ok = false
+			for sc in b:
+				if sc == SCORPIUS:
+					scorp += 1
+		if total != EndlessRun.wave_size(w) or scorp != EndlessRun.scorpius_count(w, total):
+			all_ok = false
+	check(all_ok, "parçalar: toplam = dalga boyutu, hiçbiri üst sınırı aşmaz, Scorpius sayısı tutuyor")
+	var r1 := RandomNumberGenerator.new()
+	r1.seed = 9
+	var r2 := RandomNumberGenerator.new()
+	r2.seed = 9
+	check(str(EndlessRun.batches(30, r1)) == str(EndlessRun.batches(30, r2)), "aynı tohum = aynı dalga")
+
+
+func _test_endless_flow() -> void:
+	await _new_world("Sınırsız kip: dalga akışı, dükkân arası, kayıt")
+	var run := ENDLESS_SCENE.instantiate() as EndlessRun
+	run.seed_value = 5
+	var p := run.get_node("Player") as Player
+	p.scripted = true
+	_world.add_child(run)
+	(run.get_node("Camera") as ShakeCamera).set_process(false)
+	p.stats.set_base("max_health", 99.0)
+	p.health = 99
+	await _frames(3)
+	check(run.wave == 1 and run.arena != null and run.arena.layout_id == RoomLayouts.ARENA_ID, "1. dalga arenada başladı")
+	check(run.hud.wave == 1, "HUD dalga sayacı 1")
+	var came := await _wait_until(func() -> bool: return get_tree().get_nodes_in_group("enemies").size() == 3, 600)
+	check(came, "1. dalgada 3 düşman doğdu")
+	run.skip_room()
+	await _frames(3)
+	check(run.wave == 2 and int(run.stats["rooms_cleared"]) == 1, "dalga bitince 2. dalga başladı")
+	check(run.snapshot()["wave"] == 2 and not run.snapshot().has("shop"), "kayıt: savaşta dalga numarası, raf yok")
+	# Dükkân arası (5. dalga bitti)
+	run.wave = 5
+	run._on_room_cleared(run.arena)
+	check(run.breaking and run.arena.shop != null and run.shop_stock != null and run.shop_stock.size() > 0, "5. dalga sonrası dükkân açıldı, raf dolu")
+	check(run.snapshot()["wave"] == 6 and run.snapshot().has("shop"), "kayıt: dükkân arasında sonraki dalga + raf")
+	check(run.get_node_or_null("Rooms/Room0/WaveGate") != null, "dalga kapısı var")
+	p.global_position = Vector2(run.gate_x() + 20.0, 600.0)
+	await _frames(3)
+	check(not run.breaking and run.wave == 6 and run.arena.shop == null, "kapıya yürüyünce 6. dalga başladı, dükkân kalktı")
+	check(run.get_node_or_null("Rooms/Room0/WaveGate") == null, "dalga kapısı kalktı")
+	run.queue_free()
+	await _frames(3)
 
 
 func _test_room_layouts() -> void:

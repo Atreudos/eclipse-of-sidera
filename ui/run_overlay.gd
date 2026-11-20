@@ -205,12 +205,16 @@ func _draw_summary_rows(w: float, y0: float, t: float, show_reached: bool) -> vo
 	if summary.is_empty():
 		return
 	var rows: Array = []
+	var endless := int(summary.get("wave", 0)) > 0
 	if show_reached:
-		if int(summary.get("floor", 0)) > 0:
+		if endless:
+			rows.append([["ULAŞILAN DALGA ", GameFont.WHITE], [str(int(summary.get("wave", 1))), GameFont.YELLOW]])
+		elif int(summary.get("floor", 0)) > 0:
 			rows.append([["ULAŞILAN KAT ", GameFont.WHITE], [str(int(summary.get("floor", 1))), GameFont.YELLOW], ["  ODA ", GameFont.WHITE], [str(int(summary.get("room", 1))), GameFont.YELLOW]])
 		else:
 			rows.append([["ULAŞILAN ODA ", GameFont.WHITE], [str(int(summary.get("room", 1))), GameFont.YELLOW]])
-	rows.append([["TEMİZLENEN ODA ", GameFont.WHITE], [str(int(summary.get("rooms_cleared", 0))), GameFont.YELLOW]])
+	if not endless:
+		rows.append([["TEMİZLENEN ODA ", GameFont.WHITE], [str(int(summary.get("rooms_cleared", 0))), GameFont.YELLOW]])
 	rows.append([["ÖLDÜRÜLEN ", GameFont.WHITE], [str(int(summary.get("kills", 0))), GameFont.YELLOW]])
 	rows.append([["EN İYİ KOMBO ", GameFont.WHITE], [str(int(summary.get("best_combo", 0))), GameFont.YELLOW]])
 	rows.append([["SÜRE ", GameFont.WHITE], [format_time(float(summary.get("time", 0.0))), GameFont.YELLOW]])

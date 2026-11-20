@@ -19,6 +19,8 @@ const MAX_RISE := 150.0
 ## Lobinin ve Gölge arenasının yerleşim adları. `ids()` (savaş odası seçimi) bunları DÖNDÜRMEZ.
 const LOBBY_ID := "lobi"
 const BOSS_ID := "golge"
+## Sınırsız kipin geniş arenası. `ids()` bunu da DÖNDÜRMEZ.
+const ARENA_ID := "arena"
 
 const LAYOUTS := {
 	# Gölge arenası: her katın 6. odası. Düz zemin, iki yanda duvar (Gölge'nin duvar tırmanışı için), ortada iki küçük platform.
@@ -27,6 +29,16 @@ const LAYOUTS := {
 		"width": 1600,
 		"platforms": [[300, 500, 220], [1080, 500, 220]],
 		"spawns": [[1100, 640]],
+	},
+	# Sınırsız kip arenası: çok geniş, simetrik. Zeminde ve 7 platformda doğma noktası var; dükkân ortada (shop_x), sağ uçta dalga kapısı.
+	"arena": {
+		"width": 3000,
+		"platforms": [[300, 520, 220], [640, 420, 240], [1100, 520, 220], [1300, 410, 400], [1680, 520, 220], [2120, 420, 240], [2480, 520, 220]],
+		"spawns": [
+			[450, 640], [800, 640], [1200, 640], [1500, 640], [1800, 640], [2200, 640], [2550, 640], [2800, 640],
+			[410, 520], [760, 420], [1210, 520], [1500, 410], [1790, 520], [2240, 420], [2590, 520],
+		],
+		"shop_x": 1500,
 	},
 	# Lobi: her katın ilk odası. Düz zemin, platform ve doğma noktası yok; dükkân `shop_x` konumunda durur.
 	"lobi": {
@@ -72,7 +84,7 @@ const LAYOUTS := {
 static func ids() -> Array:
 	var out: Array = []
 	for k in LAYOUTS.keys():
-		if k != LOBBY_ID and k != BOSS_ID:
+		if k != LOBBY_ID and k != BOSS_ID and k != ARENA_ID:
 			out.append(k)
 	return out
 
