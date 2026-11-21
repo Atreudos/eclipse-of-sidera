@@ -4,7 +4,7 @@
 
 **Sidera** (yıldız) olarak oynarsın; gölgen **Umbra** peşinde. Isaac gibi eşya build'i kurarsın, Ultrakill gibi parry/dash ile agresif dövüşürsün. Her ödül odasında 2 eşya çıkar: birini alırsın, **seçmediğini Umbra alır** ve sana karşı kullanır. Umbra'nın saldırılarını parry'lersen eşyalarını geri çalarsın.
 
-Düşmanlar burç adlıdır: **Taurus** (koşup vuran boğa goblin), **Sagitta** (yılan okçu), **Scorpius** (rapier'li akrep).
+Düşmanlar burç adlıdır: **Taurus** (koşup vuran boğa goblin), **Sagitta** (yılan okçu), **Scorpius** (rapier'li akrep). Kat 4'ten itibaren yenileri gelir (`actors/enemies/roster.gd`): **Aries** (zırhlı koç; önden vuruş zırha çarpar, duvara çarpınca sersemler), **Cancer** (kalkanlı yengeç; kıskacını parry'lersen kalkan kırılır), kat 7: **Gemini** (ikizler; biri ölünce diğeri öfkelenir), **Leo** (aslan; kükremesi düşmanları hızlandırır, vurursan iptal olur), kat 10: **Libra** (terazi; parry'lediğin altın küre ikiye bölünüp başka bir düşmana da gider), **Aquarius** (kova; zemine su döker, birikinti yavaşlatır). Sınırsız kipte dalga/3 ≈ kat olarak aynı sırayla karışırlar. **Not:** bunlar Godot'suz ortamda yazıldı, testleri (`burc_kadro`, `burc_dusmanlar`) çalıştır.
 
 Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 
