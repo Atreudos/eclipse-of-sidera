@@ -51,6 +51,7 @@ const PACKS := {
 	7: "Paket 7: Kat 2-5 ortamları",
 	8: "Paket 8: Umbra",
 	9: "Paket 9: Ölüm ekranı ve geçişler",
+	10: "Paket 10: Yeni düşmanlar (Aries, Cancer, Gemini, Leo, Libra, Aquarius)",
 }
 
 ## Temalar: her tema için aynı 8 dünya çizimi istenir (adın başına tema adı gelir: kat1_bg_far, lobi_floor ...).
@@ -137,6 +138,7 @@ static func _build() -> void:
 	_owner_cache.clear()
 	_sidera()
 	_enemies()
+	_zodiac()
 	_umbra()
 	_effects()
 	_world()
@@ -253,6 +255,79 @@ static func _enemies() -> void:
 		["death", "death", "Ölüm (bitince söner)", "5-7", false, 0.7, true, 3],
 		["spawn", "spawn", "Işık sütunundan beliriş", "5", false, 0.4, false, 3],
 	])
+
+
+## Yeni burç düşmanları (Paket 10). Ortak satırlar `_zodiac_rows` ile üretilir; her düşmanın kendine özgü satırları eklenir.
+static func _zodiac() -> void:
+	_chars("dusman", "Aries (zırhlı koç)", "aries", CHAR_SIZE, _zodiac_rows(
+		"Kafa atma hazırlığı: öne eğilip toprağı eşeler (0.75 sn). Üstüne altın ya da kırmızı uyarı biner",
+		"Kafa atma: zırhlı başıyla uzun, ağır hamle (0.6 sn)",
+		"Hamle sonrası soluklanma (vurma fırsatı)",
+		"Duvara çarpınca ya da parry sonrası sersemleme: kafası takılmış, yıldızlar (döner)", true))
+	_chars("dusman", "Cancer (kalkanlı yengeç)", "cancer", CHAR_SIZE, _zodiac_rows(
+		"Kıskaç hazırlığı: büyük kıskacını kaldırır (0.5 sn). Üstüne altın ya da kırmızı uyarı biner",
+		"Kıskaç çarpması: kısa, sert (0.2 sn)",
+		"Hamle sonrası kıskaç aşağıda, soluklanma",
+		"Parry sonrası: kalkan kırılmış, sersem (döner)", true))
+	_chars("dusman", "Gemini (ikiz çift)", "gemini", CHAR_SIZE, _zodiac_rows(
+		"Atılma hazırlığı: hızlı çömelme (0.4 sn). Üstüne altın ya da kırmızı uyarı biner",
+		"Atılma: iki hançerli hızlı hamle (0.22 sn)",
+		"Atılma sonrası kısa soluklanma",
+		"Parry sonrası sersemleme (döner)", true))
+	_chars("dusman", "Leo (aslan)", "leo", CHAR_SIZE, [
+		["idle", "idle", "Bekliyor", "4", true, 0.5, true, 10],
+		["run", "walk", "Orta mesafeyi koruyor: ağır, kasıllı adımlar", "6", true, 0.6, true, 10],
+		["jump", "jump", "Platforma zıplıyor", "2", false, 0.3, false, 10],
+		["fall", "fall", "Düşüyor", "2", true, 0.2, false, 10],
+		["telegraph", "windup", "Pençe hazırlığı: kolunu geriye çeker (0.6 sn). Üstüne altın ya da kırmızı uyarı biner", "4", false, 0.6, true, 10],
+		["attack", "claw", "Pençe: kolunu savurur, dalga çıkar (ateş sonrası kısa toparlanmayı da içerir)", "3-4", false, 0.4, true, 10],
+		["roar", "roar", "Kükreme: başını kaldırır, ağzı açık (hazırlık + kükreme ~1.5 sn; savunmasız). Parry uyarısı YOKTUR", "5-7", false, 1.5, true, 10],
+		["stun", "stunned", "Parry sonrası sersemleme (döner)", "2-4", true, 0.5, true, 10],
+		["hurt", "hurt", "Vurulunca", "2", false, 0.2, true, 10],
+		["death", "death", "Ölüm (bitince söner)", "5-7", false, 0.7, true, 10],
+		["spawn", "spawn", "Işık sütunundan beliriş", "5", false, 0.4, false, 10],
+	])
+	_chars("dusman", "Libra (terazi)", "libra", CHAR_SIZE, _ranged_rows(
+		"Nişan hazırlığı: terazisini dengeler (0.45 sn). Üstüne altın uyarı biner",
+		"İki kefeden iki küre fırlatır (ateş sonrası kısa toparlanmayı da içerir)"))
+	_chars("dusman", "Aquarius (kova, su)", "aquarius", CHAR_SIZE, _ranged_rows(
+		"Dökme hazırlığı: testisini omzuna kaldırır (0.6 sn). Üstüne kırmızı uyarı biner",
+		"Testiyi eğip suyu döker (döküm sonrası kısa toparlanmayı da içerir)"))
+	var g := "Burç düşmanı efektleri"
+	_add("efekt", g, "fx_balance_orb", "Libra'nın denge küresi: altın küre, alt ve üstünde küçük kefe topları (SAĞA doğru uçar; parry'lenince mavi-camgöbeği hâli de gerekir: ayrı çizim ya da renk değişimi)", 48, 48, "4", true, 0.4, CENTER, 10, false)
+	_add("efekt", g, "fx_water_puddle", "Aquarius'un su birikintisi: yerde yassı, 4.5 sn kalır, sonunda söner", 192, 48, "4", true, 0.6, "alt orta (zemin)", 10, false)
+	_add("efekt", g, "fx_water_warning", "Aquarius'un dökeceği yeri gösteren kırmızı uyarı halkası (yerde yassı)", 192, 48, "4", true, 0.4, "alt orta (zemin)", 10, false)
+
+
+static func _zodiac_rows(telegraph_desc: String, attack_desc: String, recover_desc: String, stun_desc: String, _melee: bool) -> Array:
+	return [
+		["idle", "idle", "Bekliyor", "4", true, 0.5, true, 10],
+		["run", "walk", "Yürüyor / koşuyor", "6", true, 0.6, true, 10],
+		["jump", "jump", "Platforma zıplıyor", "2", false, 0.3, true, 10],
+		["fall", "fall", "Düşüyor", "2", true, 0.2, true, 10],
+		["telegraph", "windup", telegraph_desc, "4", false, 0.55, true, 10],
+		["attack", "lunge", attack_desc, "3-4", false, 0.3, true, 10],
+		["recover", "recover", recover_desc, "3", false, 0.85, true, 10],
+		["stun", "stunned", stun_desc, "2-4", true, 0.5, true, 10],
+		["hurt", "hurt", "Vurulunca", "2", false, 0.2, true, 10],
+		["death", "death", "Ölüm (bitince söner)", "5-7", false, 0.7, true, 10],
+		["spawn", "spawn", "Işık sütunundan beliriş", "5", false, 0.4, false, 10],
+	]
+
+
+static func _ranged_rows(telegraph_desc: String, attack_desc: String) -> Array:
+	return [
+		["idle", "idle", "Bekliyor", "4", true, 0.5, true, 10],
+		["run", "walk", "Mesafe ayarlıyor: yavaş ileri/geri adımlar", "6", true, 0.6, true, 10],
+		["jump", "jump", "Platforma zıplıyor", "2", false, 0.3, false, 10],
+		["fall", "fall", "Düşüyor", "2", true, 0.2, false, 10],
+		["telegraph", "aim", telegraph_desc, "4", false, 0.5, true, 10],
+		["attack", "shooting", attack_desc, "3-4", false, 0.35, true, 10],
+		["stun", "stunned", "Parry sonrası sersemleme (döner)", "2-4", true, 0.5, true, 10],
+		["hurt", "hurt", "Vurulunca", "2", false, 0.2, true, 10],
+		["death", "death", "Ölüm (bitince söner)", "5-7", false, 0.7, true, 10],
+		["spawn", "spawn", "Işık sütunundan beliriş", "5", false, 0.4, false, 10],
+	]
 
 
 ## Umbra (Gölge, patron): 20 animasyonu `UMBRA_ANIM_SPEC`'tir (actors/enemies/umbra.gd); eksik olan yedeğine düşer.

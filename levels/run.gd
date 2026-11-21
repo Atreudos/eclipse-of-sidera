@@ -212,6 +212,7 @@ func make_waves(room_index: int) -> Array:
 				slots[j] = tmp
 			for i in scorpions:
 				wave[slots[i]] = SCORPIUS
+		EnemyRoster.apply(wave, int(loc["floor"]), r, w == 0)
 		waves.append(wave)
 	if n == 0:
 		waves[0] = [TAURUS, SAGITTA]  # ilk savaş odasında her aileden bir tane

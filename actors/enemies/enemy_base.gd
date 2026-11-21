@@ -73,7 +73,11 @@ var _burn_tick := 0.0
 var poison_t := 0.0
 var poison_dps := 0.0
 var _poison_acc := 0.0
+## Moral (Leo'nun kükremesi): kalan süre. Varken düşmanın karar/saldırı tempoları `RALLY_TEMPO` kat hızlanır.
+var rally_t := 0.0
 
+const RALLY_TEMPO := 1.35
+const RALLY_COLOR := Color(1.0, 0.72, 0.4)
 const BURN_INTERVAL := 0.6
 const BURN_COLOR := Color(1.0, 0.55, 0.15)
 const POISON_COLOR := Color(0.55, 1.0, 0.4)
@@ -112,6 +116,7 @@ func _physics_process(delta: float) -> void:
 	_find_target()
 	_tick_burn(delta)
 	_tick_poison(delta)
+	rally_t = maxf(rally_t - delta, 0.0)
 	if dead:
 		return
 	velocity.y = minf(velocity.y + gravity * delta, 1200.0)
@@ -129,7 +134,7 @@ func _physics_process(delta: float) -> void:
 	if frozen:
 		velocity.x = move_toward(velocity.x, 0.0, brake * delta)
 	else:
-		_ai(delta)
+		_ai(delta * (RALLY_TEMPO if rally_t > 0.0 else 1.0))
 	move_and_slide()
 	_slide_off_player()
 
@@ -156,6 +161,8 @@ func _process(delta: float) -> void:
 	tint = Color(0.6, 0.8, 1.0) if stun_t > 0.0 else Color.WHITE
 	if burn_t > 0.0 and stun_t <= 0.0:
 		tint = Color(1.0, 0.72, 0.5).lerp(Color.WHITE, 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0))
+	elif rally_t > 0.0 and stun_t <= 0.0:
+		tint = RALLY_COLOR.lerp(Color.WHITE, 0.35 + 0.2 * sin(Time.get_ticks_msec() / 90.0))
 	elif poison_t > 0.0 and stun_t <= 0.0:
 		tint = POISON_COLOR.lerp(Color.WHITE, 0.45 + 0.35 * sin(Time.get_ticks_msec() / 110.0))
 	if TimeStop.active and not dead:

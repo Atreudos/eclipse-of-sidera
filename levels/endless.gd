@@ -59,6 +59,11 @@ static func shop_floor(w: int) -> int:
 	return clampi(1 + (maxi(w, 1) - 1) / 4, 1, FloorPlan.FLOOR_COUNT)
 
 
+## Yeni düşmanların (Aries, Cancer...) açılması için dalganın karşılık geldiği "kat": 1 + dalga / 3 (1 .. 18).
+static func roster_floor(w: int) -> int:
+	return clampi(1 + maxi(w, 1) / 3, 1, FloorPlan.FLOOR_COUNT)
+
+
 ## `w`. dalganın düşman listesi (karışık sırada).
 static func compose(w: int, rng: RandomNumberGenerator) -> Array:
 	var total := wave_size(w)
@@ -75,6 +80,7 @@ static func compose(w: int, rng: RandomNumberGenerator) -> Array:
 		var tmp = list[i]
 		list[i] = list[j]
 		list[j] = tmp
+	EnemyRoster.apply(list, roster_floor(w), rng, false)
 	if w == 1:
 		list = [TAURUS, SAGITTA, TAURUS]
 	return list

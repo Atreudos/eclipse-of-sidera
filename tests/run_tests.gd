@@ -166,6 +166,8 @@ func _run_all() -> void:
 		"silah_yumruk": _test_fist,
 		"silah_sapan": _test_sling,
 		"sapan_kapali": _test_sling_disabled,
+		"burc_kadro": _test_zodiac_roster,
+		"burc_dusmanlar": _test_zodiac_enemies,
 		"silah_nisangah": _test_auto_aim,
 		"silah_kayit": _test_weapon_save,
 		"silah_envanter": _test_inventory_weapons,
@@ -5183,11 +5185,13 @@ const ART_NOT_WIRED := {
 	"taurus": ["spawn"],
 	"sagitta": ["spawn"],
 	"scorpius": ["spawn"],
+	"aries": ["spawn"], "cancer": ["spawn"], "gemini": ["spawn"], "leo": ["spawn"], "libra": ["spawn"], "aquarius": ["spawn"],
 }
 ## Koddaki animasyon listesinde olup bu karakterin hiç oynatmadığı (EnemyBase'ten gelen) animasyonlar: listede satırı olmaz.
 const ART_SPEC_UNUSED := {
 	"sagitta": ["recover"],
 	"scorpius": ["recover"],
+	"leo": ["recover"], "libra": ["recover"], "aquarius": ["recover"],
 }
 
 
@@ -5205,6 +5209,12 @@ func _test_art_names() -> void:
 		"taurus": _spec_of(Taurus.new()),
 		"sagitta": _spec_of(Sagitta.new()),
 		"scorpius": _spec_of(Scorpius.new()),
+		"aries": _spec_of(Aries.new()),
+		"cancer": _spec_of(Cancer.new()),
+		"gemini": _spec_of(Gemini.new()),
+		"leo": _spec_of(Leo.new()),
+		"libra": _spec_of(Libra.new()),
+		"aquarius": _spec_of(Aquarius.new()),
 		"umbra": _spec_of(Umbra.new()),
 		"umbra_minion": _spec_of(UmbraMinion.new()),
 	}
@@ -8427,6 +8437,136 @@ func _weapon_target(x: float, y: float = 612.0, hp: int = 99) -> Taurus:
 	b.global_position = Vector2(x, y)
 	b.health = hp
 	return b
+
+
+func _zodiac_scene(name: String) -> PackedScene:
+	return load("res://actors/enemies/%s.tscn" % name) as PackedScene
+
+
+func _spawn_zodiac(name: String, x: float) -> EnemyBase:
+	var e := _zodiac_scene(name).instantiate() as EnemyBase
+	e.set_physics_process(false)  # davranış değil, kural testi: yapay zekâ karışmasın
+	_world.add_child(e)
+	e.global_position = Vector2(x, 612)
+	return e
+
+
+func _front_hit(at_x: float, dmg: int) -> Hitbox:
+	var hb := Hitbox.new()
+	hb.damage = dmg
+	hb.active = false
+	_world.add_child(hb)
+	hb.global_position = Vector2(at_x, 600)
+	return hb
+
+
+func _test_zodiac_roster() -> void:
+	print("\nBurç düşmanları: kadro, kat açılışları, dalgalara karışma")
+	check(EnemyRoster.pool(3).is_empty() and EnemyRoster.pool(4).size() == 2 and EnemyRoster.pool(7).size() == 4 and EnemyRoster.pool(10).size() == 6, "açılış: kat 4 -> 2, 7 -> 4, 10 -> 6 yeni düşman")
+	check(EnemyRoster.count_in_wave(3, 8) == 0 and EnemyRoster.count_in_wave(4, 2) == 0 and EnemyRoster.count_in_wave(4, 6) == 1 and EnemyRoster.count_in_wave(18, 30) == 5, "dalgadaki yeni düşman sayısı (kat 3: 0, kat 4: 1, kat 18: 5)")
+	var r := RandomNumberGenerator.new()
+	r.seed = 3
+	var w3: Array = [TAURUS, SAGITTA, TAURUS, SAGITTA, TAURUS, SAGITTA]
+	EnemyRoster.apply(w3, 3, r, true)
+	check(w3 == [TAURUS, SAGITTA, TAURUS, SAGITTA, TAURUS, SAGITTA], "kat 3: dalga değişmez")
+	var all_ok := true
+	var saw_new := false
+	for seed_i in 40:
+		r.seed = 100 + seed_i
+		var w: Array = [TAURUS, SAGITTA, TAURUS, SAGITTA, SCORPIUS, TAURUS, SAGITTA, TAURUS]
+		EnemyRoster.apply(w, 4, r, true)
+		var fresh := 0
+		for sc in w:
+			if sc == EnemyRoster.ARIES or sc == EnemyRoster.CANCER:
+				fresh += 1
+		if w.size() != 8 or fresh < 1 or w[4] != SCORPIUS:
+			all_ok = false
+		saw_new = saw_new or fresh >= 1
+	check(all_ok and saw_new, "kat 4 ilk dalga: boyut aynı, Scorpius korunur, Aries/Cancer garanti")
+	var gem_ok := true
+	for seed_i in 60:
+		r.seed = 500 + seed_i
+		var w: Array = [TAURUS, SAGITTA, TAURUS, SAGITTA, TAURUS, SAGITTA, TAURUS, SAGITTA, TAURUS]
+		EnemyRoster.apply(w, 7, r, true)
+		var gems := 0
+		for sc in w:
+			if sc == EnemyRoster.GEMINI:
+				gems += 1
+		if w.size() != 9 or gems % 2 != 0:
+			gem_ok = false
+	check(gem_ok, "Gemini her zaman çift (2 yuva) ve dalga boyutu değişmez")
+	check(EndlessRun.roster_floor(1) == 1 and EndlessRun.roster_floor(9) == 4 and EndlessRun.roster_floor(100) == FloorPlan.FLOOR_COUNT, "sınırsız kipte dalga -> kadro katı")
+	var r1 := RandomNumberGenerator.new()
+	r1.seed = 12
+	var r2 := RandomNumberGenerator.new()
+	r2.seed = 12
+	check(str(EndlessRun.batches(40, r1)) == str(EndlessRun.batches(40, r2)), "yeni düşmanlarla da aynı tohum = aynı dalga")
+
+
+func _test_zodiac_enemies() -> void:
+	await _new_world("Burç düşmanları: zırh, kalkan, ikiz, kükreme, denge küresi, su")
+	var p := _spawn_player(300.0)
+	# --- Aries: önden zırh, arkadan tam hasar
+	var a := _spawn_zodiac("aries", 600.0) as Aries
+	a.facing = 1
+	var hp0 := a.health
+	check(a.on_hit_by(_front_hit(620.0, 1)) and a.health == hp0, "Aries: önden 1 hasarlı vuruş zırha çarpar (hasar yok)")
+	check(a.on_hit_by(_front_hit(620.0, 2)) and a.health == hp0 - 1, "Aries: önden 2 hasarlı vuruş 1 hasar verir")
+	var hp1 := a.health
+	check(a.on_hit_by(_front_hit(580.0, 1)) and a.health == hp1 - 1, "Aries: arkadan tam hasar")
+	a.stun(1.0)
+	var hp2 := a.health
+	check(a.on_hit_by(_front_hit(620.0, 1)) and a.health < hp2, "Aries: sersemken önden de hasar alır")
+	# --- Cancer: kalkan
+	var c := _spawn_zodiac("cancer", 900.0) as Cancer
+	c.facing = 1
+	var chp := c.health
+	check(c.on_hit_by(_front_hit(920.0, 3)) and c.health == chp and c.shield_up, "Cancer: kalkan önden her vuruşu durdurur")
+	check(c.on_hit_by(_front_hit(880.0, 1)) and c.health == chp - 1, "Cancer: arkadan vurulabilir")
+	c.break_shield()
+	var chp2 := c.health
+	check(not c.shield_up and c.on_hit_by(_front_hit(920.0, 1)) and c.health == chp2 - 1, "Cancer: kalkan kırılınca önden de hasar alır")
+	# --- Gemini: ikiz eşleşmesi ve öfke
+	Gemini._waiting = null
+	var g1 := _spawn_zodiac("gemini", 1100.0) as Gemini
+	var g2 := _spawn_zodiac("gemini", 1200.0) as Gemini
+	check(g1.twin == g2 and g2.twin == g1, "Gemini: iki ikiz birbirini bulur")
+	var spd := g2.walk_speed
+	g1.take_damage(99, p)
+	check(g1.dead and g2.enraged and g2.walk_speed > spd, "Gemini: biri ölünce diğeri öfkelenir ve hızlanır")
+	# --- Leo: kükreme, yanındaki düşmanı hızlandırır
+	var leo := _spawn_zodiac("leo", 1500.0) as Leo
+	var ally := _spawn_zodiac("taurus", 1600.0)
+	leo._do_roar()
+	check(ally.rally_t > 0.0 and leo.rally_t > 0.0, "Leo: kükreme yanındaki düşmanları (ve kendini) hızlandırır")
+	check(leo._others_nearby() >= 1, "Leo: etrafta başka düşman var diye kükreyebilir")
+	# --- Libra: parry edilen altın küre ikiye bölünür
+	var libra := _spawn_zodiac("libra", 1900.0) as Libra
+	var victim := _spawn_zodiac("taurus", 2300.0)
+	var orb := (load("res://combat/balance_orb.tscn") as PackedScene).instantiate() as BalanceOrb
+	_world.add_child(orb)
+	orb.global_position = Vector2(2000.0, 600.0)
+	orb.launch(Vector2(-300.0, 0.0), true, libra, 1)
+	var orbs_before := get_tree().get_nodes_in_group("projectiles").size()
+	orb._on_parried(p)
+	var player_orbs := 0
+	for n in get_tree().get_nodes_in_group("projectiles"):
+		if n is BalanceOrb and (n as BalanceOrb).faction == "player":
+			player_orbs += 1
+	check(orb.faction == "player" and orb.damage == 2 and player_orbs == 2 and get_tree().get_nodes_in_group("projectiles").size() == orbs_before + 1, "Libra: parry'lenen küre ikiye bölünür (biri sahibine, biri en yakın düşmana)")
+	check(victim != null and not libra.dead, "Libra: kopya başka bir düşmana gider")
+	# --- Aquarius: su birikintisi yavaşlatır
+	var puddle := (load("res://combat/water_puddle.tscn") as PackedScene).instantiate() as WaterPuddle
+	_world.add_child(puddle)
+	p.global_position = Vector2(300.0, 612.0)
+	await _frames(3)
+	puddle.global_position = Vector2(p.global_position.x, p.feet_y())
+	puddle.setup(null, 1)
+	await _frames(40)
+	check(not p.has_status("wet"), "Aquarius: uyarı sırasında su yok (henüz yavaşlatmaz)")
+	await _frames(40)
+	check(p.has_status("wet"), "Aquarius: su gelince birikinti oyuncuyu yavaşlatır (ISLAK)")
+	check(p.stats.value("move_speed") < Player.BASE_STATS["move_speed"] * 0.7, "ISLAK: yürüme hızı belirgin düşer")
 
 
 func _test_sling_disabled() -> void:
