@@ -23,7 +23,7 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | Shift | Dash |
 | K | Parry |
 | J | **Birinci silah** (yakın dövüş: kılıç ya da yumruk; basılı tutunca kombo sürer) |
-| I | **İkinci silah** (menzilli: Sapan). Baktığın yöne taş fırlatır; **W / ↑** basılı = yukarı, **S / ↓** basılı = çapraz/aşağı (havada). Süperteknolojik Nişangâh takılıysa kendiliğinden hedefler |
+| I | **İkinci silah** (başlangıçta Yumruk). Sapan oyunda kapalı: kodu duruyor (`WeaponDB.sling_enabled`), kullanılmıyor |
 | F3 | Debug paneli (parry penceresi, dash hızı vb. canlı ayar) |
 | R | Yeniden başla (ölünce ya da istediğin an) |
 | F4 | **Deneme modu (god)**: can düşmez, dash ve parry bekleme yok. Tekrar basınca kapanır, ölüp yeniden başlasan da açık kalır |

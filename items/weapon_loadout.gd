@@ -22,10 +22,10 @@ func _init() -> void:
 ## Başlangıç silahlarına döner (yeni koşu).
 func reset() -> void:
 	slots = []
-	for id in WeaponDB.START_SLOTS:
+	for id in WeaponDB.start_slots():
 		slots.append(id)
 	levels = {}
-	for id in WeaponDB.START_OWNED:
+	for id in WeaponDB.start_owned():
 		levels[id] = 1
 	changed.emit()
 
@@ -58,10 +58,10 @@ func level_in(slot: int) -> int:
 	return level_of(weapon_in(slot))
 
 
-## Sahip olunan silahlar (WeaponDB.ORDER sırasıyla).
+## Sahip olunan silahlar (WeaponDB.order() sırasıyla).
 func owned_ids() -> Array[String]:
 	var out: Array[String] = []
-	for id in WeaponDB.ORDER:
+	for id in WeaponDB.order():
 		if levels.has(id):
 			out.append(id)
 	return out
@@ -178,7 +178,7 @@ func from_dict(d: Dictionary) -> void:
 		var key := String(id)
 		if WeaponDB.has(key):
 			levels[key] = WeaponDB.clamp_level(key, int((lv as Dictionary)[id]))
-	for id in WeaponDB.START_OWNED:
+	for id in WeaponDB.start_owned():
 		if not levels.has(id):
 			levels[id] = 1  # başlangıç silahları hiç kaybolmaz
 	var wanted: Array = d.get("slots", [])

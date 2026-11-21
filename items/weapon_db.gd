@@ -22,11 +22,30 @@ const SLING := "sling"
 const MELEE := "melee"
 const RANGED := "ranged"
 
-## Ekranlarda ve dükkânda silahlar bu sırayla gelir.
-const ORDER: Array[String] = ["sword", "fist", "sling"]
-## Koşuya başlarken elindeki silahlar: J = kılıç, I = sapan. Yumruk dükkândan alınır.
-const START_SLOTS: Array[String] = ["sword", "sling"]
-const START_OWNED: Array[String] = ["sword", "sling"]
+## SAPAN KAPALI: oyunda kullanılmaz (verisi, kodu ve çizim adları durur). Açmak için `sling_enabled = true`
+## (testler eski sapan kapsamını korumak için açar). Kapalıyken silahlar: kılıç (J) ve yumruk (I), ikisi de başta elde.
+static var sling_enabled := false
+
+## Tüm silahlar (sapan dahil), sapan açıkken ekranlarda ve dükkânda bu sırayla gelir.
+const ORDER_ALL: Array[String] = ["sword", "fist", "sling"]
+const ORDER_NO_SLING: Array[String] = ["sword", "fist"]
+## Koşuya başlarken elindeki silahlar. Sapan açıkken J = kılıç, I = sapan (yumruk dükkândan); kapalıyken J = kılıç, I = yumruk.
+const START_SLOTS_ALL: Array[String] = ["sword", "sling"]
+const START_OWNED_ALL: Array[String] = ["sword", "sling"]
+const START_NO_SLING: Array[String] = ["sword", "fist"]
+
+
+static func order() -> Array[String]:
+	return ORDER_ALL if sling_enabled else ORDER_NO_SLING
+
+
+static func start_slots() -> Array[String]:
+	return START_SLOTS_ALL if sling_enabled else START_NO_SLING
+
+
+static func start_owned() -> Array[String]:
+	return START_OWNED_ALL if sling_enabled else START_NO_SLING
+
 ## Slotların tuş adları (slot 0 = J, slot 1 = I).
 const SLOT_KEYS: Array[String] = ["J", "I"]
 const SLOT_COUNT := 2
@@ -97,11 +116,11 @@ const DATA := {
 # ---------------------------------------------------------------- sorgular
 
 static func has(id: String) -> bool:
-	return DATA.has(id)
+	return DATA.has(id) and id in order()
 
 
 static func ids() -> Array[String]:
-	return ORDER.duplicate()
+	return order().duplicate()
 
 
 static func data(id: String) -> Dictionary:
@@ -175,7 +194,7 @@ static func unlock_price(id: String) -> int:
 
 
 static func is_starter(id: String) -> bool:
-	return id in START_OWNED
+	return id in start_owned()
 
 
 # ---------------------------------------------------------------- yakın dövüş

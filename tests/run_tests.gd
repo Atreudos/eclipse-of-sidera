@@ -43,6 +43,9 @@ func _process(_delta: float) -> void:
 
 func _run_all() -> void:
 	Hitstop.enabled = false
+	# Sapan oyunda kapalı (WeaponDB.sling_enabled); eski sapan testleri kodun çalıştığını korusun diye burada açılır.
+	# Kapalı hâlin kendi testi: "sapan_kapali".
+	WeaponDB.sling_enabled = true
 	EventBus.parry_success.connect(func(_a: Node, _b: Node) -> void: _parry_ok += 1)
 	EventBus.parry_failed.connect(func(_a: Node) -> void: _parry_fail += 1)
 	EventBus.enemy_died.connect(func(_e: Node) -> void: _kills += 1)
@@ -162,6 +165,7 @@ func _run_all() -> void:
 		"silah_giris": _test_weapon_input,
 		"silah_yumruk": _test_fist,
 		"silah_sapan": _test_sling,
+		"sapan_kapali": _test_sling_disabled,
 		"silah_nisangah": _test_auto_aim,
 		"silah_kayit": _test_weapon_save,
 		"silah_envanter": _test_inventory_weapons,
@@ -8423,6 +8427,24 @@ func _weapon_target(x: float, y: float = 612.0, hp: int = 99) -> Taurus:
 	b.global_position = Vector2(x, y)
 	b.health = hp
 	return b
+
+
+func _test_sling_disabled() -> void:
+	print("\nSapan kapalı: kılıç J, yumruk I; sapan hiçbir yerde çıkmaz")
+	WeaponDB.sling_enabled = false
+	var l := WeaponLoadout.new()
+	check(WeaponDB.ids() == ["sword", "fist"] and not WeaponDB.has("sling"), "silah listesi: kılıç, yumruk")
+	check(l.weapon_in(0) == "sword" and l.weapon_in(1) == "fist" and l.owned_ids() == ["sword", "fist"], "başlangıç: J kılıç, I yumruk")
+	l.from_dict({"slots": ["sling", "sword"], "levels": {"sling": 3, "sword": 2}})
+	check(not l.owns("sling") and l.weapon_in(0) != "sling" and l.weapon_in(1) != "sling" and l.level_of("sword") == 2, "eski kayıttaki sapan yok sayılır")
+	check(l.grant("sling") != "", "sapan verilemez")
+	var stock := ShopStock.generate(RandomNumberGenerator.new(), 1, [], [], l)
+	var offers_sling := false
+	for o in stock.offers:
+		if o.is_weapon() and o.weapon_id == "sling":
+			offers_sling = true
+	check(not offers_sling, "dükkân sapan teklif etmez")
+	WeaponDB.sling_enabled = true
 
 
 func _test_fist() -> void:
