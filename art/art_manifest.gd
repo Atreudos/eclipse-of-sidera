@@ -463,6 +463,10 @@ static func _lobby() -> void:
 		["deny", "deny", "Altının yetmedi, başını sallıyor", "4", false, 0.5, true, 6],
 		["greet", "greet", "Sidera yaklaşınca selam veriyor", "5", false, 0.6, false, 6],
 	])
+	_chars(S, "Fener Bekçisi Mira (konuşulan karakter)", "npc_mira", MERCHANT_SIZE, [
+		["idle", "idle", "Mira bekliyor, fener hafifçe sallanır", "6", true, 0.8, true, 6],
+		["talk", "talk", "Konuşuyor (konuşma kutusu açıkken)", "6", true, 0.7, false, 6],
+	])
 	var g := "Lobi ve dükkân nesneleri"
 	_add(S, g, "shop_counter", "Tezgâh (tüccarın önünde; mum ya da lamba hafifçe oynar)", 256, 128, "6", true, 0.9, GROUND, 6)
 	_add(S, g, "shop_stand", "Satılan eşyanın durduğu stand, dolu hali (eşya ikonu üstünde süzülür)", 96, 128, "6", true, 0.9, GROUND, 6)

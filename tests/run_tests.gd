@@ -166,6 +166,7 @@ func _run_all() -> void:
 		"silah_yumruk": _test_fist,
 		"silah_sapan": _test_sling,
 		"sapan_kapali": _test_sling_disabled,
+		"hikaye_altyapi": _test_story_infra,
 		"burc_kadro": _test_zodiac_roster,
 		"burc_dusmanlar": _test_zodiac_enemies,
 		"silah_nisangah": _test_auto_aim,
@@ -8585,6 +8586,49 @@ func _test_sling_disabled() -> void:
 			offers_sling = true
 	check(not offers_sling, "dükkân sapan teklif etmez")
 	WeaponDB.sling_enabled = true
+
+
+func _test_story_infra() -> void:
+	await _new_world("Hikâye altyapısı: bayraklar, koşullar, kayıt, konuşma akışı, lobide Mira")
+	Story.reset_fallback()
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	Story.set_flag("a")
+	Story.add("n", 2)
+	check(Story.has("a") and Story.get_flag("n") == 2 and not Story.has("b"), "bayrak kur/oku/artır")
+	check(Story.check_cond("a") and Story.check_cond("a,!b") and not Story.check_cond("a,b") and Story.check_cond("b|a") and Story.check_cond(""), "koşullar: ve, değil, veya, boş")
+	var clean := Story.sanitize({"x": true, "y": 3.0, "z": "kısa", "w": [1], "": true})
+	check(clean == {"x": true, "y": 3, "z": "kısa"}, "kayıttan okunan bayraklar temizlenir")
+	var slot := SaveSlot.create(0, "Deneme", 1)
+	slot.story = {"mira_met": true, "n": 2}
+	var back := SaveSlot.from_dict(slot.to_dict(), 0)
+	check(back != null and back.story == {"mira_met": true, "n": 2}, "hikâye bayrakları kayıttan geri gelir")
+	check(SaveSlot.from_dict({"version": 1, "name": "x"}, 0).story.is_empty(), "eski kayıtta hikâye boş")
+	var lin := Dialogue.linear("T", ["bir", "iki"], "bitti")
+	check(Dialogue.problems(lin).is_empty(), "doğrusal konuşma geçerli")
+	check(not Dialogue.problems({"start": "a", "nodes": {"a": {"text": "x", "next": "yok"}}}).is_empty(), "bozuk hedef yakalanır")
+	for id in NpcTalk.ids():
+		check(Dialogue.problems(NpcTalk.dialogue(id)).is_empty(), "%s: konuşma geçerli" % id)
+	Story.reset_fallback()
+	var p := _spawn_player(300.0)
+	var menu := DialogueMenu.new()
+	get_tree().root.add_child(menu)
+	await _frames(2)
+	check(menu.talk(p, NpcTalk.dialogue("mira"), "Mira") and menu.is_open and get_tree().paused, "konuşma açılır, oyun durur")
+	menu._advance()
+	check(menu._typing_done(), "ilk basış yazıyı tamamlar")
+	menu._advance()
+	menu._advance()
+	menu._advance()
+	check(menu.node_id == "c" and menu._choices.size() == 2, "seçenekli düğüme gelindi")
+	menu._advance()
+	menu._advance()
+	menu._advance()
+	check(not menu.is_open and Story.has("mira_met") and not get_tree().paused, "seçim sonrası konuşma biter, bayrak kurulur")
+	menu.queue_free()
+	p.queue_free()
+	GameState.slot = saved_slot
+	Story.reset_fallback()
 
 
 func _test_fist() -> void:

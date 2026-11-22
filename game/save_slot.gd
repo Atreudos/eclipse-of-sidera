@@ -27,6 +27,8 @@ var runs: Dictionary = {}
 var recovered := false
 ## Kat 1 öğreticisi bu profilde tamamlandı (ipuçları bir daha gösterilmez; kat 1'in tek tek ve yavaş akışı kalır).
 var tutorial_done := false
+## Hikâye bayrakları (konuşmalar, bulmacalar, parçalar; bkz. Story).
+var story: Dictionary = {}
 
 
 static func default_records() -> Dictionary:
@@ -178,6 +180,7 @@ func to_dict() -> Dictionary:
 		"records": records.duplicate(),
 		"runs": runs.duplicate(true),
 		"tutorial_done": tutorial_done,
+		"story": story.duplicate(true),
 	}
 
 
@@ -197,6 +200,7 @@ static func from_dict(data: Variant, slot_index: int) -> SaveSlot:
 	s.playtime = maxf(_num(d.get("playtime", 0.0)), 0.0)
 	var tut: Variant = d.get("tutorial_done", false)
 	s.tutorial_done = tut is bool and tut
+	s.story = Story.sanitize(d.get("story", {}))
 	var rec: Variant = d.get("records", {})
 	if rec is Dictionary:
 		for k in s.records.keys():

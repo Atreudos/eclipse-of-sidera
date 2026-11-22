@@ -399,6 +399,27 @@ func _setup_shop(room: Room) -> void:
 	room.add_child(stand)
 	room.shop = stand
 	stand.requested.connect(_on_shop_requested)
+	Story.set_flag("floor_seen", room.floor_no)
+	_place_npc(room, "mira", stand.position.x - 480.0)
+
+
+## Lobiye konuşulabilir bir karakter koyar.
+func _place_npc(room: Room, id: String, x: float) -> Npc:
+	var npc := Npc.new()
+	npc.name = "Npc_" + id
+	npc.npc_id = id
+	npc.display_name = NpcTalk.display_name(id)
+	npc.tint = NpcTalk.tint(id)
+	npc.position = Vector2(clampf(x, 120.0, RoomLayouts.width_of(room.layout_id) - 120.0), RoomLayouts.FLOOR_Y)
+	room.add_child(npc)
+	npc.requested.connect(_on_npc_requested)
+	return npc
+
+
+func _on_npc_requested(npc: Npc) -> void:
+	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	hud.dialogue_menu.talk(player, NpcTalk.dialogue(npc.npc_id), NpcTalk.display_name(npc.npc_id))
 
 
 func _on_shop_requested(stand: ShopStand) -> void:

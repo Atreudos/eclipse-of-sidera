@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://combat/water_puddle.gd" id="1_puddle"]
+
+[node name="WaterPuddle" type="Node2D"]
+script = ExtResource("1_puddle")
