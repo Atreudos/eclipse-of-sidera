@@ -131,3 +131,8 @@ Yeni `class_name` eklediysen önce `godot --headless --path . --import` çalış
 Geçici ses efektleri `tools/make_sfx.py` ile üretilir.
 
 Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değişkenlerinde (zoom `base_zoom`, takip hızı `follow_speed`, öne bakış `look_ahead` vb.). Kombo süresi oyuncunun `combo_window` değeridir (`actors/player/player.gd`, varsayılan 1 sn).
+
+## Hikâye altyapısı (testler Godot'ta henüz koşulmadı)
+- `game/story.gd`: kayıtlı hikâye bayrakları (`SaveSlot.story`), koşul dili (`a,!b`, `a|b`).
+- `game/dialogue.gd`: konuşma düğümleri (metin, seçenek, `set`, `if`); `ui/dialogue_menu.gd`: konuşma kutusu (E/Enter/Boşluk/J ilerler, Yukarı/Aşağı seçer, Esc kapatır).
+- `levels/npc.gd` + `game/npc_talk.gd`: konuşulabilen karakterler; lobide Fener Bekçisi Mira. Çizim adı `npc_<id>_idle`.
