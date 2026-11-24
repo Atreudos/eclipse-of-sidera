@@ -22,7 +22,14 @@ static func get_flag(key: String, default: Variant = false) -> Variant:
 
 static func has(key: String) -> bool:
 	var v: Variant = _store().get(key, false)
-	return v != false and v != 0 and v != ""
+	match typeof(v):
+		TYPE_BOOL:
+			return v
+		TYPE_INT:
+			return v != 0
+		TYPE_STRING:
+			return v != ""
+	return false
 
 
 static func set_flag(key: String, value: Variant = true) -> void:
