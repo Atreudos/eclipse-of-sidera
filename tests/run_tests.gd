@@ -167,6 +167,9 @@ func _run_all() -> void:
 		"silah_sapan": _test_sling,
 		"sapan_kapali": _test_sling_disabled,
 		"hikaye_altyapi": _test_story_infra,
+		"ara_oda": _test_side_room,
+		"ara_oda_gecis": _test_side_room_travel,
+		"hikaye_metni": _test_story_text,
 		"burc_kadro": _test_zodiac_roster,
 		"burc_dusmanlar": _test_zodiac_enemies,
 		"silah_nisangah": _test_auto_aim,
@@ -8617,17 +8620,146 @@ func _test_story_infra() -> void:
 	check(menu.talk(p, NpcTalk.dialogue("mira"), "Mira") and menu.is_open and get_tree().paused, "konuşma açılır, oyun durur")
 	menu._advance()
 	check(menu._typing_done(), "ilk basış yazıyı tamamlar")
+	var guard := 0
+	while menu.is_open and menu.node_id != "hub" and guard < 20:
+		menu._advance()
+		menu._advance()
+		guard += 1
+	check(menu.node_id == "hub" and menu._choices.size() == 4, "Mira'nın anlatımı biter, konu menüsü gelir")
+	menu.cursor = menu._choices.size() - 1
 	menu._advance()
 	menu._advance()
-	menu._advance()
-	check(menu.node_id == "c" and menu._choices.size() == 2, "seçenekli düğüme gelindi")
-	menu._advance()
-	menu._advance()
-	menu._advance()
-	check(not menu.is_open and Story.has("mira_met") and not get_tree().paused, "seçim sonrası konuşma biter, bayrak kurulur")
+	check(not menu.is_open and Story.has("mira_met") and Story.has("mira_beat_1") and not get_tree().paused, "veda ile konuşma biter, bayraklar kurulur")
 	menu.queue_free()
 	p.queue_free()
 	GameState.slot = saved_slot
+	Story.reset_fallback()
+
+
+func _test_story_text() -> void:
+	await _new_world("Hikâye metni: her katta Mira farklı, her konuşma geçerli, ara oda karakterleri")
+	Story.reset_fallback()
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	var firsts := {}
+	for f in range(1, 19):
+		check(NpcTalk.MIRA_BEATS.has(f), "kat %d: Mira'nın anlatımı var" % f)
+		var d := NpcTalk.dialogue("mira", f)
+		check(Dialogue.problems(d).is_empty(), "kat %d: Mira konuşması geçerli" % f)
+		firsts[str(d["nodes"]["b0"]["text"])] = true
+		var pid := NpcTalk.pocket_npc(f)
+		check(Dialogue.problems(NpcTalk.dialogue(pid, f)).is_empty(), "kat %d: %s konuşması geçerli" % [f, pid])
+		check(NpcTalk.NPCS.has(pid), "kat %d: ara oda karakteri tanımlı" % f)
+	check(firsts.size() == 18, "18 katın Mira anlatımı birbirinden farklı")
+	var a0: String = NpcTalk.dialogue("mira", 1)["nodes"]["t_umbra"]["text"]
+	var a4: String = NpcTalk.dialogue("mira", 18)["nodes"]["t_umbra"]["text"]
+	check(a0 != a4, "konu cevapları perdeye göre değişir")
+	Story.set_flag("mira_beat_5")
+	check(NpcTalk.dialogue("mira", 5)["start"] == "hub", "anlatım dinlenmişse doğrudan konu menüsü")
+	check(NpcTalk.act_of(1) == 0 and NpcTalk.act_of(4) == 0 and NpcTalk.act_of(5) == 1 and NpcTalk.act_of(17) == 4 and NpcTalk.act_of(18) == 4, "perde sınırları")
+	GameState.slot = saved_slot
+	Story.reset_fallback()
+
+
+func _test_side_room() -> void:
+	await _new_world("Ara oda: kurulum, sandıklar (altın, eşya, can), tek seferlik, konuşma hediyesi")
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var room := SideRoom.new()
+	_world.add_child(room)
+	room.build(-5200.0, 3, NpcTalk.pocket_npc(3), rng)
+	check(room.npc != null and room.npc.npc_id == "tellal" and room.return_door != null, "ara oda: karakter ve çıkış kapısı var")
+	check(room.chests.size() >= 2 and room.chests.size() <= 3, "ara oda: 2-3 sandık")
+	check(room.camera_rect().size.x == SideRoom.WIDTH and room.entry_pos().x > room.rect.position.x, "ara oda: kamera alanı ve giriş noktası")
+	var p := _spawn_player(room.entry_pos().x)
+	p.global_position = room.entry_pos()
+	await _frames(30)
+	check(absf(p.global_position.y - 640.0) < 40.0, "ara oda: oyuncu zeminde duruyor (%.0f)" % p.global_position.y)
+	# Altın sandığı
+	var gold_chest := Chest.new()
+	gold_chest.kind = "gold"
+	gold_chest.floor_no = 3
+	gold_chest.chest_id = "t_gold"
+	gold_chest.seed_value = 5
+	_world.add_child(gold_chest)
+	gold_chest.global_position = p.global_position + Vector2(40.0, 0.0)
+	var looted_text: Array[String] = []
+	gold_chest.looted.connect(func(_c: Chest, t: String, _col: Color) -> void: looted_text.append(t))
+	check(gold_chest.open_by(p) and gold_chest.opened and looted_text.size() == 1 and looted_text[0].begins_with("ALTIN"), "altın sandığı açılır")
+	check(get_tree().get_nodes_in_group("coins").size() >= 5, "sandıktan para saçılır")
+	check(not gold_chest.open_by(p), "sandık ikinci kez açılmaz")
+	await _wait_until_real(func() -> bool: return p.gold >= 5, 4.0)
+	check(p.gold >= 5, "paralar toplandı (%d)" % p.gold)
+	var again := Chest.new()
+	again.chest_id = "t_gold"
+	_world.add_child(again)
+	await _frames(2)
+	check(again.opened, "kayıtlı sandık yeniden kurulunca açık gelir")
+	# Eşya sandığı
+	var before := p.inventory.owned_ids().size()
+	var item_chest := Chest.new()
+	item_chest.kind = "item"
+	item_chest.floor_no = 3
+	item_chest.seed_value = 9
+	_world.add_child(item_chest)
+	check(item_chest.open_by(p) and p.inventory.owned_ids().size() == before + 1, "eşya sandığı bir eşya verir")
+	# Can sandığı
+	p.health = 1
+	var heal_chest := Chest.new()
+	heal_chest.kind = "heal"
+	_world.add_child(heal_chest)
+	heal_chest.open_by(p)
+	check(p.health > 1, "can sandığı can verir (%d)" % p.health)
+	# Konuşma hediyesi bir kez verilir
+	var gold0 := p.gold
+	var menu := DialogueMenu.new()
+	get_tree().root.add_child(menu)
+	await _frames(2)
+	menu.talk(p, NpcTalk.dialogue("tellal", 3), "Tellal")
+	var guard := 0
+	while menu.is_open and menu.node_id != "hub" and guard < 20:
+		menu._advance()
+		menu._advance()
+		guard += 1
+	check(p.gold == gold0 + 8, "Tellal hediye altını verdi (%d -> %d)" % [gold0, p.gold])
+	menu.close()
+	menu.talk(p, NpcTalk.dialogue("tellal", 3), "Tellal")
+	check(menu.node_id == "hub" and p.gold == gold0 + 8, "dinlenen konuşma hub'dan başlar, hediye tekrarlanmaz")
+	menu.close()
+	menu.queue_free()
+	p.queue_free()
+	GameState.slot = saved_slot
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+
+
+func _test_side_room_travel() -> void:
+	await _new_world("Ara oda geçişi: lobideki kapıdan gir, ara odada kal, çıkıştan lobiye dön")
+	Story.reset_fallback()
+	var run := _start_run(777, true)
+	await _frames(10)
+	var lobby := run.current_room()
+	var door := lobby.get_node_or_null("SideDoor") as SideDoor
+	check(lobby != null and lobby.kind == FloorPlan.Kind.LOBBY and door != null, "lobide ara oda kapısı var")
+	var home := run.player.global_position
+	run.player.global_position = door.global_position + Vector2(0.0, -40.0)
+	await _frames(3)
+	check(door.in_range, "kapının yanında etkileşim menzili")
+	door.used.emit(door)
+	var inside := await _wait_until_real(func() -> bool: return run.in_side_room and run._side_dir == "", 4.0)
+	check(inside and run.side_room != null and run.player.global_position.x < -4000.0, "ara odaya geçildi")
+	check(run.player.input_locked == false, "geçiş bitince giriş kilidi açık")
+	check(run.side_room.npc != null and run.side_room.chests.size() >= 2, "ara odada karakter ve sandıklar")
+	run.side_room.return_door.used.emit(run.side_room.return_door)
+	var back := await _wait_until_real(func() -> bool: return not run.in_side_room and run._side_dir == "", 4.0)
+	check(back and run.player.global_position.x > 0.0 and absf(run.player.global_position.x - door.global_position.x) < 5.0, "lobiye dönüldü")
+	check(run.side_room == null, "ara oda silindi")
+	run.queue_free()
+	await _frames(2)
 	Story.reset_fallback()
 
 

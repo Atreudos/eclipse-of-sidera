@@ -65,6 +65,11 @@ func _exit_tree() -> void:
 		EventBus.room_cleared.disconnect(_on_room_cleared)
 
 
+## Parayı hemen oyuncuya uçurur (oda dışı kaynaklar: sandık).
+func vacuum() -> void:
+	_vacuum_t = VACUUM_DELAY
+
+
 func _on_room_cleared(_index: int) -> void:
 	_vacuum_t = VACUUM_DELAY
 

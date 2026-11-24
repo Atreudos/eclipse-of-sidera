@@ -4,7 +4,7 @@ extends GameMenu
 ## E / Enter / Boşluk / J / tık: yazıyı hızlandırır, bitince sonrakine geçer. Yukarı/Aşağı + aynı tuşlar: seçenek. Esc: kapat.
 
 const CPS := 55.0
-const PANEL_H := 210.0
+const PANEL_H := 240.0
 
 var data: Dictionary = {}
 var speaker := ""
@@ -38,6 +38,22 @@ func _goto(id: String) -> void:
 	shown = 0.0
 	if _node.has("speaker"):
 		speaker = str(_node["speaker"])
+	_give_gift()
+
+
+## Düğümde `gold` varsa (ve `gold_flag` daha kurulmadıysa) oyuncuya altın verir.
+func _give_gift() -> void:
+	var g := int(_node.get("gold", 0))
+	if g <= 0 or player == null or not is_instance_valid(player):
+		return
+	var gf := str(_node.get("gold_flag", ""))
+	if gf != "" and Story.has(gf):
+		return
+	player.add_gold(g)
+	if gf != "":
+		Story.set_flag(gf)
+	Sfx.play("coin", -2.0)
+	_say("+%d ALTIN" % g, true)
 
 
 func _text() -> String:
@@ -102,6 +118,7 @@ func _draw() -> void:
 	var panel := Rect2(60.0, h - PANEL_H - 30.0, w - 120.0, PANEL_H)
 	draw_rect(panel, Color(0.05, 0.04, 0.09, 0.95))
 	draw_rect(panel, Color(1.0, 0.76, 0.38, 0.7), false, 2.0)
+	_draw_message(Vector2(w * 0.5, panel.position.y - 44.0))
 	if speaker != "":
 		var tag := Rect2(panel.position.x + 18.0, panel.position.y - 18.0, GameFont.width(speaker, 24) + 28.0, 34.0)
 		draw_rect(tag, Color(0.12, 0.08, 0.16))

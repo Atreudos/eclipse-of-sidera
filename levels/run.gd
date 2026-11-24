@@ -44,6 +44,16 @@ const VICTORY_DELAY := 2.5
 
 enum Trans { NONE, OUT, HOLD, IN }
 
+## Ara oda dünyada odaların çok solunda kurulur.
+const SIDE_ROOM_X := -5200.0
+const SIDE_FADE := 0.45
+## Ara odadaki oyuncu (içeride mi, geçiş hangi yönde: "" / "in" / "out").
+var side_room: SideRoom = null
+var in_side_room := false
+var _side_dir := ""
+var _side_t := 0.0
+var _side_switched := false
+
 ## 0 = her seferinde rastgele tohum.
 @export var seed_value := 0
 ## Normal kip: katlar + lobi + Gölge. false: eski tek sonsuz şerit (testler).
@@ -244,6 +254,12 @@ func _ready() -> void:
 	var start := 0
 	if not restore.is_empty():
 		run_seed = SaveSlot._int(restore.get("seed", run_seed), run_seed)
+	Chest.opened_ids = {}
+	if not restore.is_empty():
+		var lc: Variant = restore.get("chests", [])
+		if lc is Array:
+			for cid in lc:
+				Chest.opened_ids[str(cid)] = true
 		start = _restore_start(restore)
 	player = get_tree().get_first_node_in_group("player") as Player
 	if player == null:
@@ -305,6 +321,7 @@ func _build_room(index: int) -> Room:
 			room.spawn_meta = {"floor": f}
 			room.hold_exit = not FloorPlan.is_final_floor(f)  # kat geçidi, Gölge ödülü seçilene kadar kapalı
 	room.build(index, x_left_of(index), layout_for(index), enemies_root, rng_for(index, "room"), make_waves(index), opts)
+	_place_room_chest(room, loc)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
 	if room.floor_exit != null:
@@ -335,6 +352,7 @@ func _enter_room(index: int, first: bool = false, announce: bool = true) -> void
 	_set_hud_room(room, 1, room.waves.size(), false)
 	if room.kind == FloorPlan.Kind.LOBBY:
 		_setup_shop(room)
+		_setup_side_door(room)
 		floor_changed.emit(room.floor_no)
 		EventBus.floor_entered.emit(room.floor_no)
 	if announce:
@@ -401,6 +419,7 @@ func _setup_shop(room: Room) -> void:
 	stand.requested.connect(_on_shop_requested)
 	Story.set_flag("floor_seen", room.floor_no)
 	_place_npc(room, "mira", stand.position.x - 480.0)
+	_place_lobby_chest(room)
 
 
 ## Lobiye konuşulabilir bir karakter koyar.
@@ -419,7 +438,125 @@ func _place_npc(room: Room, id: String, x: float) -> Npc:
 func _on_npc_requested(npc: Npc) -> void:
 	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
 		return
-	hud.dialogue_menu.talk(player, NpcTalk.dialogue(npc.npc_id), NpcTalk.display_name(npc.npc_id))
+	hud.dialogue_menu.talk(player, NpcTalk.dialogue(npc.npc_id, current_floor()), NpcTalk.display_name(npc.npc_id))
+
+
+## Lobiye ara oda kapısı koyar.
+func _setup_side_door(room: Room) -> void:
+	if room.get_node_or_null("SideDoor") != null:
+		return
+	var door := SideDoor.new()
+	door.name = "SideDoor"
+	door.label = "ARA ODA"
+	door.accent = room.palette["accent"]
+	door.position = Vector2(RoomLayouts.width_of(room.layout_id) - 210.0, RoomLayouts.FLOOR_Y)
+	room.add_child(door)
+	door.used.connect(_on_side_door_used)
+
+
+## Lobide bazen küçük bir sandık durur.
+func _place_lobby_chest(room: Room) -> void:
+	var r := rng_for(room.index, "lobby_chest")
+	if r.randf() > 0.5:
+		return
+	_add_chest(room, RoomLayouts.shop_x(room.layout_id) + 230.0, "lobby", r)
+
+
+## Savaş odalarında bazen sandık vardır (sağa yakın; oda bitmeden de açılabilir).
+func _place_room_chest(room: Room, loc: Dictionary) -> void:
+	if not floors_enabled or int(loc["kind"]) != FloorPlan.Kind.COMBAT:
+		return
+	var r := rng_for(room.index, "room_chest")
+	if r.randf() > 0.4:
+		return
+	_add_chest(room, room.rect.size.x - 300.0, "room", r)
+
+
+func _add_chest(room: Room, local_x: float, tag: String, r: RandomNumberGenerator) -> Chest:
+	var c := Chest.new()
+	c.name = "Chest_" + tag
+	var roll := r.randf()
+	c.kind = "gold" if roll < 0.5 else ("item" if roll < 0.8 else "heal")
+	c.floor_no = room.floor_no
+	c.chest_id = "%s_f%d_s%d" % [tag, room.floor_no, room.slot]
+	c.seed_value = r.randi() % 1000000 + 1
+	c.position = Vector2(local_x, RoomLayouts.FLOOR_Y)
+	room.add_child(c)
+	c.looted.connect(_on_chest_looted)
+	return c
+
+
+func _on_chest_looted(_chest: Chest, text: String, color: Color) -> void:
+	hud.announcer.push_runs([["SANDIK  ", GameFont.WHITE], [text, color]], 36, 2.2)
+
+
+## Ara oda kapısı kullanıldı: karar, taşın, aç. Lobideki kapı içeri, ara odadaki kapı dışarı götürür.
+func _on_side_door_used(_door: SideDoor) -> void:
+	if _trans != Trans.NONE or _side_dir != "" or player == null or not is_instance_valid(player) or player.dead:
+		return
+	if not in_side_room and (current_room() == null or current_room().kind != FloorPlan.Kind.LOBBY):
+		return
+	_side_dir = "out" if in_side_room else "in"
+	_side_t = 0.0
+	_side_switched = false
+	player.input_locked = true
+	Sfx.play("door_open", -4.0, 1.2)
+
+
+func _tick_side_room(delta: float) -> void:
+	if _side_dir == "":
+		return
+	_side_t += delta
+	var k := clampf(_side_t / SIDE_FADE, 0.0, 1.0)
+	if not _side_switched:
+		hud.set_fade(k)
+		if _side_t >= SIDE_FADE:
+			_side_switch()
+			_side_switched = true
+			_side_t = 0.0
+	else:
+		hud.set_fade(1.0 - k)
+		if _side_t >= SIDE_FADE:
+			hud.set_fade(0.0)
+			_side_dir = ""
+			if player != null and is_instance_valid(player) and not won:
+				player.input_locked = false
+
+
+func _side_switch() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	player.velocity = Vector2.ZERO
+	if _side_dir == "in":
+		var f := current_floor()
+		var r := rng_for(current, "side_room")
+		side_room = SideRoom.new()
+		rooms_root.add_child(side_room)
+		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r)
+		for c in side_room.chests:
+			c.looted.connect(_on_chest_looted)
+		if side_room.npc != null:
+			side_room.npc.requested.connect(_on_npc_requested)
+		side_room.return_door.used.connect(_on_side_door_used)
+		player.global_position = side_room.entry_pos()
+		camera.set_bounds(side_room.camera_rect(), true)
+		in_side_room = true
+		hud.announcer.push("ARA ODA", GameFont.YELLOW, 52, 1.4)
+	else:
+		var room := current_room()
+		var door: Node2D = null
+		if room != null:
+			door = room.get_node_or_null("SideDoor") as Node2D
+			player.global_position = Vector2(door.global_position.x if door != null else room.rect.position.x + 200.0, 600.0)
+			camera.set_bounds(room.camera_rect(), true)
+			var next := rooms.get(current + 1) as Room
+			if next != null and room.is_cleared():
+				camera.extend_bounds(next.camera_rect())
+		get_tree().call_group("coins", "queue_free")
+		if is_instance_valid(side_room):
+			side_room.queue_free()
+		side_room = null
+		in_side_room = false
 
 
 func _on_shop_requested(stand: ShopStand) -> void:
@@ -498,6 +635,7 @@ func _process(delta: float) -> void:
 		restart()
 		return
 	_tick_transition(delta)
+	_tick_side_room(delta)
 	_tick_victory(delta)
 	if player == null or not is_instance_valid(player) or player.dead:
 		return
@@ -591,7 +729,7 @@ func _on_player_died() -> void:
 # ---------------------------------------------------------------- kat geçişi
 
 func is_transitioning() -> bool:
-	return _trans != Trans.NONE
+	return _trans != Trans.NONE or _side_dir != ""
 
 
 ## Kat geçidi kullanıldı: ekran kararır, yeni katın lobisi kurulur, "KAT n" kartı çıkar, ekran açılır.
@@ -713,6 +851,7 @@ func snapshot() -> Dictionary:
 		seen.append(String(key).get_file().get_basename())
 	var loc := current_loc()
 	var d := {"v": SAVE_VERSION if floors_enabled else 1, "seed": run_seed, "floor": int(loc["floor"]), "room": int(loc["slot"]), "wave": 0, "seen": seen}
+	d["chests"] = Chest.opened_ids.keys()
 	d["player"] = RunSnapshot.capture_player(player)
 	d.merge(RunSnapshot.capture_umbra())
 	d["stats"] = RunSnapshot.capture_stats(stats)

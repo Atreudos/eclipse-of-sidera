@@ -467,7 +467,14 @@ static func _lobby() -> void:
 		["idle", "idle", "Mira bekliyor, fener hafifçe sallanır", "6", true, 0.8, true, 6],
 		["talk", "talk", "Konuşuyor (konuşma kutusu açıkken)", "6", true, 0.7, false, 6],
 	])
+	for npc: Array in [["npc_tellal", "Tellal (haberci, ara oda)"], ["npc_ayna", "Kırık Ayna (ara oda; Umbra'nın sesi)"], ["npc_terazi", "Terazi Yaşlısı (ara oda)"], ["npc_su", "Su Taşıyıcı (ara oda)"], ["npc_umbra", "Umbra, sakin hâli (yalnız son iki katın ara odası)"]]:
+		_chars(S, String(npc[1]), String(npc[0]), MERCHANT_SIZE, [
+			["idle", "idle", "Bekliyor, hafifçe nefes alıyor", "6", true, 0.8, true, 6],
+		])
 	var g := "Lobi ve dükkân nesneleri"
+	_add(S, g, "side_door", "Ara oda kapısı (lobide ve ara odanın içinde; hafifçe ışıldar)", 128, 192, "4", true, 0.9, GROUND, 6)
+	_add(S, g, "chest_closed", "Kapalı sandık (hafif parıltı)", 96, 64, "3", true, 0.9, GROUND, 6)
+	_add(S, g, "chest_open", "Açık sandık (içi parlıyor, boş)", 96, 64, "1", false, 0.5, GROUND, 6)
 	_add(S, g, "shop_counter", "Tezgâh (tüccarın önünde; mum ya da lamba hafifçe oynar)", 256, 128, "6", true, 0.9, GROUND, 6)
 	_add(S, g, "shop_stand", "Satılan eşyanın durduğu stand, dolu hali (eşya ikonu üstünde süzülür)", 96, 128, "6", true, 0.9, GROUND, 6)
 	_add(S, g, "shop_stand_empty", "Satılınca boş kalan stand", 96, 128, "1-4", true, 0.6, GROUND, 6)

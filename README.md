@@ -136,3 +136,9 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - `game/story.gd`: kayıtlı hikâye bayrakları (`SaveSlot.story`), koşul dili (`a,!b`, `a|b`).
 - `game/dialogue.gd`: konuşma düğümleri (metin, seçenek, `set`, `if`); `ui/dialogue_menu.gd`: konuşma kutusu (E/Enter/Boşluk/J ilerler, Yukarı/Aşağı seçer, Esc kapatır).
 - `levels/npc.gd` + `game/npc_talk.gd`: konuşulabilen karakterler; lobide Fener Bekçisi Mira. Çizim adı `npc_<id>_idle`.
+
+## Ara oda, sandıklar, hikâye (testler Godot'ta henüz koşulmadı)
+- Her lobide "ARA ODA" kapısı (`SideDoor`, E ile girilir). Kararma altında dünyanın solundaki `SideRoom`'a geçilir: perdeye göre bir karakter (Tellal / Kırık Ayna / Terazi Yaşlısı / Su Taşıyıcı / Umbra), 2-3 sandık, çıkış kapısı. Düşman yok.
+- `Chest`: türler gold / item / heal / rich; para saçar (`Coin.drop`), eşya verir. Açılanlar `Chest.opened_ids`'te, koşuyla birlikte kaydedilir. Lobide %50, savaş odalarında %40 şansla sandık durur.
+- `NpcTalk`: Mira her kat farklı anlatır (18 parça) ve perdeye göre cevap veren konular sunar; ara oda karakterlerinin her kat için konuşması ve altın hediyeleri (`gold` + `gold_flag`) vardır.
+- Testler: `hikaye_metni`, `ara_oda`, `ara_oda_gecis`.
