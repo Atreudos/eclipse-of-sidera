@@ -7,9 +7,8 @@ static var _fallback: Dictionary = {}
 
 
 static func _store() -> Dictionary:
-	var gs := Engine.get_main_loop().root.get_node_or_null("GameState") if Engine.get_main_loop() is SceneTree else null
-	if gs != null and gs.get("slot") != null:
-		return gs.slot.story
+	if GameState.slot != null:
+		return GameState.slot.story
 	return _fallback
 
 
