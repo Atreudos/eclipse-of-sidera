@@ -168,6 +168,8 @@ func _run_all() -> void:
 		"sapan_kapali": _test_sling_disabled,
 		"hikaye_altyapi": _test_story_infra,
 		"ara_oda": _test_side_room,
+		"yengec_dibi": _test_close_range_front,
+		"demo_menu": _test_demo_menu,
 		"ara_oda_gecis": _test_side_room_travel,
 		"hikaye_metni": _test_story_text,
 		"burc_kadro": _test_zodiac_roster,
@@ -8761,6 +8763,63 @@ func _test_side_room_travel() -> void:
 	run.queue_free()
 	await _frames(2)
 	Story.reset_fallback()
+
+
+func _test_close_range_front() -> void:
+	await _new_world("Yakın dövüş: dibine girilince hitbox arkaya taşsa da saldıran önündeyse vuruş önden sayılır")
+	var c := _spawn_zodiac("cancer", 900.0) as Cancer
+	c.facing = 1
+	c.shield_up = true
+	var hp := c.health
+	var src := Node2D.new()
+	_world.add_child(src)
+	src.global_position = Vector2(930.0, 600.0)
+	var hb := Hitbox.new()
+	hb.damage = 2
+	hb.active = false
+	hb.source = src
+	src.add_child(hb)
+	hb.global_position = Vector2(880.0, 600.0)  # hitbox yengecin arkasına taştı
+	check(c.on_hit_by(hb) and c.health == hp and c.shield_up, "Yengeç: saldıran önündeyken hitbox arkaya taşsa da kalkan durdurur")
+	src.global_position = Vector2(860.0, 600.0)
+	hb.global_position = Vector2(920.0, 600.0)  # saldıran gerçekten arkada, hitbox öne taştı
+	check(c.on_hit_by(hb) and c.health == hp - 2, "Yengeç: saldıran arkadayken vuruş geçer")
+	src.global_position = Vector2(905.0, 600.0)  # iç içe
+	var hp2 := c.health
+	check(c.on_hit_by(hb) and c.health == hp2, "Yengeç: iç içeyken yüzümüzün döndüğü taraf (önden) sayılır")
+	var a := _spawn_zodiac("aries", 1400.0) as Aries
+	a.facing = 1
+	var ahp := a.health
+	src.global_position = Vector2(1430.0, 600.0)
+	hb.global_position = Vector2(1380.0, 600.0)
+	hb.damage = 1
+	check(a.on_hit_by(hb) and a.health == ahp, "Koç: aynı kural, önden 1 hasar zırha çarpar")
+
+
+func _test_demo_menu() -> void:
+	await _new_world("Demo: F8 çağırma menüsü yaratık doğurur, K odadaki herkesi öldürür")
+	var run := _start_run(321, true)
+	await _frames(10)
+	var menu := run.hud.spawn_menu
+	check(menu != null and SpawnMenu.ENTRIES.size() >= 11, "çağırma menüsü var, 11 yaratık listeli")
+	for e in SpawnMenu.ENTRIES:
+		check(ResourceLoader.exists(str((e as Array)[1])), "sahne var: %s" % [(e as Array)[0]])
+	check(menu.open(run.player) and menu.is_open, "menü açılır")
+	menu.request_spawn(0)
+	menu.request_spawn(3)
+	menu.close()
+	var came := await _wait_until(func() -> bool: return get_tree().get_nodes_in_group("enemies").size() >= 2, 240)
+	check(came, "çağrılan iki yaratık doğdu (%d)" % get_tree().get_nodes_in_group("enemies").size())
+	run.demo_clear_room()
+	await _frames(5)
+	var alive := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var ab := e as ActorBase
+		if ab != null and not ab.dead:
+			alive += 1
+	check(alive == 0, "oda temizle: yaşayan düşman kalmadı (%d)" % alive)
+	run.queue_free()
+	await _frames(2)
 
 
 func _test_fist() -> void:

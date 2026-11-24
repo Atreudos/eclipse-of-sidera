@@ -142,3 +142,7 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - `Chest`: türler gold / item / heal / rich; para saçar (`Coin.drop`), eşya verir. Açılanlar `Chest.opened_ids`'te, koşuyla birlikte kaydedilir. Lobide %50, savaş odalarında %40 şansla sandık durur.
 - `NpcTalk`: Mira her kat farklı anlatır (18 parça) ve perdeye göre cevap veren konular sunar; ara oda karakterlerinin her kat için konuşması ve altın hediyeleri (`gold` + `gold_flag`) vardır.
 - Testler: `hikaye_metni`, `ara_oda`, `ara_oda_gecis`.
+
+## Demo / deneme tuşları
+- **F8**: yaratık çağırma menüsü (11 yaratık, Enter ile önüne çağırır, menü açık kalır). **K** ya da **F6**: odadaki herkesi öldür ve odayı temizle. F5: eşya menüsü, F7: sonraki kat.
+- Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).

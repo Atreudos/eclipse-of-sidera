@@ -31,7 +31,7 @@ func _draw() -> void:
 func on_hit_by(hitbox: Hitbox) -> bool:
 	if dead:
 		return false
-	if shield_up and not is_stunned() and signf(hitbox.global_position.x - global_position.x) == float(facing):
+	if shield_up and not is_stunned() and hit_from_front(hitbox):
 		RingFx.spawn(get_parent(), global_position + Vector2(facing * 22.0, -8.0), Color(0.75, 0.9, 1.0, 0.9), 4.0, 28.0, 0.18)
 		Sfx.play("hit", -9.0)
 		return true  # kalkan: hasar yok

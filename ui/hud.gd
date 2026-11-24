@@ -29,6 +29,7 @@ var boss_bar: BossBar
 ## Envanter ekranı (Tab) ve F5 deneme menüsü: oyunu durdurur.
 var inventory_screen: InventoryScreen
 var dev_menu: DevMenu
+var spawn_menu: SpawnMenu
 ## Dükkân menüsü (lobide tezgâhta E).
 var shop_menu: ShopMenu
 var dialogue_menu: DialogueMenu
@@ -157,6 +158,9 @@ func _build() -> void:
 	dev_menu = DevMenu.new()
 	dev_menu.name = "DevMenu"
 	root.add_child(dev_menu)
+	spawn_menu = SpawnMenu.new()
+	spawn_menu.name = "SpawnMenu"
+	root.add_child(spawn_menu)
 	shop_menu = ShopMenu.new()
 	shop_menu.name = "ShopMenu"
 	root.add_child(shop_menu)

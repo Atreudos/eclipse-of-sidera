@@ -60,4 +60,4 @@ func on_hit_by(hitbox: Hitbox) -> bool:
 
 ## Vuruş ön tarafımızdan mı geldi?
 func _front_hit(hitbox: Hitbox) -> bool:
-	return signf(hitbox.global_position.x - global_position.x) == float(facing)
+	return hit_from_front(hitbox)

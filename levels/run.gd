@@ -248,6 +248,8 @@ func has_next_room(index: int) -> bool:
 func _ready() -> void:
 	Hitstop.reset()
 	TimeStop.reset()
+	hud.spawn_menu.spawn_requested.connect(spawn_demo_enemy)
+	hud.spawn_menu.kill_requested.connect(demo_clear_room)
 	if restore.is_empty():
 		restore = GameState.take_resume()
 	run_seed = seed_value if seed_value != 0 else int(Time.get_ticks_usec() & 0x7fffffff)
@@ -952,6 +954,44 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		dev_next_floor()
 	elif key.physical_keycode == KEY_M and player != null and is_instance_valid(player) and (player.dead or victory_shown):
 		return_to_menu()
+
+
+## Demo: seçilen yaratığı oyuncunun önüne çağırır (kısa doğuş işaretiyle).
+func spawn_demo_enemy(scene_path: String) -> bool:
+	if player == null or not is_instance_valid(player) or not ResourceLoader.exists(scene_path):
+		return false
+	var room := current_room()
+	var scene := load(scene_path) as PackedScene
+	if scene == null:
+		return false
+	var dir := float(player.facing) if "facing" in player else 1.0
+	var lo := 80.0
+	var hi := 3000.0
+	if in_side_room and side_room != null:
+		lo = side_room.rect.position.x + 120.0
+		hi = side_room.rect.end.x - 120.0
+	elif room != null:
+		lo = room.rect.position.x + 120.0
+		hi = room.rect.end.x - 120.0
+	var x := clampf(player.global_position.x + dir * 340.0, lo, maxf(hi, lo))
+	var host: Node = room if room != null else self
+	var m := SpawnMarker.spawn(host, Vector2(x, RoomLayouts.FLOOR_Y), scene, enemies_root, 0.6)
+	if room != null:
+		m.tuning = room.tuning
+	if scene_path.ends_with("umbra.tscn"):
+		m.meta = {"floor": current_floor()}
+	return true
+
+
+## Demo: odadaki bütün düşmanları öldürür; oda henüz temizlenmediyse temizler.
+func demo_clear_room() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var a := e as ActorBase
+		if a != null and not a.dead:
+			a.die()
+	var room := current_room()
+	if room != null and not in_side_room and not room.is_cleared():
+		room.force_clear()
 
 
 ## Odayı hemen temizler (geliştirici kısayolu ve testler için).

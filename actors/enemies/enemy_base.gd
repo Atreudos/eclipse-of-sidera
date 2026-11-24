@@ -327,6 +327,20 @@ func _draw() -> void:
 	draw_polyline(pts, Color.WHITE, 2.5)
 
 
+## Vuruş ön tarafımızdan mı geldi? Yakın dövüşte saldıranın konumuna bakılır (hitbox merkezine değil): dibine girilince
+## hitbox bizim arkamıza taşsa bile saldıran önümüzdeyse vuruş önden sayılır. İç içe geçildiyse (16 px) yüzümüzün döndüğü taraf.
+## Mermiler (hitbox saldıranın çocuğu değil) kendi konumuyla sayılır.
+func hit_from_front(hitbox: Hitbox) -> bool:
+	var from_x := hitbox.global_position.x
+	var src := hitbox.source as Node2D
+	if src != null and is_instance_valid(src) and src.is_ancestor_of(hitbox):
+		from_x = src.global_position.x
+	var dx := from_x - global_position.x
+	if absf(dx) < 16.0:
+		return true
+	return signf(dx) == float(facing)
+
+
 func on_hit_by(hitbox: Hitbox) -> bool:
 	if dead:
 		return false
