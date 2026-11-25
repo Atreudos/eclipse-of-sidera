@@ -62,9 +62,9 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var name := "puzzle_crystal" if kind == "crystal" else "puzzle_star"
+	var art_name := "puzzle_crystal" if kind == "crystal" else "puzzle_star"
 	var glow := 1.0 if lit else (0.8 if hint_t > 0.0 else 0.0)
-	if not Art.draw(self, name, Rect2(-48.0, -48.0, 96.0, 96.0), _t):
+	if not Art.draw(self, art_name, Rect2(-48.0, -48.0, 96.0, 96.0), _t):
 		var base := Color(1.0, 0.82, 0.3) if kind == "star" else Color(0.5, 0.9, 1.0)
 		var dim := base.darkened(0.6)
 		var col := dim.lerp(base, glow)
