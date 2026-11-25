@@ -146,3 +146,9 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 ## Demo / deneme tuşları
 - **F8**: yaratık çağırma menüsü (11 yaratık, Enter ile önüne çağırır, menü açık kalır). **K** ya da **F6**: odadaki herkesi öldür ve odayı temizle. F5: eşya menüsü, F7: sonraki kat.
 - Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).
+
+## Bulmaca odaları (testler Godot'ta henüz koşulmadı)
+- Her lobide sol tarafta mavi "BULMACA" kapısı. İçerideki parçalar kata göre `PuzzleLogic.spec_for(kat)` ile belirlenir: kat 1-4 parry anahtarı (kristal 1-2 vuruş), 5-8 yıldız sırası (3-4), 9-12 denge (iki kule, iki kristal aynı anda), 13-16 yıldız sırası (5-6), 17-18 hepsi karışık.
+- Parry anahtarı: kule altın mermi atar, parry'le, mermi kuleye döner ve aradaki kristali yakar. Yıldız: sırası kısa süre parlayarak gösterilir (10 sn'de bir tekrar), kılıçla aynı sırada vur; yanlışta sıfırlanır.
+- Çözünce kilitli ödül sandığı açılır ve (ilk kez) **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`). Mira kırıntıyı sorunca sayıyı söyler.
+- Test: `bulmaca`.

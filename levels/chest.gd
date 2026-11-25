@@ -17,6 +17,8 @@ var floor_no := 1
 var chest_id := ""
 var seed_value := 1
 var opened := false
+## Kilitliyken açılmaz (bulmaca ödülü); kilit kalkınca açılır.
+var locked := false
 var in_range := false
 
 var _t := 0.0
@@ -46,12 +48,15 @@ func _hook_player() -> void:
 
 func _on_interacted() -> void:
 	if in_range and not opened and ItemView.active_menu == null and _player != null and not _player.dead:
-		open_by(_player)
+		if locked:
+			Sfx.play("ui_deny", -6.0)
+		else:
+			open_by(_player)
 
 
 ## Sandığı `p` için açar. Açıldıysa true.
 func open_by(p: Player) -> bool:
-	if opened or p == null or not is_instance_valid(p) or p.dead:
+	if opened or locked or p == null or not is_instance_valid(p) or p.dead:
 		return false
 	opened = true
 	if chest_id != "":
@@ -175,4 +180,7 @@ func _draw() -> void:
 			draw_circle(Vector2(0.0, -30.0), 46.0, Color(1.0, 0.8, 0.35, 0.05 + 0.04 * glow))
 	if in_range and not opened:
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
-		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  AÇ", GameFont.WHITE]], Vector2(0.0, -84.0), 22, pulse)
+		if locked:
+			GameFont.draw_centered(self, "KİLİTLİ  BULMACAYI ÇÖZ", Vector2(0.0, -84.0), 20, Color(1.0, 0.5, 0.45, pulse))
+		else:
+			GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  AÇ", GameFont.WHITE]], Vector2(0.0, -84.0), 22, pulse)

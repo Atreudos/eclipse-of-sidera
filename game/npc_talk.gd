@@ -113,6 +113,9 @@ static func _mira(floor_no: int) -> Dictionary:
 		var topic: Array = MIRA_TOPICS[key]
 		choices.append({"text": str(topic[0]), "next": "t_" + key})
 		nodes["t_" + key] = {"text": str((topic[1] as Array)[act]), "next": "hub"}
+	if Story.has("shards"):
+		choices.append({"text": "Yıldız kırıntıları nedir?", "next": "t_shards"})
+		nodes["t_shards"] = {"text": "Bulmaca odalarındaki parıltılar, sönen fenerlerden dökülen ışık. Şu ana kadar %d tane buldun. On sekizini de toplarsan kule seni bırakır, birlikte çıkarsınız." % int(Story.get_flag("shards", 0)), "next": "hub"}
 	choices.append({"text": "Hoşça kal.", "next": "end"})
 	nodes["hub"] = {"text": hub_text, "choices": choices}
 	return {"speaker": "Mira", "start": start, "nodes": nodes}

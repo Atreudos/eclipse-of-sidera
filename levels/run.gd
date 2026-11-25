@@ -51,6 +51,7 @@ const SIDE_FADE := 0.45
 var side_room: SideRoom = null
 var in_side_room := false
 var _side_dir := ""
+var _side_target := "rest"
 var _side_t := 0.0
 var _side_switched := false
 
@@ -420,7 +421,7 @@ func _setup_shop(room: Room) -> void:
 	room.shop = stand
 	stand.requested.connect(_on_shop_requested)
 	Story.set_flag("floor_seen", room.floor_no)
-	_place_npc(room, "mira", stand.position.x - 480.0)
+	_place_npc(room, "mira", stand.position.x - 420.0)
 	_place_lobby_chest(room)
 
 
@@ -454,6 +455,14 @@ func _setup_side_door(room: Room) -> void:
 	door.position = Vector2(RoomLayouts.width_of(room.layout_id) - 210.0, RoomLayouts.FLOOR_Y)
 	room.add_child(door)
 	door.used.connect(_on_side_door_used)
+	var pd := SideDoor.new()
+	pd.name = "PuzzleDoor"
+	pd.label = "BULMACA"
+	pd.target = "puzzle"
+	pd.accent = Color(0.55, 0.85, 1.0)
+	pd.position = Vector2(250.0, RoomLayouts.FLOOR_Y)
+	room.add_child(pd)
+	pd.used.connect(_on_side_door_used)
 
 
 ## Lobide bazen küçük bir sandık durur.
@@ -493,12 +502,27 @@ func _on_chest_looted(_chest: Chest, text: String, color: Color) -> void:
 
 
 ## Ara oda kapısı kullanıldı: karar, taşın, aç. Lobideki kapı içeri, ara odadaki kapı dışarı götürür.
-func _on_side_door_used(_door: SideDoor) -> void:
+func _on_puzzle_progress(text: String) -> void:
+	hud.announcer.push(text, GameFont.YELLOW, 34, 1.2)
+
+
+func _on_puzzle_solved() -> void:
+	hud.announcer.push("BULMACA ÇÖZÜLDÜ", GameFont.YELLOW, 52, 2.0)
+	hud.announcer.push_runs([["SANDIK AÇILDI", GameFont.WHITE]], 30, 2.0)
+
+
+func _on_shard_found(total: int) -> void:
+	hud.announcer.push_runs([["YILDIZ KIRINTISI  ", Color(0.6, 0.85, 1.0)], [str(total), GameFont.YELLOW]], 40, 2.4)
+
+
+func _on_side_door_used(door: SideDoor) -> void:
 	if _trans != Trans.NONE or _side_dir != "" or player == null or not is_instance_valid(player) or player.dead:
 		return
 	if not in_side_room and (current_room() == null or current_room().kind != FloorPlan.Kind.LOBBY):
 		return
 	_side_dir = "out" if in_side_room else "in"
+	if not in_side_room:
+		_side_target = door.target
 	_side_t = 0.0
 	_side_switched = false
 	player.input_locked = true
@@ -534,21 +558,26 @@ func _side_switch() -> void:
 		var r := rng_for(current, "side_room")
 		side_room = SideRoom.new()
 		rooms_root.add_child(side_room)
-		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r)
+		var puzzle := _side_target == "puzzle"
+		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r, puzzle)
 		for c in side_room.chests:
 			c.looted.connect(_on_chest_looted)
+		if puzzle:
+			side_room.shard_found.connect(_on_shard_found)
+			side_room.puzzle_solved.connect(_on_puzzle_solved)
+			side_room.logic.progress.connect(_on_puzzle_progress)
 		if side_room.npc != null:
 			side_room.npc.requested.connect(_on_npc_requested)
 		side_room.return_door.used.connect(_on_side_door_used)
 		player.global_position = side_room.entry_pos()
 		camera.set_bounds(side_room.camera_rect(), true)
 		in_side_room = true
-		hud.announcer.push("ARA ODA", GameFont.YELLOW, 52, 1.4)
+		hud.announcer.push("BULMACA ODASI" if puzzle else "ARA ODA", GameFont.YELLOW, 52, 1.4)
 	else:
 		var room := current_room()
 		var door: Node2D = null
 		if room != null:
-			door = room.get_node_or_null("SideDoor") as Node2D
+			door = room.get_node_or_null("PuzzleDoor" if _side_target == "puzzle" else "SideDoor") as Node2D
 			player.global_position = Vector2(door.global_position.x if door != null else room.rect.position.x + 200.0, 600.0)
 			camera.set_bounds(room.camera_rect(), true)
 			var next := rooms.get(current + 1) as Room

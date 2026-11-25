@@ -169,6 +169,7 @@ func _run_all() -> void:
 		"hikaye_altyapi": _test_story_infra,
 		"ara_oda": _test_side_room,
 		"yengec_dibi": _test_close_range_front,
+		"bulmaca": _test_puzzles,
 		"demo_menu": _test_demo_menu,
 		"ara_oda_gecis": _test_side_room_travel,
 		"hikaye_metni": _test_story_text,
@@ -8820,6 +8821,95 @@ func _test_demo_menu() -> void:
 	check(alive == 0, "oda temizle: yaşayan düşman kalmadı (%d)" % alive)
 	run.queue_free()
 	await _frames(2)
+
+
+func _test_puzzles() -> void:
+	await _new_world("Bulmaca: tarifler, parry anahtarı, yıldız sırası, denge, kilitli ödül sandığı, yıldız kırıntısı")
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	for f in range(1, 19):
+		var sp := PuzzleLogic.spec_for(f)
+		var lanes: Array = sp["lanes"]
+		check(not lanes.is_empty() or int(sp["stars"]) > 0, "kat %d: bulmaca tarifi boş değil" % f)
+		var cx := PuzzleLogic.chest_x(sp)
+		check(cx > 100.0 and cx < SideRoom.WIDTH - 40.0, "kat %d: ödül sandığı oda içinde (%.0f)" % [f, cx])
+	# --- Parry anahtarı (kat 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var room := SideRoom.new()
+	_world.add_child(room)
+	room.build(-5200.0, 1, "", rng, true)
+	check(room.logic != null and room.reward_chest != null and room.reward_chest.locked and room.npc == null, "bulmaca odası: mantık, kilitli sandık, karakter yok")
+	check(room.logic.crystals.size() == 1 and room.logic.towers.size() == 1 and room.logic.stars.is_empty(), "kat 1: bir kule, bir kristal")
+	var p := _spawn_player(room.entry_pos().x)
+	p.global_position = room.entry_pos()
+	await _frames(20)
+	check(not room.reward_chest.open_by(p), "kilitliyken sandık açılmaz")
+	var cr: PuzzleTarget = room.logic.crystals[0]
+	var sword := Hitbox.new()
+	sword.faction = "player"
+	_world.add_child(sword)
+	check(not cr.on_hit_by(sword) and not cr.lit, "kristal kılıçla yanmaz")
+	var shot: Projectile = room.logic.towers[0].fire()
+	check(shot != null and shot.parryable and shot.velocity.x < 0.0, "kule altın mermiyi oyuncuya doğru atar")
+	shot.on_parried(p)
+	check(shot.faction == "player" and shot.velocity.x > 0.0, "parry'lenen mermi kuleye geri döner")
+	check(cr.on_hit_by(shot) and cr.lit, "parry'lenmiş mermi kristali yakar")
+	check(room.logic.is_solved and not room.reward_chest.locked, "bulmaca çözüldü, sandık açıldı")
+	check(Story.has("shard_f1") and Story.get_flag("shards") == 1, "Yıldız Kırıntısı kazanıldı")
+	check(room.reward_chest.open_by(p), "ödül sandığı açılır")
+	room.queue_free()
+	await _frames(2)
+	# --- Yıldız sırası (kat 5: 3 yıldız)
+	var room2 := SideRoom.new()
+	_world.add_child(room2)
+	rng.seed = 8
+	room2.build(-5200.0, 5, "", rng, true)
+	var lg: PuzzleLogic = room2.logic
+	check(lg.stars.size() == 3 and lg.seq.size() == 3, "kat 5: üç yıldız ve üç adımlık sıra")
+	var sorted_seq := lg.seq.duplicate()
+	sorted_seq.sort()
+	check(sorted_seq == [0, 1, 2], "sıra her yıldızı bir kez içerir")
+	var wrong_i := -1
+	for i in 3:
+		if i != lg.seq[0]:
+			wrong_i = i
+			break
+	check(lg.stars[wrong_i].on_hit_by(sword), "yıldız kılıçla vurulabilir")
+	check(not lg.stars[wrong_i].lit and not lg.is_solved, "yanlış sıra: yıldız yanmaz, sıfırlanır")
+	var proj := Projectile.new()
+	_world.add_child(proj)
+	check(not lg.stars[lg.seq[0]].on_hit_by(proj), "yıldız mermiyle yanmaz")
+	for i in lg.seq:
+		lg.stars[i].on_hit_by(sword)
+	check(lg.is_solved and not room2.reward_chest.locked, "doğru sırayla vurunca çözülür")
+	check(Story.has("shard_f5") and Story.get_flag("shards") == 2, "ikinci yıldız kırıntısı")
+	room2.queue_free()
+	await _frames(2)
+	# --- Denge (kat 9: iki kule, ikisi aynı anda yanmalı)
+	var room3 := SideRoom.new()
+	_world.add_child(room3)
+	rng.seed = 4
+	room3.build(-5200.0, 9, "", rng, true)
+	var lg3: PuzzleLogic = room3.logic
+	check(lg3.crystals.size() == 2 and lg3.towers.size() == 2, "kat 9: iki kule, iki kristal")
+	var shot_a: Projectile = lg3.towers[0].fire()
+	shot_a.on_parried(p)
+	lg3.crystals[0].on_hit_by(shot_a)
+	check(lg3.crystals[0].lit and not lg3.is_solved, "tek kristal yanınca bulmaca çözülmez")
+	var shot_b: Projectile = lg3.towers[1].fire()
+	shot_b.on_parried(p)
+	lg3.crystals[1].on_hit_by(shot_b)
+	check(lg3.is_solved, "ikisi birden yanınca çözülür")
+	room3.queue_free()
+	p.queue_free()
+	sword.queue_free()
+	proj.queue_free()
+	GameState.slot = saved_slot
+	Story.reset_fallback()
+	Chest.opened_ids = {}
 
 
 func _test_fist() -> void:
