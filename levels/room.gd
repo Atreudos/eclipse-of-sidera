@@ -91,6 +91,21 @@ var wave_tunings: Array = []
 ## Doğan düşmanlara `set_meta` ile verilecek bilgiler (Gölge odasında {"floor": kat}).
 var spawn_meta: Dictionary = {}
 
+## Bulmaca odasıysa mantığı ve kilitli ödül sandığı (düşman yok; çözülünce oda temizlenir). Yoksa null.
+var puzzle: PuzzleLogic = null
+var puzzle_kind := ""
+var reward_chest: Chest = null
+var puzzle_t := 0.0
+var puzzle_assisted := false
+
+## Bulmaca ilerleme yazısı ve çözüm (ilk çözümde yeni kırıntı sayısı, değilse 0).
+signal puzzle_progress(text: String)
+signal puzzle_solved(shard_total: int)
+
+## Bulmaca bu kadar sn çözülmezse kilit gevşer (ödülsüz): takılan oyuncu yolunu kaybetmesin.
+const PUZZLE_ASSIST_AFTER := 180.0
+const PUZZLE_CLEAR_DELAY := 1.4
+
 var _enemies_root: Node
 var _rng: RandomNumberGenerator
 var _pending := 0
@@ -155,12 +170,60 @@ func build(room_index: int, x_left: float, layout_name: String, enemies_parent: 
 		floor_exit.next_floor = floor_no + 1
 		floor_exit.accent = palette["accent"]
 		add_child(floor_exit)
+	if opts.has("puzzle"):
+		_build_puzzle(String(opts["puzzle"]), width)
 	if kind == FloorPlan.Kind.LOBBY:
 		var decor := LobbyDecor.new()
 		decor.name = "Decor"
 		decor.width = width
 		decor.accent = palette["accent"]
 		add_child(decor)
+
+
+## Bulmaca parçalarını ve kilitli ödül sandığını kurar.
+func _build_puzzle(kind_name: String, width: float) -> void:
+	puzzle_kind = kind_name
+	puzzle = PuzzleLogic.new()
+	add_child(puzzle)
+	puzzle.build(PuzzleLogic.spec_for(floor_no, kind_name), _rng if _rng != null else RandomNumberGenerator.new(), width, layout_id)
+	puzzle.running = false
+	reward_chest = Chest.new()
+	reward_chest.name = "RewardChest"
+	reward_chest.kind = "rich"
+	reward_chest.locked = true
+	reward_chest.floor_no = floor_no
+	reward_chest.chest_id = "puzzle_f%d_s%d" % [floor_no, slot]
+	reward_chest.seed_value = (_rng.randi() if _rng != null else 7) % 1000000 + 1
+	reward_chest.position = Vector2(PuzzleLogic.chest_x(width), RoomLayouts.FLOOR_Y)
+	add_child(reward_chest)
+	puzzle.solved.connect(_on_puzzle_solved)
+	puzzle.progress.connect(func(t: String) -> void: puzzle_progress.emit(t))
+
+
+func _on_puzzle_solved() -> void:
+	if reward_chest != null and is_instance_valid(reward_chest):
+		reward_chest.locked = false
+	var total := 0
+	var key := "shard_f%d" % floor_no
+	if not Story.has(key):
+		Story.set_flag(key)
+		total = Story.add("shards")
+	puzzle_solved.emit(total)
+	_wait = PUZZLE_CLEAR_DELAY
+
+
+func _tick_puzzle(delta: float) -> void:
+	if puzzle.is_solved:
+		_wait -= delta
+		if _wait <= 0.0:
+			force_clear()
+		return
+	puzzle_t += delta
+	if puzzle_t >= PUZZLE_ASSIST_AFTER:
+		puzzle_assisted = true
+		puzzle.assist()
+		puzzle_progress.emit("KİLİT GEVŞEDİ")
+		force_clear()
 
 
 func _build_background(width: float) -> void:
@@ -244,6 +307,8 @@ func begin_encounter(delay: float = 1.0) -> void:
 	_wait = delay
 	if not door.permanent:
 		door.look = Door.Look.LOCKED
+	if puzzle != null:
+		puzzle.running = true
 
 
 func is_cleared() -> bool:
@@ -266,6 +331,9 @@ func pending_count() -> int:
 
 func _process(delta: float) -> void:
 	if state != State.ACTIVE or TimeStop.active:
+		return
+	if puzzle != null:
+		_tick_puzzle(delta)
 		return
 	_kill_stragglers()
 	if _pending > 0 or alive_count() > 0:

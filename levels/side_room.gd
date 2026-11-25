@@ -15,16 +15,10 @@ var palette: Dictionary = {}
 var npc: Npc = null
 var return_door: SideDoor = null
 var chests: Array[Chest] = []
-## Bulmaca odasıysa mantık ve kilitli ödül sandığı (değilse null).
-var logic: PuzzleLogic = null
-var reward_chest: Chest = null
-
-signal puzzle_solved
-signal shard_found(total: int)
 
 
 ## `x_left`: odanın sol kenarı (dünya). `rng`: sandık türleri için.
-func build(x_left: float, floor_n: int, npc_id: String, rng: RandomNumberGenerator, puzzle: bool = false) -> void:
+func build(x_left: float, floor_n: int, npc_id: String, rng: RandomNumberGenerator) -> void:
 	floor_no = floor_n
 	name = "SideRoom%d" % floor_n
 	position = Vector2(x_left, 0.0)
@@ -40,13 +34,9 @@ func build(x_left: float, floor_n: int, npc_id: String, rng: RandomNumberGenerat
 	return_door = SideDoor.new()
 	return_door.name = "ReturnDoor"
 	return_door.label = "ÇIK"
-	return_door.target = "back"
 	return_door.accent = palette["accent"]
 	return_door.position = Vector2(DOOR_X, RoomLayouts.FLOOR_Y)
 	add_child(return_door)
-	if puzzle:
-		_build_puzzle(rng)
-		return
 	if npc_id != "":
 		npc = Npc.new()
 		npc.name = "Npc_" + npc_id
@@ -70,38 +60,6 @@ func build(x_left: float, floor_n: int, npc_id: String, rng: RandomNumberGenerat
 		c.position = Vector2(float(CHEST_XS[first_x + i]), RoomLayouts.FLOOR_Y)
 		add_child(c)
 		chests.append(c)
-
-
-## Bulmaca odası: bulmaca parçaları + kilitli ödül sandığı.
-func _build_puzzle(rng: RandomNumberGenerator) -> void:
-	var spec := PuzzleLogic.spec_for(floor_no)
-	logic = PuzzleLogic.new()
-	add_child(logic)
-	logic.build(spec, rng)
-	reward_chest = Chest.new()
-	reward_chest.name = "RewardChest"
-	reward_chest.kind = "rich"
-	reward_chest.locked = true
-	reward_chest.floor_no = floor_no
-	reward_chest.chest_id = "puzzle_f%d" % floor_no
-	reward_chest.seed_value = rng.randi() % 1000000 + 1
-	reward_chest.position = Vector2(PuzzleLogic.chest_x(spec), RoomLayouts.FLOOR_Y)
-	add_child(reward_chest)
-	chests.append(reward_chest)
-	if Chest.opened_ids.has(reward_chest.chest_id):
-		reward_chest.locked = false  # bu koşuda zaten çözüldü ve alındı
-	logic.solved.connect(_on_puzzle_solved)
-
-
-func _on_puzzle_solved() -> void:
-	if reward_chest != null and is_instance_valid(reward_chest):
-		reward_chest.locked = false
-	puzzle_solved.emit()
-	var key := "shard_f%d" % floor_no
-	if not Story.has(key):
-		Story.set_flag(key)
-		var total := Story.add("shards")
-		shard_found.emit(total)
 
 
 func camera_rect() -> Rect2:

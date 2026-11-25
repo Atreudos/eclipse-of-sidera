@@ -475,6 +475,7 @@ static func _lobby() -> void:
 	_add(S, g, "side_door", "Ara oda kapısı (lobide ve ara odanın içinde; hafifçe ışıldar)", 128, 192, "4", true, 0.9, GROUND, 6)
 	_add(S, g, "puzzle_crystal", "Bulmaca kristali (söner; parry'lenmiş mermiyle yanar, parlar)", 96, 96, "4", true, 0.9, CENTER, 6)
 	_add(S, g, "puzzle_star", "Bulmaca yıldızı (söner; kılıçla vurunca yanar)", 96, 96, "4", true, 0.9, CENTER, 6)
+	_add(S, g, "puzzle_plate", "Bulmaca basınç plakası (platformun üstünde, yassı; basınca parlar). Parkur odasında 6 tane", 96, 24, "2", false, 0.4, GROUND, 6)
 	_add(S, g, "puzzle_tower", "Bulmaca kulesi (orijin = merminin çıktığı orta nokta; altın mermi atar, atıştan önce parlar)", 96, 128, "4", true, 0.9, CENTER, 6)
 	_add(S, g, "chest_closed", "Kapalı sandık (hafif parıltı)", 96, 64, "3", true, 0.9, GROUND, 6)
 	_add(S, g, "chest_open", "Açık sandık (içi parlıyor, boş)", 96, 64, "1", false, 0.5, GROUND, 6)

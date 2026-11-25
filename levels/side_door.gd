@@ -8,8 +8,6 @@ signal used(door: SideDoor)
 const RANGE_X := 90.0
 const RANGE_Y := 170.0
 
-## Nereye götürür: "rest" (ara oda), "puzzle" (bulmaca odası), "back" (lobiye dönüş).
-var target := "rest"
 var label := "ARA ODA"
 var accent := Color(0.95, 0.78, 0.3)
 var in_range := false

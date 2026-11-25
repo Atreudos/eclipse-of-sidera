@@ -46,12 +46,13 @@ enum Trans { NONE, OUT, HOLD, IN }
 
 ## Ara oda dünyada odaların çok solunda kurulur.
 const SIDE_ROOM_X := -5200.0
+## Bir katta bulmaca odası çıkma olasılığı (kat 1 hariç).
+const PUZZLE_CHANCE := 0.45
 const SIDE_FADE := 0.45
 ## Ara odadaki oyuncu (içeride mi, geçiş hangi yönde: "" / "in" / "out").
 var side_room: SideRoom = null
 var in_side_room := false
 var _side_dir := ""
-var _side_target := "rest"
 var _side_t := 0.0
 var _side_switched := false
 
@@ -176,6 +177,24 @@ func rng_for(room_index: int, channel: String) -> RandomNumberGenerator:
 	return r
 
 
+## Bu odanın bulmaca türü ("" = bulmaca değil). Kat 1 öğretici müfredattır, bulmaca yok. Diğer katlarda ~%45 olasılıkla
+## 2-4. sıradaki savaş odalarından biri düşmansız bir bulmaca odasına dönüşür (tür kata göre seçilir, aynı tohum = aynı bulmaca).
+func puzzle_kind_of(room_index: int) -> String:
+	if not floors_enabled:
+		return ""
+	var loc := loc_of(room_index)
+	var f := int(loc["floor"])
+	if int(loc["kind"]) != FloorPlan.Kind.COMBAT or f <= 1:
+		return ""
+	var plan := rng_for(FloorPlan.first_index_of(f), "puzzle_plan")
+	if plan.randf() > PUZZLE_CHANCE:
+		return ""
+	var puzzle_slot := 2 + plan.randi_range(0, 2)
+	if int(loc["slot"]) != puzzle_slot:
+		return ""
+	return PuzzleLogic.pick_kind(f, plan)
+
+
 ## Oda `i`'nin yerleşimi. Katlı kipte lobi ve Gölge odasının yerleşimi sabit; savaş odalarında bir öncekiyle aynı olmaz.
 func layout_for(room_index: int) -> String:
 	if not floors_enabled:
@@ -188,6 +207,9 @@ func layout_for(room_index: int) -> String:
 			return RoomLayouts.LOBBY_ID
 		FloorPlan.Kind.BOSS:
 			return RoomLayouts.BOSS_ID
+	var pk := puzzle_kind_of(room_index)
+	if pk != "":
+		return PuzzleLogic.layout_for_kind(pk)
 	if int(loc["floor"]) == 1 and int(loc["slot"]) == 1:
 		return FIRST_LAYOUT
 	var avoid := layout_for(room_index - 1) if int(loc["slot"]) > 1 else ""
@@ -202,6 +224,8 @@ func make_waves(room_index: int) -> Array:
 		return []
 	if kind == FloorPlan.Kind.BOSS:
 		return boss_waves(int(loc["floor"]))
+	if puzzle_kind_of(room_index) != "":
+		return []  # bulmaca odası: düşman yok
 	if floors_enabled and Tutorial.applies(loc):
 		return Tutorial.waves(int(loc["slot"]))  # kat 1: elle yazılmış müfredat (tek tek, yavaş)
 	var n := int(loc["progress"])
@@ -320,11 +344,19 @@ func _build_room(index: int) -> Room:
 			"exit": bool(loc["last"]) and not FloorPlan.is_final_floor(f),
 			"seal": bool(loc["last"]),
 		}
+		var pk := puzzle_kind_of(index)
+		if pk != "":
+			opts["puzzle"] = pk
 		if kind == FloorPlan.Kind.BOSS:
 			room.spawn_meta = {"floor": f}
 			room.hold_exit = not FloorPlan.is_final_floor(f)  # kat geçidi, Gölge ödülü seçilene kadar kapalı
 	room.build(index, x_left_of(index), layout_for(index), enemies_root, rng_for(index, "room"), make_waves(index), opts)
-	_place_room_chest(room, loc)
+	if room.puzzle != null:
+		room.puzzle_progress.connect(_on_puzzle_progress)
+		room.puzzle_solved.connect(_on_puzzle_solved)
+		room.reward_chest.looted.connect(_on_chest_looted)
+	else:
+		_place_room_chest(room, loc)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
 	if room.floor_exit != null:
@@ -352,7 +384,7 @@ func _enter_room(index: int, first: bool = false, announce: bool = true) -> void
 	_free_old_rooms()
 	stats["room"] = int(loc["number"]) if floors_enabled else index + 1
 	stats["floor"] = int(loc["floor"]) if floors_enabled else 0
-	_set_hud_room(room, 1, room.waves.size(), false)
+	_set_hud_room(room, 1, maxi(room.waves.size(), 1), false)
 	if room.kind == FloorPlan.Kind.LOBBY:
 		_setup_shop(room)
 		_setup_side_door(room)
@@ -383,7 +415,10 @@ func _announce_room(room: Room) -> void:
 		FloorPlan.Kind.BOSS:
 			hud.announcer.push("GÖLGE", Color(0.78, 0.55, 1.0), 72, 2.0)
 		_:
-			hud.announcer.push_runs([["ODA ", GameFont.WHITE], [str(room.slot + 1), GameFont.YELLOW]], 64, 1.5)
+			if room.puzzle != null:
+				hud.announcer.push(str(PuzzleLogic.KIND_TITLES.get(room.puzzle_kind, "BULMACA")), Color(0.6, 0.85, 1.0), 56, 2.0)
+			else:
+				hud.announcer.push_runs([["ODA ", GameFont.WHITE], [str(room.slot + 1), GameFont.YELLOW]], 64, 1.5)
 
 
 func _free_old_rooms() -> void:
@@ -455,14 +490,6 @@ func _setup_side_door(room: Room) -> void:
 	door.position = Vector2(RoomLayouts.width_of(room.layout_id) - 210.0, RoomLayouts.FLOOR_Y)
 	room.add_child(door)
 	door.used.connect(_on_side_door_used)
-	var pd := SideDoor.new()
-	pd.name = "PuzzleDoor"
-	pd.label = "BULMACA"
-	pd.target = "puzzle"
-	pd.accent = Color(0.55, 0.85, 1.0)
-	pd.position = Vector2(250.0, RoomLayouts.FLOOR_Y)
-	room.add_child(pd)
-	pd.used.connect(_on_side_door_used)
 
 
 ## Lobide bazen küçük bir sandık durur.
@@ -506,13 +533,11 @@ func _on_puzzle_progress(text: String) -> void:
 	hud.announcer.push(text, GameFont.YELLOW, 34, 1.2)
 
 
-func _on_puzzle_solved() -> void:
+func _on_puzzle_solved(shard_total: int) -> void:
 	hud.announcer.push("BULMACA ÇÖZÜLDÜ", GameFont.YELLOW, 52, 2.0)
-	hud.announcer.push_runs([["SANDIK AÇILDI", GameFont.WHITE]], 30, 2.0)
-
-
-func _on_shard_found(total: int) -> void:
-	hud.announcer.push_runs([["YILDIZ KIRINTISI  ", Color(0.6, 0.85, 1.0)], [str(total), GameFont.YELLOW]], 40, 2.4)
+	hud.announcer.push_runs([["ÖDÜL SANDIĞI AÇILDI", GameFont.WHITE]], 30, 2.2)
+	if shard_total > 0:
+		hud.announcer.push_runs([["YILDIZ KIRINTISI  ", Color(0.6, 0.85, 1.0)], [str(shard_total), GameFont.YELLOW]], 40, 2.6)
 
 
 func _on_side_door_used(door: SideDoor) -> void:
@@ -521,8 +546,6 @@ func _on_side_door_used(door: SideDoor) -> void:
 	if not in_side_room and (current_room() == null or current_room().kind != FloorPlan.Kind.LOBBY):
 		return
 	_side_dir = "out" if in_side_room else "in"
-	if not in_side_room:
-		_side_target = door.target
 	_side_t = 0.0
 	_side_switched = false
 	player.input_locked = true
@@ -558,26 +581,21 @@ func _side_switch() -> void:
 		var r := rng_for(current, "side_room")
 		side_room = SideRoom.new()
 		rooms_root.add_child(side_room)
-		var puzzle := _side_target == "puzzle"
-		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r, puzzle)
+		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r)
 		for c in side_room.chests:
 			c.looted.connect(_on_chest_looted)
-		if puzzle:
-			side_room.shard_found.connect(_on_shard_found)
-			side_room.puzzle_solved.connect(_on_puzzle_solved)
-			side_room.logic.progress.connect(_on_puzzle_progress)
 		if side_room.npc != null:
 			side_room.npc.requested.connect(_on_npc_requested)
 		side_room.return_door.used.connect(_on_side_door_used)
 		player.global_position = side_room.entry_pos()
 		camera.set_bounds(side_room.camera_rect(), true)
 		in_side_room = true
-		hud.announcer.push("BULMACA ODASI" if puzzle else "ARA ODA", GameFont.YELLOW, 52, 1.4)
+		hud.announcer.push("ARA ODA", GameFont.YELLOW, 52, 1.4)
 	else:
 		var room := current_room()
 		var door: Node2D = null
 		if room != null:
-			door = room.get_node_or_null("PuzzleDoor" if _side_target == "puzzle" else "SideDoor") as Node2D
+			door = room.get_node_or_null("SideDoor") as Node2D
 			player.global_position = Vector2(door.global_position.x if door != null else room.rect.position.x + 200.0, 600.0)
 			camera.set_bounds(room.camera_rect(), true)
 			var next := rooms.get(current + 1) as Room
@@ -730,7 +748,7 @@ func _on_room_cleared(room: Room) -> void:
 		EventBus.room_cleared.emit(room.index)
 		return
 	stats["rooms_cleared"] = int(stats["rooms_cleared"]) + 1
-	_set_hud_room(room, room.waves.size(), room.waves.size(), true)
+	_set_hud_room(room, maxi(room.waves.size(), 1), maxi(room.waves.size(), 1), true)
 	if room.kind == FloorPlan.Kind.BOSS:
 		if FloorPlan.is_final_floor(room.floor_no):
 			hud.announcer.push("GÖLGE YENİLDİ", GameFont.YELLOW, 64, 2.2)
@@ -739,6 +757,9 @@ func _on_room_cleared(room: Room) -> void:
 			hud.announcer.push_runs([["GÖLGE YENİLDİ", GameFont.YELLOW]], 58, 2.2)
 			hud.announcer.push_runs([["SUNAKTAN BİR EŞYA SEÇ", GameFont.WHITE]], 32, 2.6)
 			_setup_reward(room)
+	elif room.puzzle != null:
+		if room.puzzle_assisted:
+			hud.announcer.push("KİLİT AÇILDI", GameFont.YELLOW, 52, 1.8)
 	else:
 		hud.announcer.push("ODA TEMİZ", GameFont.YELLOW, 58, 1.8)
 	EventBus.room_cleared.emit(room.index)

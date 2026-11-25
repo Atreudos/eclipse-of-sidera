@@ -148,7 +148,7 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).
 
 ## Bulmaca odaları (testler Godot'ta henüz koşulmadı)
-- Her lobide sol tarafta mavi "BULMACA" kapısı. İçerideki parçalar kata göre `PuzzleLogic.spec_for(kat)` ile belirlenir: kat 1-4 parry anahtarı (kristal 1-2 vuruş), 5-8 yıldız sırası (3-4), 9-12 denge (iki kule, iki kristal aynı anda), 13-16 yıldız sırası (5-6), 17-18 hepsi karışık.
-- Parry anahtarı: kule altın mermi atar, parry'le, mermi kuleye döner ve aradaki kristali yakar. Yıldız: sırası kısa süre parlayarak gösterilir (10 sn'de bir tekrar), kılıçla aynı sırada vur; yanlışta sıfırlanır.
-- Çözünce kilitli ödül sandığı açılır ve (ilk kez) **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`). Mira kırıntıyı sorunca sayıyı söyler.
-- Test: `bulmaca`.
+- Kat 1 hariç her katta ~%45 olasılıkla 3-5. odalardan biri (sıra 2-4) **düşmansız bir bulmaca odasına** dönüşür; kapı bulmaca çözülünce açılır. Tür kata göre seçilir (`PuzzleLogic.kinds_for`), tohuma bağlı sabittir (`RunController.puzzle_kind_of`). 180 sn takılırsan kilit gevşer (ödül ve kırıntı yok).
+- Türler: **parry** (kule altın mermi atar, parry'le, mermi kuleye döner ve kristali yakar), **stars** (gösterilen yıldız sırasını kılıçla tekrarla), **simon / yıldız yankısı** (sıra tek tek büyür), **balance** (iki kule, iki kristal aynı anda yanık), **parkur** (platformlardaki 6 basınç plakasına süre dolmadan bas), **mix** (parry + yıldız sırası birlikte).
+- Çözünce kilitli ödül sandığı açılır ve ilk kez çözülen katta **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`; Mira sorulunca sayıyı söyler).
+- Yerleşimler: `bulmaca_duz` (2000 px düz), `bulmaca_parkur` (2400 px, 6 platform). Savaş havuzunda yoktur. Test: `bulmaca`.

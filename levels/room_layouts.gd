@@ -21,6 +21,8 @@ const LOBBY_ID := "lobi"
 const BOSS_ID := "golge"
 ## Sınırsız kipin geniş arenası. `ids()` bunu da DÖNDÜRMEZ.
 const ARENA_ID := "arena"
+## Bulmaca odası yerleşimlerinin ad öneki. `ids()` bunları döndürmez.
+const PUZZLE_PREFIX := "bulmaca"
 
 const LAYOUTS := {
 	# Gölge arenası: her katın 6. odası. Düz zemin, iki yanda duvar (Gölge'nin duvar tırmanışı için), ortada iki küçük platform.
@@ -39,6 +41,19 @@ const LAYOUTS := {
 			[410, 520], [760, 420], [1210, 520], [1500, 410], [1790, 520], [2240, 420], [2590, 520],
 		],
 		"shop_x": 1500,
+	},
+	# Bulmaca odaları (yolun içinde, bazı odaların kendisi bulmacadır; düşman yok). `ids()` bunları DÖNDÜRMEZ.
+	# Düz geniş oda: parry şeritleri ve yıldız sıraları ortada kurulur.
+	"bulmaca_duz": {
+		"width": 2000,
+		"platforms": [],
+		"spawns": [],
+	},
+	# Parkur: sekiz değil altı platformluk zincir; her platformun ortasında basınç plakası durur.
+	"bulmaca_parkur": {
+		"width": 2400,
+		"platforms": [[260, 520, 200], [560, 440, 200], [880, 360, 200], [1220, 440, 200], [1540, 520, 200], [1860, 440, 200]],
+		"spawns": [],
 	},
 	# Lobi: her katın ilk odası. Düz zemin, platform ve doğma noktası yok; dükkân `shop_x` konumunda durur.
 	"lobi": {
@@ -84,7 +99,7 @@ const LAYOUTS := {
 static func ids() -> Array:
 	var out: Array = []
 	for k in LAYOUTS.keys():
-		if k != LOBBY_ID and k != BOSS_ID and k != ARENA_ID:
+		if k != LOBBY_ID and k != BOSS_ID and k != ARENA_ID and not str(k).begins_with(PUZZLE_PREFIX):
 			out.append(k)
 	return out
 

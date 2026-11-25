@@ -8823,52 +8823,91 @@ func _test_demo_menu() -> void:
 	await _frames(2)
 
 
+func _puzzle_room(kind_name: String, floor_n: int, seed_v: int) -> Room:
+	var room := Room.new()
+	_world.add_child(room)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var enemies := Node2D.new()
+	_world.add_child(enemies)
+	room.build(7, 0.0, PuzzleLogic.layout_for_kind(kind_name), enemies, rng, [], {"kind": FloorPlan.Kind.COMBAT, "floor": floor_n, "slot": 3, "puzzle": kind_name, "left_wall": true})
+	return room
+
+
 func _test_puzzles() -> void:
-	await _new_world("Bulmaca: tarifler, parry anahtarı, yıldız sırası, denge, kilitli ödül sandığı, yıldız kırıntısı")
+	await _new_world("Bulmaca odaları: yerleşimler, tarifler, planlama, parry/yıldız/yankı/denge/parkur, kilitli ödül, kırıntı")
 	Story.reset_fallback()
 	Chest.opened_ids = {}
 	var saved_slot: Variant = GameState.slot
 	GameState.slot = null
+	# --- Yerleşimler ve tarifler
+	for id in ["bulmaca_duz", "bulmaca_parkur"]:
+		check(RoomLayouts.problems(id).is_empty(), "%s: yerleşim kurallara uyuyor %s" % [id, RoomLayouts.problems(id)])
+		check(not (id in RoomLayouts.ids()) and (id in RoomLayouts.all_ids()), "%s: savaş havuzunda yok" % id)
 	for f in range(1, 19):
-		var sp := PuzzleLogic.spec_for(f)
-		var lanes: Array = sp["lanes"]
-		check(not lanes.is_empty() or int(sp["stars"]) > 0, "kat %d: bulmaca tarifi boş değil" % f)
-		var cx := PuzzleLogic.chest_x(sp)
-		check(cx > 100.0 and cx < SideRoom.WIDTH - 40.0, "kat %d: ödül sandığı oda içinde (%.0f)" % [f, cx])
-	# --- Parry anahtarı (kat 1)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 3
-	var room := SideRoom.new()
-	_world.add_child(room)
-	room.build(-5200.0, 1, "", rng, true)
-	check(room.logic != null and room.reward_chest != null and room.reward_chest.locked and room.npc == null, "bulmaca odası: mantık, kilitli sandık, karakter yok")
-	check(room.logic.crystals.size() == 1 and room.logic.towers.size() == 1 and room.logic.stars.is_empty(), "kat 1: bir kule, bir kristal")
-	var p := _spawn_player(room.entry_pos().x)
-	p.global_position = room.entry_pos()
+		for k in PuzzleLogic.kinds_for(f):
+			var sp := PuzzleLogic.spec_for(f, k)
+			var ok := true
+			match k:
+				"parry": ok = (sp["lanes"] as Array).size() == 1 and int(sp["hits"]) >= 1
+				"stars", "simon": ok = int(sp["stars"]) >= 3 and int(sp["stars"]) <= 6
+				"balance": ok = (sp["lanes"] as Array).size() == 2 and bool(sp["balance"]) and float(sp["window"]) > 3.0
+				"parkur": ok = int(sp["plates"]) == 6 and float(sp["plate_time"]) >= 11.0
+				"mix": ok = (sp["lanes"] as Array).size() == 1 and int(sp["stars"]) >= 4
+			check(ok, "kat %d %s: tarif geçerli" % [f, k])
+			check(k in PuzzleLogic.KINDS and PuzzleLogic.KIND_TITLES.has(k), "%s: tür ve başlık tanımlı" % k)
+	check(RoomLayouts.platform_rects("bulmaca_parkur").size() >= 6, "parkur yerleşiminde 6 platform var (plaka sayısı)")
+	# --- Planlama: kat 1 yok, bulmaca yalnız 3-5. odada (sıra 2-4), tohuma bağlı sabit
+	var run := _start_run(2468, true)
+	await _frames(5)
+	var total := 0
+	var all_ok := true
+	for f in range(1, 19):
+		var per_floor := 0
+		for slot in 6:
+			var idx := FloorPlan.index_of(f, slot)
+			var kd := run.puzzle_kind_of(idx)
+			if kd != "":
+				per_floor += 1
+				total += 1
+				all_ok = all_ok and f > 1 and slot >= 2 and slot <= 4 and kd in PuzzleLogic.kinds_for(f)
+				all_ok = all_ok and run.make_waves(idx).is_empty() and run.layout_for(idx).begins_with("bulmaca")
+				all_ok = all_ok and run.puzzle_kind_of(idx) == kd
+		all_ok = all_ok and per_floor <= 1
+	check(all_ok, "planlama: kat 1 yok, kat başına en çok 1, sıra 2-4, düşmansız, deterministik")
+	check(total >= 2 and total <= 14, "planlama: bazı katlarda bulmaca çıkıyor (%d / 17 kat)" % total)
+	check(run.puzzle_kind_of(FloorPlan.index_of(1, 2)) == "" and run.puzzle_kind_of(FloorPlan.index_of(5, 0)) == "" and run.puzzle_kind_of(FloorPlan.index_of(5, 5)) == "", "lobi, Gölge odası ve kat 1'de bulmaca yok")
+	run.queue_free()
+	await _frames(3)
+	# --- Parry anahtarı
+	var room := _puzzle_room("parry", 2, 3)
+	check(room.puzzle != null and room.reward_chest != null and room.reward_chest.locked, "bulmaca odası: mantık ve kilitli ödül sandığı")
+	check(room.puzzle.crystals.size() == 1 and room.puzzle.towers.size() == 1 and room.puzzle.stars.is_empty(), "parry: bir kule, bir kristal")
+	var p := _spawn_player(room.rect.position.x + 1000.0)
 	await _frames(20)
 	check(not room.reward_chest.open_by(p), "kilitliyken sandık açılmaz")
-	var cr: PuzzleTarget = room.logic.crystals[0]
+	room.begin_encounter(0.0)
+	check(room.state == Room.State.ACTIVE and room.puzzle.running, "oda başlayınca bulmaca çalışır, oda temizlenmedi")
+	var cr: PuzzleTarget = room.puzzle.crystals[0]
 	var sword := Hitbox.new()
 	sword.faction = "player"
 	_world.add_child(sword)
 	check(not cr.on_hit_by(sword) and not cr.lit, "kristal kılıçla yanmaz")
-	var shot: Projectile = room.logic.towers[0].fire()
-	check(shot != null and shot.parryable and shot.velocity.x < 0.0, "kule altın mermiyi oyuncuya doğru atar")
+	var shot: Projectile = room.puzzle.towers[0].fire()
+	check(shot.parryable and shot.velocity.x < 0.0, "kule altın mermiyi oyuncuya doğru atar")
 	shot.on_parried(p)
 	check(shot.faction == "player" and shot.velocity.x > 0.0, "parry'lenen mermi kuleye geri döner")
-	check(cr.on_hit_by(shot) and cr.lit, "parry'lenmiş mermi kristali yakar")
-	check(room.logic.is_solved and not room.reward_chest.locked, "bulmaca çözüldü, sandık açıldı")
-	check(Story.has("shard_f1") and Story.get_flag("shards") == 1, "Yıldız Kırıntısı kazanıldı")
+	check(cr.on_hit_by(shot) and cr.lit and room.puzzle.is_solved and not room.reward_chest.locked, "mermi kristali yakar, bulmaca çözülür, sandık açılır")
+	check(Story.has("shard_f2") and Story.get_flag("shards") == 1, "Yıldız Kırıntısı kazanıldı")
+	await _wait_until_real(func() -> bool: return room.state == Room.State.CLEARED, 4.0)
+	check(room.is_cleared(), "çözülünce oda temizlenir, kapı açılır")
 	check(room.reward_chest.open_by(p), "ödül sandığı açılır")
 	room.queue_free()
 	await _frames(2)
-	# --- Yıldız sırası (kat 5: 3 yıldız)
-	var room2 := SideRoom.new()
-	_world.add_child(room2)
-	rng.seed = 8
-	room2.build(-5200.0, 5, "", rng, true)
-	var lg: PuzzleLogic = room2.logic
-	check(lg.stars.size() == 3 and lg.seq.size() == 3, "kat 5: üç yıldız ve üç adımlık sıra")
+	# --- Yıldız sırası
+	var room2 := _puzzle_room("stars", 5, 8)
+	var lg: PuzzleLogic = room2.puzzle
+	check(lg.stars.size() == 3 and lg.seq.size() == 3, "yıldız sırası: 3 yıldız, 3 adım")
 	var sorted_seq := lg.seq.duplicate()
 	sorted_seq.sort()
 	check(sorted_seq == [0, 1, 2], "sıra her yıldızı bir kez içerir")
@@ -8885,25 +8924,67 @@ func _test_puzzles() -> void:
 	for i in lg.seq:
 		lg.stars[i].on_hit_by(sword)
 	check(lg.is_solved and not room2.reward_chest.locked, "doğru sırayla vurunca çözülür")
-	check(Story.has("shard_f5") and Story.get_flag("shards") == 2, "ikinci yıldız kırıntısı")
+	check(Story.get_flag("shards") == 2, "ikinci yıldız kırıntısı")
 	room2.queue_free()
 	await _frames(2)
-	# --- Denge (kat 9: iki kule, ikisi aynı anda yanmalı)
-	var room3 := SideRoom.new()
-	_world.add_child(room3)
-	rng.seed = 4
-	room3.build(-5200.0, 9, "", rng, true)
-	var lg3: PuzzleLogic = room3.logic
-	check(lg3.crystals.size() == 2 and lg3.towers.size() == 2, "kat 9: iki kule, iki kristal")
-	var shot_a: Projectile = lg3.towers[0].fire()
-	shot_a.on_parried(p)
-	lg3.crystals[0].on_hit_by(shot_a)
-	check(lg3.crystals[0].lit and not lg3.is_solved, "tek kristal yanınca bulmaca çözülmez")
-	var shot_b: Projectile = lg3.towers[1].fire()
-	shot_b.on_parried(p)
-	lg3.crystals[1].on_hit_by(shot_b)
-	check(lg3.is_solved, "ikisi birden yanınca çözülür")
+	# --- Yıldız yankısı (büyüyen sıra)
+	var room3 := _puzzle_room("simon", 6, 4)
+	var sm: PuzzleLogic = room3.puzzle
+	check(sm.stars.size() >= 3 and sm._round == 1, "yankı: tur 1 ile başlar")
+	var first := sm.seq[0]
+	var other := (first + 1) % sm.stars.size()
+	sm.stars[other].on_hit_by(sword)
+	check(sm._progress == 0 and sm._round == 1, "yankı: yanlış vuruş turu baştan başlatır")
+	sm.stars[first].on_hit_by(sword)
+	check(sm._round == 2 and sm._progress == 0, "yankı: doğru vuruş turu büyütür")
+	var guard := 0
+	while not sm.is_solved and guard < 40:
+		for i in range(sm._round):
+			sm.stars[sm.seq[i]].on_hit_by(sword)
+		guard += 1
+	check(sm.is_solved, "yankı: bütün turlar tamamlanınca çözülür")
 	room3.queue_free()
+	await _frames(2)
+	# --- Denge
+	var room4 := _puzzle_room("balance", 10, 4)
+	var lg4: PuzzleLogic = room4.puzzle
+	check(lg4.crystals.size() == 2 and lg4.towers.size() == 2, "denge: iki kule, iki kristal")
+	var shot_a: Projectile = lg4.towers[0].fire()
+	shot_a.on_parried(p)
+	lg4.crystals[0].on_hit_by(shot_a)
+	check(lg4.crystals[0].lit and not lg4.is_solved, "tek kristal yanınca çözülmez")
+	var shot_b: Projectile = lg4.towers[1].fire()
+	shot_b.on_parried(p)
+	lg4.crystals[1].on_hit_by(shot_b)
+	check(lg4.is_solved, "ikisi birden yanınca çözülür")
+	room4.queue_free()
+	await _frames(2)
+	# --- Parkur: plakalar platformlarda, süre dolunca söner
+	var room5 := _puzzle_room("parkur", 3, 4)
+	var lg5: PuzzleLogic = room5.puzzle
+	check(lg5.plates.size() == 6 and lg5.plate_lit.size() == 6, "parkur: 6 plaka")
+	room5.begin_encounter(0.0)
+	var plate_world := room5.to_global(lg5.plates[0])
+	p.global_position = plate_world + Vector2(0.0, -40.0)
+	p.velocity = Vector2.ZERO
+	await _wait_until_real(func() -> bool: return lg5.plate_lit[0], 3.0)
+	check(lg5.plate_lit[0] and lg5._plate_clock > 0.0, "parkur: plakaya basınca yanar ve süre başlar")
+	lg5._plate_clock = 0.05
+	await _frames(12)
+	check(not lg5.plate_lit[0] and lg5._plate_clock < 0.0, "parkur: süre dolunca plakalar söner")
+	for i in 6:
+		lg5.plate_lit[i] = true
+	lg5._check_solved()
+	check(lg5.is_solved, "parkur: hepsi yanınca çözülür")
+	room5.queue_free()
+	await _frames(2)
+	# --- Takılırsan: kilit gevşer, ödül yok
+	var room6 := _puzzle_room("parry", 4, 9)
+	room6.begin_encounter(0.0)
+	room6.puzzle_t = Room.PUZZLE_ASSIST_AFTER - 0.01
+	await _wait_until_real(func() -> bool: return room6.is_cleared(), 3.0)
+	check(room6.is_cleared() and room6.puzzle_assisted and room6.reward_chest.locked and not Story.has("shard_f4"), "uzun takılınca oda yardımla açılır, ödül ve kırıntı yok")
+	room6.queue_free()
 	p.queue_free()
 	sword.queue_free()
 	proj.queue_free()
