@@ -41,7 +41,7 @@ const SECRETS := {
 }
 
 ## Bu katların lobisine "çukurdan düşüp" gelinir: yumuşak bir slime'ın üstüne inersin.
-const SLIME_FLOORS := [3, 8, 13]
+const SLIME_FLOORS := [5]
 
 
 static func puzzle_kind(floor_no: int, slot: int) -> String:
@@ -58,8 +58,45 @@ static func secret_kind(floor_no: int, slot: int) -> String:
 	return str(d.get(slot, ""))
 
 
+## OLAY ÇİZELGESİ: her olay hikâyede BİR KEZ olur. Kat 4'ün sonunda su baskını -> kat 5'in lobisinde slime; kat 9 lobisinde yazı-tura; kat 13 lobisinde anket.
 ## Bu katların Gölge odasında ödül seçilince su yükselmeye başlar; geçit tepeye taşınır. (Sonraki kat = slime katı.)
-const FLOOD_FLOORS := [2, 7, 12]
+const FLOOD_FLOORS := [4]
+
+
+## Lobide gerçekleşen tek seferlik olaylar: kat -> olay kimliği.
+const LOBBY_EVENTS := {9: "yazi_tura", 13: "anket"}
+
+
+static func lobby_event(floor_no: int) -> String:
+	return str(LOBBY_EVENTS.get(floor_no, ""))
+
+
+## Lobi olayının konuşması. Bir kez oynanır; sonra kısa bir veda.
+static func event_dialogue(id: String) -> Dictionary:
+	var flag := "ev_" + id
+	var done := Story.has(flag)
+	match id:
+		"yazi_tura":
+			return {"speaker": "Umbra", "start": "done" if done else "a", "nodes": {
+				"a": {"text": "*Umbra bir bozuk para fırlatıp yakaladı.* Yazı mı, tura mı? Kazanan kulenin sırrını öğrenir.", "choices": [
+					{"text": "Yazı", "next": "yazi"}, {"text": "Tura", "next": "tura"}, {"text": "Bozuk paraya güvenmem", "next": "no", "cancel": true}]},
+				"yazi": {"text": "*Para havada döndü. Tura geldi.* Üzgünüm. Aslında iki yüzü de tura.", "next": "yazi2", "set": flag},
+				"yazi2": {"text": "*Kaybettin ama çok güzel kaybettin.*", "dopamin": 5, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
+				"tura": {"text": "*Para havada döndü. Tura geldi.* ...Hile yok, yemin ederim. Al şunu.", "next": "tura2", "set": flag},
+				"tura2": {"text": "*Umbra sana bir avuç altın verdi, gözünü kaçırarak.*", "gold": 30, "gold_flag": "gd_" + id, "dopamin": 5, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
+				"no": {"text": "Akıllıca. Ben de güvenmem.", "next": "end"},
+				"done": {"text": "*Umbra bozuk parayı alnına dayamış, derin derin düşünüyor.*", "next": "end"},
+			}}
+		"anket":
+			return {"speaker": "Mira", "start": "done" if done else "a", "nodes": {
+				"a": {"text": "Asansör bozuk. Çıkmadan önce kısa bir anket: Kule'yi nasıl buldun?", "choices": [
+					{"text": "Çok yüksek", "next": "r"}, {"text": "Çok karanlık", "next": "r"}, {"text": "Ben bu anketi sevdim", "next": "r"}, {"text": "Cevap vermeyeceğim", "next": "no", "cancel": true}]},
+				"r": {"text": "Teşekkürler! Cevabın Umbra'ya iletildi. Merak etme, o da cevaplamadı.", "next": "r2", "set": flag},
+				"r2": {"text": "*Mira bir kupon uzattı: '1 ücretsiz iç çekiş'.*", "gold": 20, "gold_flag": "gd_" + id, "dopamin": 3, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
+				"no": {"text": "Anlaşıldı. 'Cevapsız' da bir cevaptır.", "next": "end"},
+				"done": {"text": "Anket sonuçları: herkes yorgun.", "next": "end"},
+			}}
+	return Dialogue.linear("", ["..."])
 
 
 static func has_flood(floor_no: int) -> bool:

@@ -8888,7 +8888,9 @@ func _test_puzzles() -> void:
 	var kr := Room.new()
 	check(not kr.key_needed and not kr.key_taken, "oda: varsayılan anahtar gerekmez")
 	kr.free()
-	check(StoryFloors.has_flood(2) and StoryFloors.has_slime(3) and StoryFloors.has_flood(7) and StoryFloors.has_slime(8), "su baskını katını slime katı izler")
+	check(StoryFloors.FLOOD_FLOORS == [4] and StoryFloors.SLIME_FLOORS == [5] and StoryFloors.lobby_event(9) == "yazi_tura" and StoryFloors.lobby_event(13) == "anket", "olay çizelgesi: her olay bir kez; su baskınını slime izler")
+	for ev in ["yazi_tura", "anket"]:
+		check(Dialogue.problems(StoryFloors.event_dialogue(ev)).is_empty(), "olay konuşması geçerli: " + ev)
 	var sd := StoryFloors.slime_dialogue(3)
 	check(sd["start"] == "a0" and (sd["nodes"]["a1"]["choices"] as Array).size() == 2 and bool(sd["nodes"]["a1"]["choices"][1]["cancel"]), "slime konuşması: Evet/Hayır, Hayır iptal")
 	check(Prop.KINDS.all(func(k): return Prop.TEXTS.has(k) and (Prop.TEXTS[k] as Array).size() >= 2), "eşyaların esprili satırları var")

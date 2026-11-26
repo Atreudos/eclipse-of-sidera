@@ -461,6 +461,9 @@ func _setup_shop(room: Room) -> void:
 	_place_props(room, 2)
 	if StoryFloors.has_slime(room.floor_no):
 		_place_slime(room)
+	var ev := StoryFloors.lobby_event(room.floor_no)
+	if ev != "":
+		_place_event_prop(room, ev)
 
 
 ## Odaya esprili eşyalar koyar (tohumdan; sandıklara ve NPC'ye yakın olmaz).
@@ -536,6 +539,26 @@ func _place_slime(room: Room) -> void:
 	room.add_child(p)
 	p.requested.connect(_on_slime_requested)
 	hud.announcer.push("Yumuşak bir şeyin üstüne düştün.", GameFont.WHITE, 30, 2.4)
+
+
+## Lobide tek seferlik bir olay karakteri/eşyası (StoryFloors.LOBBY_EVENTS).
+func _place_event_prop(room: Room, ev: String) -> void:
+	var w := RoomLayouts.width_of(room.layout_id)
+	var p := Prop.new()
+	p.name = "Event_" + ev
+	p.kind = "mum"
+	p.set_meta("event", ev)
+	p.position = Vector2(clampf(RoomLayouts.shop_x(room.layout_id) + 520.0, 300.0, w - 300.0), RoomLayouts.FLOOR_Y)
+	room.add_child(p)
+	p.requested.connect(_on_event_prop_requested)
+
+
+func _on_event_prop_requested(p: Prop) -> void:
+	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	var ev := str(p.get_meta("event", ""))
+	var d := StoryFloors.event_dialogue(ev)
+	hud.dialogue_menu.talk(player, d, str(d.get("speaker", "")))
 
 
 func _on_slime_requested(_p: Prop) -> void:

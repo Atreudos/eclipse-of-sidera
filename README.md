@@ -165,4 +165,4 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Q = iptal (konuşmada yazıyı bitirir / `"cancel": true` seçeneğini seçer), E = onay.
 - `StoryFloors.SLIME_FLOORS` lobilerinde slime: "Dokunmak ister misin?" -> +10 DOPAMİN (`Story` bayrağı `dopamin`).
 - Etiketsiz kapılar (`StoryFloors.SECRETS`): savaş odasında yazısız kapı, oda temizlenince girilir. `key` = parkur (fırlatıcı) sonunda anahtar, alınmadan odanın kapısı açılmaz; `treasure` = iki sandıklı oda. İp sallanması / çöken platform henüz yok.
-- Su baskını (`FloodEvent`, `StoryFloors.FLOOD_FLOORS` = 2, 7, 12): Gölge ödülü alınınca su yükselir, geçit basamakların tepesine taşınır; su tepenin altında durur. Sonraki kat lobisinde slime olayı. Çukur çizimi henüz yok: geçit kapısı olarak görünür.
+- Su baskını (`FloodEvent`, `StoryFloors.FLOOD_FLOORS` = kat 4; olay çizelgesi: her olay hikâyede bir kez — kat 4 sonu su baskını, kat 5 lobisi slime, kat 9 yazı-tura, kat 13 anket): Gölge ödülü alınınca su yükselir, geçit basamakların tepesine taşınır; su tepenin altında durur. Sonraki kat lobisinde slime olayı. Çukur çizimi henüz yok: geçit kapısı olarak görünür.
