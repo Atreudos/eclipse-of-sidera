@@ -773,6 +773,12 @@ func take_reward(index: int) -> String:
 func _on_reward_taken(item: ItemData, left: Array, room: Room) -> void:
 	if is_instance_valid(room):
 		room.release_exit()
+		if floors_enabled and StoryFloors.has_flood(room.floor_no) and room.get_node_or_null("Flood") == null:
+			var fl := FloodEvent.new()
+			fl.name = "Flood"
+			room.add_child(fl)
+			fl.start(room)
+			hud.announcer.push("SU YÜKSELİYOR!  Yukarı tırman.", GameFont.YELLOW, 40, 3.0)
 	hud.announcer.push_runs([["ALINDI  ", GameFont.WHITE], [item.upper_name(), item.color()]], 40, 2.0)
 	for it in left:
 		var other := it as ItemData

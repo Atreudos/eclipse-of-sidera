@@ -58,6 +58,14 @@ static func secret_kind(floor_no: int, slot: int) -> String:
 	return str(d.get(slot, ""))
 
 
+## Bu katların Gölge odasında ödül seçilince su yükselmeye başlar; geçit tepeye taşınır. (Sonraki kat = slime katı.)
+const FLOOD_FLOORS := [2, 7, 12]
+
+
+static func has_flood(floor_no: int) -> bool:
+	return floor_no in FLOOD_FLOORS
+
+
 static func has_slime(floor_no: int) -> bool:
 	return floor_no in SLIME_FLOORS
 
