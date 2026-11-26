@@ -52,6 +52,8 @@ const SIDE_FADE := 0.45
 var side_room: SideRoom = null
 var in_side_room := false
 var _side_dir := ""
+var _side_kind := "npc"
+var _side_door: SideDoor = null
 var _side_t := 0.0
 var _side_switched := false
 
@@ -353,6 +355,7 @@ func _build_room(index: int) -> Room:
 	else:
 		_place_room_chest(room, loc)
 		if floors_enabled and int(loc["kind"]) == FloorPlan.Kind.COMBAT:
+			_place_secret_door(room, loc)
 			_place_props(room, 1)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
@@ -490,6 +493,33 @@ func _place_props(room: Room, count: int) -> void:
 		p.requested.connect(_on_prop_requested)
 
 
+## Savaş odasına ETİKETSİZ kapı koyar (StoryFloors.SECRETS). Oda temizlenince kullanılabilir.
+func _place_secret_door(room: Room, loc: Dictionary) -> void:
+	var sk := StoryFloors.secret_kind(int(loc["floor"]), int(loc["slot"]))
+	if sk == "":
+		return
+	var w := room.rect.size.x
+	var x := w * 0.62
+	for frac in [0.62, 0.4, 0.8]:
+		x = w * float(frac)
+		var clear := true
+		for c in room.get_children():
+			if c is Chest and absf((c as Chest).position.x - x) < 230.0:
+				clear = false
+		if clear:
+			break
+	var d := SideDoor.new()
+	d.name = "SecretDoor"
+	d.label = ""
+	d.accent = room.palette["accent"]
+	d.position = Vector2(x, RoomLayouts.FLOOR_Y)
+	d.set_meta("side_kind", sk)
+	room.add_child(d)
+	d.used.connect(_on_side_door_used)
+	if sk == "key":
+		room.key_needed = true
+
+
 func _on_prop_requested(p: Prop) -> void:
 	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
 		return
@@ -616,8 +646,18 @@ func _on_puzzle_solved(shard_total: int) -> void:
 func _on_side_door_used(door: SideDoor) -> void:
 	if _trans != Trans.NONE or _side_dir != "" or player == null or not is_instance_valid(player) or player.dead:
 		return
-	if not in_side_room and (current_room() == null or current_room().kind != FloorPlan.Kind.LOBBY):
-		return
+	if not in_side_room:
+		var cr := current_room()
+		if cr == null:
+			return
+		var secret := str(door.get_meta("side_kind", "")) != ""
+		if cr.kind != FloorPlan.Kind.LOBBY and not secret:
+			return
+		if secret and not cr.is_cleared():
+			hud.announcer.push("*Kapı kıpırdamıyor. Önce şu gürültüyü kes.*", GameFont.WHITE, 28, 2.0)
+			return
+		_side_kind = str(door.get_meta("side_kind", "npc"))
+		_side_door = door
 	_side_dir = "out" if in_side_room else "in"
 	_side_t = 0.0
 	_side_switched = false
@@ -654,25 +694,33 @@ func _side_switch() -> void:
 		var r := rng_for(current, "side_room")
 		side_room = SideRoom.new()
 		rooms_root.add_child(side_room)
-		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r)
+		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f) if _side_kind == "npc" else "", r, _side_kind)
+		for ch in side_room.chests:
+			ch.looted.connect(_on_chest_looted)
 		if side_room.npc != null:
 			side_room.npc.requested.connect(_on_npc_requested)
 		side_room.return_door.used.connect(_on_side_door_used)
 		player.global_position = side_room.entry_pos()
 		camera.set_bounds(side_room.camera_rect(), true)
 		in_side_room = true
-		hud.announcer.push("ARA ODA", GameFont.YELLOW, 52, 1.4)
+		if _side_kind == "npc":
+			hud.announcer.push("ARA ODA", GameFont.YELLOW, 52, 1.4)
+		elif _side_kind == "key":
+			hud.announcer.push("Parkurun sonunda bir şey parlıyor.", GameFont.WHITE, 28, 2.4)
 	else:
 		var room := current_room()
 		var door: Node2D = null
 		if room != null:
-			door = room.get_node_or_null("SideDoor") as Node2D
+			door = (_side_door if _side_kind != "npc" and is_instance_valid(_side_door) else room.get_node_or_null("SideDoor")) as Node2D
 			player.global_position = Vector2(door.global_position.x if door != null else room.rect.position.x + 200.0, 600.0)
 			camera.set_bounds(room.camera_rect(), true)
 			var next := rooms.get(current + 1) as Room
 			if next != null and room.is_cleared():
 				camera.extend_bounds(next.camera_rect())
 		get_tree().call_group("coins", "queue_free")
+		if is_instance_valid(side_room) and side_room.kind == "key" and side_room.key_taken and room != null and room.key_needed and not room.key_taken:
+			room.give_key()
+			hud.announcer.push("ANAHTAR ALINDI  kapı açıldı", GameFont.YELLOW, 36, 2.4)
 		if is_instance_valid(side_room):
 			side_room.queue_free()
 		side_room = null

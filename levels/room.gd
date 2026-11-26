@@ -78,6 +78,9 @@ var hold_exit := false
 var rect := Rect2()
 var state: State = State.PENDING
 ## Sağ kapı (sonraki odaya geçiş).
+## Anahtar odası: oda temizlense de kapı `give_key()` gelene kadar kilitli kalır.
+var key_needed := false
+var key_taken := false
 var door: Door
 var palette: Dictionary = {}
 ## Her dalga: PackedScene dizisi.
@@ -414,11 +417,19 @@ func force_clear() -> void:
 	if state == State.CLEARED:
 		return
 	state = State.CLEARED
-	door.open()
+	if not key_needed or key_taken:
+		door.open()
 	if floor_exit != null and not hold_exit:
 		floor_exit.open_up()
 	get_tree().call_group("projectiles", "queue_free")
 	cleared.emit(self)
+
+
+## Anahtar alındı: kapı (oda temizlenmişse) açılır.
+func give_key() -> void:
+	key_taken = true
+	if state == State.CLEARED:
+		door.open()
 
 
 ## Ödül seçildi: tutulan kat geçidi açılır (oda henüz temizlenmediyse temizlenince kendiliğinden açılır).

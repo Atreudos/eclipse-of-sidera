@@ -8880,6 +8880,14 @@ func _test_puzzles() -> void:
 	for f in range(1, 19):
 		counts[StoryFloors.puzzle_count(f)] = true
 	check(counts.has(0) and counts.has(1) and counts.has(2) and StoryFloors.puzzle_count(1) == 0, "senaryo: katlarda 0, 1 ve 2 bulmaca var; kat 1 öğretici")
+	var sec_ok := true
+	for f in StoryFloors.SECRETS:
+		for sl in (StoryFloors.SECRETS[f] as Dictionary):
+			sec_ok = sec_ok and f > 1 and StoryFloors.puzzle_kind(f, sl) == "" and sl >= 1 and sl <= 4
+	check(sec_ok, "etiketsiz kapılar: kat 1'de değil, bulmaca odasında değil, savaş odalarında")
+	var kr := Room.new()
+	check(not kr.key_needed and not kr.key_taken, "oda: varsayılan anahtar gerekmez")
+	kr.free()
 	var sd := StoryFloors.slime_dialogue(3)
 	check(sd["start"] == "a0" and (sd["nodes"]["a1"]["choices"] as Array).size() == 2 and bool(sd["nodes"]["a1"]["choices"][1]["cancel"]), "slime konuşması: Evet/Hayır, Hayır iptal")
 	check(Prop.KINDS.all(func(k): return Prop.TEXTS.has(k) and (Prop.TEXTS[k] as Array).size() >= 2), "eşyaların esprili satırları var")

@@ -25,6 +25,21 @@ const PUZZLES := {
 	18: {},
 }
 
+## Savaş odalarındaki ETİKETSİZ kapılar: kat -> {oda sırası: tür}. "key" = anahtar parkuru (anahtar alınmadan odanın kapısı açılmaz),
+## "treasure" = hazine odası. Kapı oda temizlenince kullanılabilir.
+const SECRETS := {
+	2: {1: "treasure"},
+	4: {2: "key"},
+	6: {1: "treasure"},
+	7: {3: "key"},
+	9: {1: "key"},
+	10: {2: "treasure"},
+	12: {4: "treasure"},
+	14: {3: "key"},
+	16: {1: "key"},
+	17: {4: "treasure"},
+}
+
 ## Bu katların lobisine "çukurdan düşüp" gelinir: yumuşak bir slime'ın üstüne inersin.
 const SLIME_FLOORS := [3, 8, 13]
 
@@ -36,6 +51,11 @@ static func puzzle_kind(floor_no: int, slot: int) -> String:
 
 static func puzzle_count(floor_no: int) -> int:
 	return (PUZZLES.get(floor_no, {}) as Dictionary).size()
+
+
+static func secret_kind(floor_no: int, slot: int) -> String:
+	var d: Dictionary = SECRETS.get(floor_no, {})
+	return str(d.get(slot, ""))
 
 
 static func has_slime(floor_no: int) -> bool:

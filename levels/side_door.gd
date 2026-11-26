@@ -58,7 +58,8 @@ func _draw() -> void:
 		draw_rect(Rect2(-46.0, -150.0, 92.0, 150.0), accent.darkened(0.2), false, 3.0)
 		draw_arc(Vector2(0.0, -150.0), 46.0, PI, TAU, 24, accent.darkened(0.2), 3.0)
 		draw_rect(Rect2(-40.0, -144.0, 80.0, 144.0), Color(accent, 0.05 + 0.07 * glow))
-	GameFont.draw_centered(self, label, Vector2(0.0, -218.0), 20, Color(1, 1, 1, 0.8))
+	if label != "":
+		GameFont.draw_centered(self, label, Vector2(0.0, -218.0), 20, Color(1, 1, 1, 0.8))
 	if in_range:
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
-		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  GİR" if label != "ÇIK" else "  ÇIK", GameFont.WHITE]], Vector2(0.0, -244.0), 22, pulse)
+		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  ÇIK" if label == "ÇIK" else "  GİR", GameFont.WHITE]], Vector2(0.0, -244.0), 22, pulse)

@@ -164,3 +164,4 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - `Prop` (levels/prop.gd): odalarda E ile bakılan esprili eşyalar, `TEXTS` sözlüğünden satır.
 - Q = iptal (konuşmada yazıyı bitirir / `"cancel": true` seçeneğini seçer), E = onay.
 - `StoryFloors.SLIME_FLOORS` lobilerinde slime: "Dokunmak ister misin?" -> +10 DOPAMİN (`Story` bayrağı `dopamin`).
+- Etiketsiz kapılar (`StoryFloors.SECRETS`): savaş odasında yazısız kapı, oda temizlenince girilir. `key` = parkur (fırlatıcı) sonunda anahtar, alınmadan odanın kapısı açılmaz; `treasure` = iki sandıklı oda. İp sallanması / çöken platform henüz yok.
