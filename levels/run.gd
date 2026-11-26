@@ -47,7 +47,6 @@ enum Trans { NONE, OUT, HOLD, IN }
 ## Ara oda dünyada odaların çok solunda kurulur.
 const SIDE_ROOM_X := -5200.0
 ## Bulmaca odasının katın içindeki sırası (0 = lobi): 3. oda. Kat 1 hariç.
-const PUZZLE_SLOT := 2
 const SIDE_FADE := 0.45
 ## Ara odadaki oyuncu (içeride mi, geçiş hangi yönde: "" / "in" / "out").
 var side_room: SideRoom = null
@@ -179,16 +178,16 @@ func rng_for(room_index: int, channel: String) -> RandomNumberGenerator:
 	return r
 
 
-## Bu odanın bulmaca türü ("" = bulmaca değil). Her katın 3. odası (sıra 2) düşmansız bir bulmaca odasıdır; diğer odalar savaştır.
+## Bu odanın bulmaca türü ("" = bulmaca değil). Hangi odanın bulmaca olduğu `StoryFloors`'ta statik yazılıdır (herkes için aynı); diğer odalar savaştır.
 ## Kat 1 öğretici müfredattır (bulmaca yok). Tür kata göre seçilir; aynı tohum = aynı bulmaca.
 func puzzle_kind_of(room_index: int) -> String:
 	if not floors_enabled:
 		return ""
 	var loc := loc_of(room_index)
 	var f := int(loc["floor"])
-	if int(loc["kind"]) != FloorPlan.Kind.COMBAT or f <= 1 or int(loc["slot"]) != PUZZLE_SLOT:
+	if int(loc["kind"]) != FloorPlan.Kind.COMBAT or f <= 1:
 		return ""
-	return PuzzleLogic.pick_kind(f, rng_for(FloorPlan.first_index_of(f), "puzzle_plan"))
+	return StoryFloors.puzzle_kind(f, int(loc["slot"]))
 
 
 ## Oda `i`'nin yerleşimi. Katlı kipte lobi ve Gölge odasının yerleşimi sabit; savaş odalarında bir öncekiyle aynı olmaz.
@@ -353,6 +352,8 @@ func _build_room(index: int) -> Room:
 		room.reward_chest.looted.connect(_on_chest_looted)
 	else:
 		_place_room_chest(room, loc)
+		if floors_enabled and int(loc["kind"]) == FloorPlan.Kind.COMBAT:
+			_place_props(room, 1)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
 	if room.floor_exit != null:
@@ -454,6 +455,63 @@ func _setup_shop(room: Room) -> void:
 	Story.set_flag("floor_seen", room.floor_no)
 	_place_npc(room, "mira", stand.position.x - 420.0)
 	_place_lobby_chest(room)
+	_place_props(room, 2)
+	if StoryFloors.has_slime(room.floor_no):
+		_place_slime(room)
+
+
+## Odaya esprili eşyalar koyar (tohumdan; sandıklara ve NPC'ye yakın olmaz).
+func _place_props(room: Room, count: int) -> void:
+	var r := rng_for(room.index, "props")
+	var w := RoomLayouts.width_of(room.layout_id) if room.rect.size.x <= 0.0 else room.rect.size.x
+	var taken: Array[float] = []
+	for c in room.get_children():
+		if c is Chest or c is Npc or c is ShopStand:
+			taken.append((c as Node2D).position.x)
+	for i in count:
+		var x := r.randf_range(300.0, maxf(w - 300.0, 400.0))
+		var ok := false
+		for tries in 8:
+			ok = true
+			for t in taken:
+				if absf(t - x) < 220.0:
+					ok = false
+			if ok:
+				break
+			x = r.randf_range(300.0, maxf(w - 300.0, 400.0))
+		if not ok:
+			continue
+		taken.append(x)
+		var p := Prop.new()
+		p.name = "Prop_%d" % i
+		p.kind = Prop.KINDS[r.randi() % Prop.KINDS.size()]
+		p.position = Vector2(x, RoomLayouts.FLOOR_Y)
+		room.add_child(p)
+		p.requested.connect(_on_prop_requested)
+
+
+func _on_prop_requested(p: Prop) -> void:
+	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	hud.dialogue_menu.talk(player, Dialogue.linear("", [p.next_text()]), "")
+
+
+## Düşüp indiğin yumuşak slime (StoryFloors.SLIME_FLOORS lobileri).
+func _place_slime(room: Room) -> void:
+	var w := RoomLayouts.width_of(room.layout_id)
+	var p := Prop.new()
+	p.name = "Slime"
+	p.kind = "slime"
+	p.position = Vector2(clampf(RoomLayouts.shop_x(room.layout_id) + 520.0, 300.0, w - 300.0), RoomLayouts.FLOOR_Y)
+	room.add_child(p)
+	p.requested.connect(_on_slime_requested)
+	hud.announcer.push("Yumuşak bir şeyin üstüne düştün.", GameFont.WHITE, 30, 2.4)
+
+
+func _on_slime_requested(_p: Prop) -> void:
+	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	hud.dialogue_menu.talk(player, StoryFloors.slime_dialogue(current_floor()), "Slime")
 
 
 ## Lobiye konuşulabilir bir karakter koyar.

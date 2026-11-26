@@ -8868,14 +8868,21 @@ func _test_puzzles() -> void:
 		for slot in 6:
 			var idx := FloorPlan.index_of(f, slot)
 			var kd := run.puzzle_kind_of(idx)
-			var want := f > 1 and slot == 2
+			var want := f > 1 and StoryFloors.puzzle_kind(f, slot) != ""
 			all_ok = all_ok and (kd != "") == want
 			if kd != "":
 				kinds_seen[kd] = true
-				all_ok = all_ok and kd in PuzzleLogic.kinds_for(f) and run.make_waves(idx).is_empty() and run.layout_for(idx).begins_with("bulmaca") and run.puzzle_kind_of(idx) == kd
+				all_ok = all_ok and kd in PuzzleLogic.KINDS and kd == StoryFloors.puzzle_kind(f, slot) and run.make_waves(idx).is_empty() and run.layout_for(idx).begins_with("bulmaca") and run.puzzle_kind_of(idx) == kd
 			elif slot >= 1 and slot <= 4:
 				all_ok = all_ok and not run.make_waves(idx).is_empty()
-	check(all_ok, "planlama: kat 2-18'in 3. odası bulmaca ve düşmansız; diğer savaş odalarında düşman var; kat 1 öğretici")
+	check(all_ok, "planlama: StoryFloors'taki odalar bulmaca ve düşmansız; diğer savaş odalarında düşman var; kat 1 öğretici")
+	var counts := {}
+	for f in range(1, 19):
+		counts[StoryFloors.puzzle_count(f)] = true
+	check(counts.has(0) and counts.has(1) and counts.has(2) and StoryFloors.puzzle_count(1) == 0, "senaryo: katlarda 0, 1 ve 2 bulmaca var; kat 1 öğretici")
+	var sd := StoryFloors.slime_dialogue(3)
+	check(sd["start"] == "a0" and (sd["nodes"]["a1"]["choices"] as Array).size() == 2 and bool(sd["nodes"]["a1"]["choices"][1]["cancel"]), "slime konuşması: Evet/Hayır, Hayır iptal")
+	check(Prop.KINDS.all(func(k): return Prop.TEXTS.has(k) and (Prop.TEXTS[k] as Array).size() >= 2), "eşyaların esprili satırları var")
 	check(kinds_seen.size() >= 4, "planlama: farklı bulmaca türleri çıkıyor (%d tür)" % kinds_seen.size())
 	run.queue_free()
 	await _frames(3)

@@ -1,7 +1,7 @@
 class_name DialogueMenu
 extends GameMenu
 ## Konuşma kutusu: ekranın altında panel, harf harf yazılan metin, seçenekler. Oyunu durdurur.
-## E / Enter / Boşluk / J / tık: yazıyı hızlandırır, bitince sonrakine geçer. Yukarı/Aşağı + aynı tuşlar: seçenek. Esc: kapat.
+## E / Enter / Boşluk / J / tık: yazıyı hızlandırır, bitince sonrakine geçer. Yukarı/Aşağı + aynı tuşlar: seçenek. Esc: kapat. Q: iptal ("cancel" seçeneği).
 
 const CPS := 55.0
 const PANEL_H := 270.0
@@ -39,6 +39,24 @@ func _goto(id: String) -> void:
 	if _node.has("speaker"):
 		speaker = str(_node["speaker"])
 	_give_gift()
+	_give_dopamin()
+	var sfx := str(_node.get("sfx", ""))
+	if sfx != "":
+		Sfx.play(sfx, -2.0)
+
+
+## Düğümde `dopamin` varsa (ve `dopamin_flag` kurulu değilse) sayacı artırır. Dopamin hikaye bayrağında tutulur.
+func _give_dopamin() -> void:
+	var n := int(_node.get("dopamin", 0))
+	if n <= 0:
+		return
+	var f := str(_node.get("dopamin_flag", ""))
+	if f != "" and Story.has(f) and not bool(_node.get("dopamin_repeat", true)):
+		return
+	if f != "":
+		Story.set_flag(f)
+	var total := Story.add("dopamin", n)
+	_say("+%d DOPAMİN  (%d)" % [n, total], true)
 
 
 ## Düğümde `gold` varsa (ve `gold_flag` daha kurulmadıysa) oyuncuya altın verir.
@@ -78,6 +96,18 @@ func _advance() -> void:
 	_goto(str(_node.get("next", "end")))
 
 
+## Q (Undertale'deki X): yazı sürüyorsa hemen bitirir; seçenekler varsa "cancel" işaretli seçeneği seçer.
+func _cancel() -> void:
+	if not _typing_done():
+		shown = float(_text().length())
+		return
+	for i in _choices.size():
+		if bool((_choices[i] as Dictionary).get("cancel", false)):
+			cursor = i
+			_advance()
+			return
+
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	if is_open and not _typing_done():
@@ -92,6 +122,9 @@ func _input(event: InputEvent) -> void:
 		if k == KEY_ESCAPE:
 			Dialogue.apply_set(str(_node.get("set", "")) if _typing_done() and _choices.is_empty() else "")
 			close()
+			get_viewport().set_input_as_handled()
+		elif k == KEY_Q:
+			_cancel()
 			get_viewport().set_input_as_handled()
 		elif k in [KEY_E, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_J]:
 			_advance()

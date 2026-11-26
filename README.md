@@ -148,7 +148,7 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).
 
 ## Bulmaca odaları (testler Godot'ta henüz koşulmadı)
-- Kat 1 hariç HER katın 3. odası (sıra 2) **düşmansız bir bulmaca odasıdır**: lobi, savaş, **bulmaca**, savaş, savaş, Gölge. Kapı bulmaca çözülünce açılır. Tür kata göre seçilir (`PuzzleLogic.kinds_for`), tohuma bağlı sabittir (`RunController.puzzle_kind_of`). 180 sn takılırsan kilit gevşer (ödül ve kırıntı yok).
+- Kat 1 hariç Hangi odanın bulmaca olduğu `game/story_floors.gd`'te statik yazılı (0-2 bulmaca/kat; kat 1 öğretici) (sıra 2) **düşmansız bir bulmaca odasıdır**: lobi, savaş, **bulmaca**, savaş, savaş, Gölge. Kapı bulmaca çözülünce açılır. Tür kata göre seçilir (`PuzzleLogic.kinds_for`), tohuma bağlı sabittir (`RunController.puzzle_kind_of`). 180 sn takılırsan kilit gevşer (ödül ve kırıntı yok).
 - Türler: **parry** (kule altın mermi atar, parry'le, mermi kuleye döner ve kristali yakar), **stars** (gösterilen yıldız sırasını kılıçla tekrarla), **simon / yıldız yankısı** (sıra tek tek büyür), **balance** (iki kule, iki kristal aynı anda yanık), **parkur** (platformlardaki 6 basınç plakasına süre dolmadan bas), **mix** (parry + yıldız sırası birlikte).
 - Çözünce kilitli ödül sandığı açılır ve ilk kez çözülen katta **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`; Mira sorulunca sayıyı söyler).
 - Yerleşimler: `bulmaca_duz` (2000 px düz), `bulmaca_parkur` (2400 px, 6 platform). Savaş havuzunda yoktur. Test: `bulmaca`.
@@ -158,3 +158,9 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - **Üç son** (`NpcTalk.ending_dialogue`, son kat Gölge'sinden sonra, zafer ekranından önce): "Seni yendim" (`ending=yen`), "Seni de götürüyorum" (`ending=tutulma`) ve 17 Yıldız Kırıntısının hepsi toplandıysa seçimsiz gizli son (`ending=birlikte`). Bayraklar `Story`'de, kayıt dosyasında kalır.
 - **Mira ikinci sayfa:** "Düşmanlar hakkında?" (her perde için oynanış ipucu), "Bulmaca odaları?" (her türün nasıl çözüldüğü), "Yıldız kırıntıları" (sayıyı söyler).
 - Test: `hikaye_son`.
+
+
+## Undertale tarzı etkileşim
+- `Prop` (levels/prop.gd): odalarda E ile bakılan esprili eşyalar, `TEXTS` sözlüğünden satır.
+- Q = iptal (konuşmada yazıyı bitirir / `"cancel": true` seçeneğini seçer), E = onay.
+- `StoryFloors.SLIME_FLOORS` lobilerinde slime: "Dokunmak ister misin?" -> +10 DOPAMİN (`Story` bayrağı `dopamin`).
