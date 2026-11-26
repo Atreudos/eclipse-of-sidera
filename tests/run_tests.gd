@@ -8676,7 +8676,7 @@ func _test_side_room() -> void:
 	_world.add_child(room)
 	room.build(-5200.0, 3, NpcTalk.pocket_npc(3), rng)
 	check(room.npc != null and room.npc.npc_id == "tellal" and room.return_door != null, "ara oda: karakter ve çıkış kapısı var")
-	check(room.chests.size() >= 2 and room.chests.size() <= 3, "ara oda: 2-3 sandık")
+	check(room.npc != null and room.get_node_or_null("Chest0") == null, "ara oda: sandık yok (sandıklar savaş odalarında)")
 	check(room.camera_rect().size.x == SideRoom.WIDTH and room.entry_pos().x > room.rect.position.x, "ara oda: kamera alanı ve giriş noktası")
 	var p := _spawn_player(room.entry_pos().x)
 	p.global_position = room.entry_pos()
@@ -8756,7 +8756,7 @@ func _test_side_room_travel() -> void:
 	var inside := await _wait_until_real(func() -> bool: return run.in_side_room and run._side_dir == "", 4.0)
 	check(inside and run.side_room != null and run.player.global_position.x < -4000.0, "ara odaya geçildi")
 	check(run.player.input_locked == false, "geçiş bitince giriş kilidi açık")
-	check(run.side_room.npc != null and run.side_room.chests.size() >= 2, "ara odada karakter ve sandıklar")
+	check(run.side_room.npc != null, "ara odada karakter var")
 	run.side_room.return_door.used.emit(run.side_room.return_door)
 	var back := await _wait_until_real(func() -> bool: return not run.in_side_room and run._side_dir == "", 4.0)
 	check(back and run.player.global_position.x > 0.0 and absf(run.player.global_position.x - door.global_position.x) < 5.0, "lobiye dönüldü")
@@ -8857,26 +8857,24 @@ func _test_puzzles() -> void:
 			check(ok, "kat %d %s: tarif geçerli" % [f, k])
 			check(k in PuzzleLogic.KINDS and PuzzleLogic.KIND_TITLES.has(k), "%s: tür ve başlık tanımlı" % k)
 	check(RoomLayouts.platform_rects("bulmaca_parkur").size() >= 6, "parkur yerleşiminde 6 platform var (plaka sayısı)")
-	# --- Planlama: kat 1 yok, bulmaca yalnız 3-5. odada (sıra 2-4), tohuma bağlı sabit
+	# --- Planlama: her katın 3. odası (sıra 2) bulmaca, kat 1 hariç; tohuma bağlı sabit
 	var run := _start_run(2468, true)
 	await _frames(5)
-	var total := 0
 	var all_ok := true
+	var kinds_seen := {}
 	for f in range(1, 19):
-		var per_floor := 0
 		for slot in 6:
 			var idx := FloorPlan.index_of(f, slot)
 			var kd := run.puzzle_kind_of(idx)
+			var want := f > 1 and slot == 2
+			all_ok = all_ok and (kd != "") == want
 			if kd != "":
-				per_floor += 1
-				total += 1
-				all_ok = all_ok and f > 1 and slot >= 2 and slot <= 4 and kd in PuzzleLogic.kinds_for(f)
-				all_ok = all_ok and run.make_waves(idx).is_empty() and run.layout_for(idx).begins_with("bulmaca")
-				all_ok = all_ok and run.puzzle_kind_of(idx) == kd
-		all_ok = all_ok and per_floor <= 1
-	check(all_ok, "planlama: kat 1 yok, kat başına en çok 1, sıra 2-4, düşmansız, deterministik")
-	check(total >= 2 and total <= 14, "planlama: bazı katlarda bulmaca çıkıyor (%d / 17 kat)" % total)
-	check(run.puzzle_kind_of(FloorPlan.index_of(1, 2)) == "" and run.puzzle_kind_of(FloorPlan.index_of(5, 0)) == "" and run.puzzle_kind_of(FloorPlan.index_of(5, 5)) == "", "lobi, Gölge odası ve kat 1'de bulmaca yok")
+				kinds_seen[kd] = true
+				all_ok = all_ok and kd in PuzzleLogic.kinds_for(f) and run.make_waves(idx).is_empty() and run.layout_for(idx).begins_with("bulmaca") and run.puzzle_kind_of(idx) == kd
+			elif slot >= 1 and slot <= 4:
+				all_ok = all_ok and not run.make_waves(idx).is_empty()
+	check(all_ok, "planlama: kat 2-18'in 3. odası bulmaca ve düşmansız; diğer savaş odalarında düşman var; kat 1 öğretici")
+	check(kinds_seen.size() >= 4, "planlama: farklı bulmaca türleri çıkıyor (%d tür)" % kinds_seen.size())
 	run.queue_free()
 	await _frames(3)
 	# --- Parry anahtarı

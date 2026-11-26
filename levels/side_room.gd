@@ -7,14 +7,12 @@ const WIDTH := 1300.0
 const WALL := 80.0
 const DOOR_X := 150.0
 const NPC_X := 560.0
-const CHEST_XS := [820.0, 1000.0, 1170.0]
 
 var floor_no := 1
 var rect := Rect2()
 var palette: Dictionary = {}
 var npc: Npc = null
 var return_door: SideDoor = null
-var chests: Array[Chest] = []
 
 
 ## `x_left`: odanın sol kenarı (dünya). `rng`: sandık türleri için.
@@ -45,21 +43,6 @@ func build(x_left: float, floor_n: int, npc_id: String, rng: RandomNumberGenerat
 		npc.tint = NpcTalk.tint(npc_id)
 		npc.position = Vector2(NPC_X, RoomLayouts.FLOOR_Y)
 		add_child(npc)
-	var count := 2 + (1 if rng.randf() < 0.55 else 0)
-	var kinds: Array[String] = ["gold", "heal" if rng.randf() < 0.4 else "item"]
-	if count == 3:
-		kinds.append("rich")
-	var first_x := 0 if count == 3 else 1
-	for i in count:
-		var c := Chest.new()
-		c.name = "Chest%d" % i
-		c.kind = kinds[i]
-		c.floor_no = floor_n
-		c.chest_id = "pocket_f%d_%d" % [floor_n, i]
-		c.seed_value = rng.randi() % 1000000 + 1
-		c.position = Vector2(float(CHEST_XS[first_x + i]), RoomLayouts.FLOOR_Y)
-		add_child(c)
-		chests.append(c)
 
 
 func camera_rect() -> Rect2:

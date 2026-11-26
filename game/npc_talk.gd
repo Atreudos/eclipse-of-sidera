@@ -126,8 +126,8 @@ static func _mira(floor_no: int) -> Dictionary:
 ## id -> kat -> {"lines": [...], "ask": [[soru, cevap], ...], "gold": n}
 const POCKET := {
 	"tellal": {
-		1: {"lines": ["Ooo, bir misafir! Ben Tellal. Kulenin haberlerini duyururum, para karşılığı bazen susarım da.", "Bu ara odalar kuleden kaçak yapılmış. Fenerler yanarken kimse buraya bakmaz, ama armağanlar hâlâ burada duruyor.", "Sandıklara dokun. Kimseye söylemem."],
-			"ask": [["Burası neresi?", "Kulenin yan koridoru. Her kat bir tane saklar. Savaşın dışında soluklanmak için."], ["Sandıklarda ne var?", "Altın, yiyecek, bazen unutulmuş bir eşya. Kimin olduğunu sorma, artık senin."]]},
+		1: {"lines": ["Ooo, bir misafir! Ben Tellal. Kulenin haberlerini duyururum, para karşılığı bazen susarım da.", "Bu ara odalar kuleden kaçak yapılmış. Fenerler yanarken kimse buraya bakmaz, ama armağanlar hâlâ burada duruyor.", "Dövüştüğün odalarda sandık görürsen dokun. Kimseye söylemem."],
+			"ask": [["Burası neresi?", "Kulenin yan koridoru. Her kat bir tane saklar. Savaşın dışında soluklanmak için."], ["Sandıklar nerede?", "Savaş odalarına serpilmiş. Altın, yiyecek, bazen unutulmuş bir eşya. Kimin olduğunu sorma, artık senin."]]},
 		2: {"lines": ["Yine sen! Bu kez daha yorgun görünüyorsun. Çay yok ama haber var.", "Aşağıda bir gölgenin fener söndürdüğü dedikodusu dolaşıyor. Sana benziyormuş."],
 			"ask": [["Hangi gölge?", "Umbra derler. Ama bence adı o değil. Adı olmayan şeye isim koymak kolay."], ["Fenerleri kim yakıyor?", "Eskiden çıraklar. Şimdi Mira tek başına. Ona saygı göster."]]},
 		3: {"lines": ["Bak kimin geldiğine! Sana bir borcum var: bir sürü sözünü satmışım.", "Al, bu kadarı yeter. Kule hepimize bir şey borçlu."], "gold": 8,

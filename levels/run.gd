@@ -46,8 +46,8 @@ enum Trans { NONE, OUT, HOLD, IN }
 
 ## Ara oda dünyada odaların çok solunda kurulur.
 const SIDE_ROOM_X := -5200.0
-## Bir katta bulmaca odası çıkma olasılığı (kat 1 hariç).
-const PUZZLE_CHANCE := 0.45
+## Bulmaca odasının katın içindeki sırası (0 = lobi): 3. oda. Kat 1 hariç.
+const PUZZLE_SLOT := 2
 const SIDE_FADE := 0.45
 ## Ara odadaki oyuncu (içeride mi, geçiş hangi yönde: "" / "in" / "out").
 var side_room: SideRoom = null
@@ -177,22 +177,16 @@ func rng_for(room_index: int, channel: String) -> RandomNumberGenerator:
 	return r
 
 
-## Bu odanın bulmaca türü ("" = bulmaca değil). Kat 1 öğretici müfredattır, bulmaca yok. Diğer katlarda ~%45 olasılıkla
-## 2-4. sıradaki savaş odalarından biri düşmansız bir bulmaca odasına dönüşür (tür kata göre seçilir, aynı tohum = aynı bulmaca).
+## Bu odanın bulmaca türü ("" = bulmaca değil). Her katın 3. odası (sıra 2) düşmansız bir bulmaca odasıdır; diğer odalar savaştır.
+## Kat 1 öğretici müfredattır (bulmaca yok). Tür kata göre seçilir; aynı tohum = aynı bulmaca.
 func puzzle_kind_of(room_index: int) -> String:
 	if not floors_enabled:
 		return ""
 	var loc := loc_of(room_index)
 	var f := int(loc["floor"])
-	if int(loc["kind"]) != FloorPlan.Kind.COMBAT or f <= 1:
+	if int(loc["kind"]) != FloorPlan.Kind.COMBAT or f <= 1 or int(loc["slot"]) != PUZZLE_SLOT:
 		return ""
-	var plan := rng_for(FloorPlan.first_index_of(f), "puzzle_plan")
-	if plan.randf() > PUZZLE_CHANCE:
-		return ""
-	var puzzle_slot := 2 + plan.randi_range(0, 2)
-	if int(loc["slot"]) != puzzle_slot:
-		return ""
-	return PuzzleLogic.pick_kind(f, plan)
+	return PuzzleLogic.pick_kind(f, rng_for(FloorPlan.first_index_of(f), "puzzle_plan"))
 
 
 ## Oda `i`'nin yerleşimi. Katlı kipte lobi ve Gölge odasının yerleşimi sabit; savaş odalarında bir öncekiyle aynı olmaz.
@@ -500,14 +494,33 @@ func _place_lobby_chest(room: Room) -> void:
 	_add_chest(room, RoomLayouts.shop_x(room.layout_id) + 230.0, "lobby", r)
 
 
-## Savaş odalarında bazen sandık vardır (sağa yakın; oda bitmeden de açılabilir).
+## Savaş odalarına sandık serpiştirilir: %65 olasılıkla bir, bir de %25 ile ikinci (oda bitmeden de açılabilir).
+## Konum rastgele; girişe (ilk 350 px) ve kapıya (son 200 px) yakın olmaz.
 func _place_room_chest(room: Room, loc: Dictionary) -> void:
 	if not floors_enabled or int(loc["kind"]) != FloorPlan.Kind.COMBAT:
 		return
 	var r := rng_for(room.index, "room_chest")
-	if r.randf() > 0.4:
-		return
-	_add_chest(room, room.rect.size.x - 300.0, "room", r)
+	var count := 0
+	if r.randf() < 0.65:
+		count = 1
+		if r.randf() < 0.25:
+			count = 2
+	var w := room.rect.size.x
+	var lo := 350.0
+	var hi := maxf(w - 200.0, lo + 100.0)
+	var used: Array[float] = []
+	for i in count:
+		var x := r.randf_range(lo, hi)
+		for tries in 6:
+			var far := true
+			for u in used:
+				if absf(u - x) < 260.0:
+					far = false
+			if far:
+				break
+			x = r.randf_range(lo, hi)
+		used.append(x)
+		_add_chest(room, x, "room%d" % i, r)
 
 
 func _add_chest(room: Room, local_x: float, tag: String, r: RandomNumberGenerator) -> Chest:
@@ -582,8 +595,6 @@ func _side_switch() -> void:
 		side_room = SideRoom.new()
 		rooms_root.add_child(side_room)
 		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f), r)
-		for c in side_room.chests:
-			c.looted.connect(_on_chest_looted)
 		if side_room.npc != null:
 			side_room.npc.requested.connect(_on_npc_requested)
 		side_room.return_door.used.connect(_on_side_door_used)

@@ -138,8 +138,8 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - `levels/npc.gd` + `game/npc_talk.gd`: konuşulabilen karakterler; lobide Fener Bekçisi Mira. Çizim adı `npc_<id>_idle`.
 
 ## Ara oda, sandıklar, hikâye (testler Godot'ta henüz koşulmadı)
-- Her lobide "ARA ODA" kapısı (`SideDoor`, E ile girilir). Kararma altında dünyanın solundaki `SideRoom`'a geçilir: perdeye göre bir karakter (Tellal / Kırık Ayna / Terazi Yaşlısı / Su Taşıyıcı / Umbra), 2-3 sandık, çıkış kapısı. Düşman yok.
-- `Chest`: türler gold / item / heal / rich; para saçar (`Coin.drop`), eşya verir. Açılanlar `Chest.opened_ids`'te, koşuyla birlikte kaydedilir. Lobide %50, savaş odalarında %40 şansla sandık durur.
+- Her lobide "ARA ODA" kapısı (`SideDoor`, E ile girilir). Kararma altında dünyanın solundaki `SideRoom`'a geçilir: perdeye göre bir karakter (Tellal / Kırık Ayna / Terazi Yaşlısı / Su Taşıyıcı / Umbra), çıkış kapısı. Düşman ve sandık yok.
+- `Chest`: türler gold / item / heal / rich; para saçar (`Coin.drop`), eşya verir. Açılanlar `Chest.opened_ids`'te, koşuyla birlikte kaydedilir. Sandıklar savaş odalarına serpiştirilir (oda başına %65 bir, %25 ek ikinci; lobide %50). Ara odada sandık yok, yalnız karakter.
 - `NpcTalk`: Mira her kat farklı anlatır (18 parça) ve perdeye göre cevap veren konular sunar; ara oda karakterlerinin her kat için konuşması ve altın hediyeleri (`gold` + `gold_flag`) vardır.
 - Testler: `hikaye_metni`, `ara_oda`, `ara_oda_gecis`.
 
@@ -148,7 +148,7 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).
 
 ## Bulmaca odaları (testler Godot'ta henüz koşulmadı)
-- Kat 1 hariç her katta ~%45 olasılıkla 3-5. odalardan biri (sıra 2-4) **düşmansız bir bulmaca odasına** dönüşür; kapı bulmaca çözülünce açılır. Tür kata göre seçilir (`PuzzleLogic.kinds_for`), tohuma bağlı sabittir (`RunController.puzzle_kind_of`). 180 sn takılırsan kilit gevşer (ödül ve kırıntı yok).
+- Kat 1 hariç HER katın 3. odası (sıra 2) **düşmansız bir bulmaca odasıdır**: lobi, savaş, **bulmaca**, savaş, savaş, Gölge. Kapı bulmaca çözülünce açılır. Tür kata göre seçilir (`PuzzleLogic.kinds_for`), tohuma bağlı sabittir (`RunController.puzzle_kind_of`). 180 sn takılırsan kilit gevşer (ödül ve kırıntı yok).
 - Türler: **parry** (kule altın mermi atar, parry'le, mermi kuleye döner ve kristali yakar), **stars** (gösterilen yıldız sırasını kılıçla tekrarla), **simon / yıldız yankısı** (sıra tek tek büyür), **balance** (iki kule, iki kristal aynı anda yanık), **parkur** (platformlardaki 6 basınç plakasına süre dolmadan bas), **mix** (parry + yıldız sırası birlikte).
 - Çözünce kilitli ödül sandığı açılır ve ilk kez çözülen katta **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`; Mira sorulunca sayıyı söyler).
 - Yerleşimler: `bulmaca_duz` (2000 px düz), `bulmaca_parkur` (2400 px, 6 platform). Savaş havuzunda yoktur. Test: `bulmaca`.
