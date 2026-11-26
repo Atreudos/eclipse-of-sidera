@@ -77,6 +77,8 @@ var shop_stock: ShopStock = null
 var reward_choice: RewardChoice = null
 ## Son katın Gölge'si yenildi.
 var won := false
+## false iken hikâye konuşmaları (Gölge'nin kat sonu sözleri, final) açılmaz. Testler kapatır.
+var story_enabled := true
 ## Zafer ekranı açıldı.
 var victory_shown := false
 ## Kat 1 öğretici rehberi (yalnız kat 1'de ve profilde öğretici bitmemişse; yoksa null).
@@ -768,6 +770,7 @@ func _on_room_cleared(room: Room) -> void:
 			hud.announcer.push_runs([["GÖLGE YENİLDİ", GameFont.YELLOW]], 58, 2.2)
 			hud.announcer.push_runs([["SUNAKTAN BİR EŞYA SEÇ", GameFont.WHITE]], 32, 2.6)
 			_setup_reward(room)
+			_umbra_after_talk(room)
 	elif room.puzzle != null:
 		if room.puzzle_assisted:
 			hud.announcer.push("KİLİT AÇILDI", GameFont.YELLOW, 52, 1.8)
@@ -891,11 +894,28 @@ func _tick_victory(delta: float) -> void:
 		show_victory()
 
 
-## Zafer ekranını açar (gecikme beklenmeden de çağrılabilir: testler).
+## Gölge yenilince kısa bir konuşma açılır (ödül sunakları yine de hazırdır).
+func _umbra_after_talk(room: Room) -> void:
+	if not story_enabled or hud == null or FloorPlan.is_final_floor(room.floor_no):
+		return
+	await get_tree().create_timer(1.8).timeout
+	if player == null or not is_instance_valid(player) or player.dead or ItemView.active_menu != null:
+		return
+	hud.dialogue_menu.talk(player, NpcTalk.umbra_after(room.floor_no), "Umbra")
+
+
+## Zafer ekranını açar (gecikme beklenmeden de çağrılabilir: testler). Önce final konuşması: son seçilir.
 func show_victory() -> void:
 	if victory_shown:
 		return
 	victory_shown = true
+	if story_enabled and player != null and is_instance_valid(player) and not player.dead and hud.dialogue_menu.talk(player, NpcTalk.ending_dialogue(int(Story.get_flag("shards", 0))), "Umbra"):
+		hud.dialogue_menu.closed.connect(_show_victory_screen, CONNECT_ONE_SHOT)
+		return
+	_show_victory_screen()
+
+
+func _show_victory_screen() -> void:
 	hud.set_summary(stats)
 	hud.set_victory(stats)
 	if player != null and is_instance_valid(player):

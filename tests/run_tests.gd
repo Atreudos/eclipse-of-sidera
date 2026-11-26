@@ -170,6 +170,7 @@ func _run_all() -> void:
 		"ara_oda": _test_side_room,
 		"yengec_dibi": _test_close_range_front,
 		"bulmaca": _test_puzzles,
+		"hikaye_son": _test_story_endings,
 		"demo_menu": _test_demo_menu,
 		"ara_oda_gecis": _test_side_room_travel,
 		"hikaye_metni": _test_story_text,
@@ -1153,6 +1154,7 @@ func _start_run(seed_value: int, floors: bool = false) -> RunController:
 	var run := RUN.instantiate() as RunController
 	run.seed_value = seed_value
 	run.floors_enabled = floors
+	run.story_enabled = false
 	var p := run.get_node("Player") as Player
 	p.scripted = true
 	_world.add_child(run)
@@ -8628,7 +8630,7 @@ func _test_story_infra() -> void:
 		menu._advance()
 		menu._advance()
 		guard += 1
-	check(menu.node_id == "hub" and menu._choices.size() == 4, "Mira'nın anlatımı biter, konu menüsü gelir")
+	check(menu.node_id == "hub" and menu._choices.size() == 5, "Mira'nın anlatımı biter, konu menüsü gelir")
 	menu.cursor = menu._choices.size() - 1
 	menu._advance()
 	menu._advance()
@@ -8989,6 +8991,49 @@ func _test_puzzles() -> void:
 	GameState.slot = saved_slot
 	Story.reset_fallback()
 	Chest.opened_ids = {}
+
+
+func _test_story_endings() -> void:
+	await _new_world("Hikâye: Gölge'nin kat sonu sözleri, Mira'nın ikinci sayfası, üç son")
+	Story.reset_fallback()
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	for f in range(1, 18):
+		var d := NpcTalk.umbra_after(f)
+		check(Dialogue.problems(d).is_empty() and (d["nodes"] as Dictionary).size() == 2, "kat %d: Gölge'nin sözleri geçerli" % f)
+	for sh in [0, 5, NpcTalk.SHARD_TOTAL]:
+		check(Dialogue.problems(NpcTalk.ending_dialogue(sh)).is_empty(), "son konuşması geçerli (kırıntı %d)" % sh)
+	check((NpcTalk.ending_dialogue(0)["nodes"]["b"]["choices"] as Array).size() == 2, "normal sonda iki seçenek var")
+	check(not (NpcTalk.ending_dialogue(NpcTalk.SHARD_TOTAL)["nodes"] as Dictionary).has("y1"), "gizli sonda seçim yok")
+	for f in [1, 6, 11, 16, 18]:
+		check(Dialogue.problems(NpcTalk.dialogue("mira", f)).is_empty(), "kat %d: Mira iki sayfalı konu menüsü geçerli" % f)
+	var m := NpcTalk.dialogue("mira", 5)
+	check((m["nodes"] as Dictionary).has("hub2") and (m["nodes"] as Dictionary).has("t_dusman") and (m["nodes"] as Dictionary).has("t_bulmaca"), "Mira: düşman ve bulmaca konuları var")
+	check(NpcTalk.dialogue("mira", 1)["nodes"]["t_dusman"]["text"] != NpcTalk.dialogue("mira", 13)["nodes"]["t_dusman"]["text"], "düşman ipuçları perdeye göre değişir")
+	# Seçimle son: "Seni de götürüyorum" -> tutulma
+	var p := _spawn_player(300.0)
+	var menu := DialogueMenu.new()
+	get_tree().root.add_child(menu)
+	await _frames(2)
+	check(menu.talk(p, NpcTalk.ending_dialogue(0), "Umbra"), "final konuşması açılır")
+	var guard := 0
+	while menu.is_open and menu.node_id != "b" and guard < 10:
+		menu._advance()
+		menu._advance()
+		guard += 1
+	menu._advance()
+	menu.cursor = 1
+	menu._advance()
+	guard = 0
+	while menu.is_open and guard < 10:
+		menu._advance()
+		menu._advance()
+		guard += 1
+	check(not menu.is_open and Story.get_flag("ending", "") == "tutulma" and Story.has("ending_tutulma"), "'götürüyorum' tutulma sonunu kurar")
+	menu.queue_free()
+	p.queue_free()
+	GameState.slot = saved_slot
+	Story.reset_fallback()
 
 
 func _test_fist() -> void:

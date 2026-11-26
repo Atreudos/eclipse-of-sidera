@@ -4,7 +4,7 @@ extends GameMenu
 ## E / Enter / Boşluk / J / tık: yazıyı hızlandırır, bitince sonrakine geçer. Yukarı/Aşağı + aynı tuşlar: seçenek. Esc: kapat.
 
 const CPS := 55.0
-const PANEL_H := 240.0
+const PANEL_H := 270.0
 
 var data: Dictionary = {}
 var speaker := ""

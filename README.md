@@ -152,3 +152,9 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Türler: **parry** (kule altın mermi atar, parry'le, mermi kuleye döner ve kristali yakar), **stars** (gösterilen yıldız sırasını kılıçla tekrarla), **simon / yıldız yankısı** (sıra tek tek büyür), **balance** (iki kule, iki kristal aynı anda yanık), **parkur** (platformlardaki 6 basınç plakasına süre dolmadan bas), **mix** (parry + yıldız sırası birlikte).
 - Çözünce kilitli ödül sandığı açılır ve ilk kez çözülen katta **Yıldız Kırıntısı** kazanılır (`Story` bayrağı `shard_f<kat>`, sayaç `shards`; Mira sorulunca sayıyı söyler).
 - Yerleşimler: `bulmaca_duz` (2000 px düz), `bulmaca_parkur` (2400 px, 6 platform). Savaş havuzunda yoktur. Test: `bulmaca`.
+
+## Hikâye zenginleştirme (testler Godot'ta henüz koşulmadı)
+- **Gölge'nin kat sonu sözleri:** her Gölge yenilgisinden sonra (kat 1-17) kısa bir konuşma açılır (`NpcTalk.umbra_after`). `RunController.story_enabled = false` ile kapatılır (testler kapatır).
+- **Üç son** (`NpcTalk.ending_dialogue`, son kat Gölge'sinden sonra, zafer ekranından önce): "Seni yendim" (`ending=yen`), "Seni de götürüyorum" (`ending=tutulma`) ve 17 Yıldız Kırıntısının hepsi toplandıysa seçimsiz gizli son (`ending=birlikte`). Bayraklar `Story`'de, kayıt dosyasında kalır.
+- **Mira ikinci sayfa:** "Düşmanlar hakkında?" (her perde için oynanış ipucu), "Bulmaca odaları?" (her türün nasıl çözüldüğü), "Yıldız kırıntıları" (sayıyı söyler).
+- Test: `hikaye_son`.

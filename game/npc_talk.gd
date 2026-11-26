@@ -94,6 +94,78 @@ const MIRA_TOPICS := {
 }
 
 
+## İkinci sayfa konuları (perde 0..4 cevapları): oynanışa ipucu veren hikâye anlatımı.
+const MIRA_TOPICS2 := {
+	"dusman": ["Düşmanlar hakkında?", [
+		"Boğa dalar, Yay uzaktan ateş eder. Altın parıltıyı parry'le, kırmızıdan kaç. Akrep yerden dolanır, onu sonraya sakla.",
+		"Koç zırhını önde taşır: arkasına dolan ya da onu duvara çarptır. Yengeç kalkanını önde tutar; parry'lenen pençesi kalkanını kırar.",
+		"İkizler iki yarı: biri ölünce öbürü öfkelenip hızlanır. Aslan kükreyince herkes hızlanır; kükremesini kesersen susar.",
+		"Terazi'nin parry'lenen küresi ikiye bölünür, yarısı yan düşmana gider. Kova ayağının dibine su bırakır: ıslanınca yavaşlarsın, kalkma geç.",
+		"Bütün bekçiler bir arada gelir. Sıra, parry ve soğukkanlılık, başka bir şey değil.",
+	]],
+	"bulmaca": ["Bulmaca odaları?", [
+		"Her katın üçüncü odası bulmaca. Altın mermili bir kule varsa parry'le: mermi kuleye döner, arada duran kristali yakar.",
+		"Yıldızlar sırayla parlar. Sırayı aklında tut, kılıçla aynı sırada vur. Yankı odalarında sıra her turda bir adım uzar.",
+		"Terazi odalarında iki kule var. İki kristali aynı anda yanık tutmalısın. Biri sönmeden öbürünü yak.",
+		"Su katlarında plakalar platformlarda. İlkine basınca süre başlar; koşarak hepsine bas, yoksa sönerler.",
+		"Son odalarda kilitler iç içe: hem kristali yak hem yıldız sırasını çöz. Acele etme, sıra da acele etmez.",
+	]],
+}
+
+## Gölge yenilince söylediği sözler (kat 1-17).
+const UMBRA_AFTER := {
+	1: ["Yenildim. Şimdilik.", "Seçmediğin her eşya bende kalacak. Bunu hatırla."],
+	2: ["Yine mi? Her katta biraz daha tanıyorsun beni.", "Neden bu kadar acele ediyorsun? Kule bekler."],
+	3: ["Fenerler seni seviyor. Ben sadece bekliyorum.", "Bir gün bana da bir fener yakarsın."],
+	4: ["Koç ve Yengeç sana engel olmadı. Ben de olmam.", "Seni durdurmaya çalışmıyorum, görülmeye çalışıyorum."],
+	5: ["Aynalar katı. Kırık Ayna benim sesim, duydun mu?", "Ona kulak ver. Yalan söylemez."],
+	6: ["Kılıcı hatırlıyor musun? Hâlâ bende.", "İstesen geri veririm. Ama sen almazsın."],
+	7: ["İkizler birbirini kaybetti. Biz de kaybedecek miyiz?", "Sadece bunu sormak istedim."],
+	8: ["Beni de götür.", "Hep bunu söylüyorum, değil mi? Ama bu sefer kulak ver."],
+	9: ["Terazi katı. Burada her şey tartılır, ben ve sen dahil.", "Hangimizin ağır olduğunu merak ediyorum."],
+	10: ["Senin bıraktığın eşyalarla savaşıyorum. Çok güzel çalışıyorlar.", "Teşekkür ederim, aslında."],
+	11: ["Beni yenmeye çalışıyorsun, anlıyorum. Ben seni yenmeye çalışmıyorum.", "Dönmeni istiyorum, hepsi bu."],
+	12: ["Üçüncü perde bitti. Ben güçlendim, sen güçlendin.", "İkimiz aynı hızla büyüyoruz. Bu tesadüf mü?"],
+	13: ["Su katı. Su her şeyi taşır, seni de beni de.", "Kovadaki küçük eli gördün mü?"],
+	14: ["O el senin. Geri dönme isteğin.", "Ben o isteğin gölgesiyim. Artık biliyorsun."],
+	15: ["Biliyorsun artık. Sana kızgın değilim, hiç olmadım.", "Sadece unutulmak istemedim."],
+	16: ["Bir kat kaldı sayılır. Korkuyor musun?", "Ben korkuyorum. Sen ışıksın, ben gölge; ışık gidince gölge de gider."],
+	17: ["Son kapının önündeyiz.", "Hangi yolu seçeceksin? Ben seçemem. Seçim sende."],
+}
+
+## Tüm yıldız kırıntıları: kat 1'de bulmaca yok, bu yüzden 17.
+const SHARD_TOTAL := 17
+
+
+## Gölge'nin yenildikten sonraki konuşması (kat 1-17).
+static func umbra_after(floor_no: int) -> Dictionary:
+	var lines: Array = UMBRA_AFTER.get(clampi(floor_no, 1, 17), ["..."])
+	return Dialogue.linear("Umbra", lines, "umbra_talk_%d" % floor_no)
+
+
+## Oyun sonu konuşması. Kırıntıların hepsi toplandıysa gizli son (seçim yok), yoksa Yen / Kabul et seçimi.
+## Seçim `ending` bayrağına ("yen" / "tutulma" / "birlikte") ve `ending_<ad>` bayrağına yazılır.
+static func ending_dialogue(shards: int) -> Dictionary:
+	if shards >= SHARD_TOTAL:
+		return {"speaker": "Umbra", "start": "a", "nodes": {
+			"a": {"text": "Son fener yanıyor. Umbra dizlerinin üstüne çöküyor ama gülümsüyor.", "next": "b"},
+			"b": {"text": "Hepsini topladın. Yıldız kırıntıları... Kuleyi bırakma zamanı geldi, Sidera.", "next": "c"},
+			"c": {"text": "Sidera elini uzattı. Umbra tuttu. Fenerler sönmeden birlikte çıktılar.", "next": "d"},
+			"d": {"text": "Kule ilk kez boş kaldı, ve yine de yandı.", "next": "end", "set": "ending=birlikte,ending_birlikte"},
+		}}
+	return {"speaker": "Umbra", "start": "a", "nodes": {
+		"a": {"text": "Son fener yanıyor. Umbra dizlerinin üstüne çöküyor ama gülümsüyor.", "next": "b"},
+		"b": {"text": "Bitti. Fenerler yanıyor. Ama gitmeden önce sor kendine: beni yenmek mi, götürmek mi?", "choices": [
+			{"text": "Seni yendim. Bu yeter.", "next": "y1"},
+			{"text": "Seni de götürüyorum.", "next": "k1"},
+		]},
+		"y1": {"text": "O hâlde fenerler yansın. Ben sönüyorum, Sidera. Yalnız yürüyeceksin.", "next": "y2"},
+		"y2": {"text": "Işık kuleyi doldurdu. Gölge yok oldu. Sidera yalnız çıktı, ama fenerler hep yandı.", "next": "end", "set": "ending=yen,ending_yen"},
+		"k1": {"text": "Tutulma başlıyor. Işık ve gölge birbirine karışıyor.", "next": "k2"},
+		"k2": {"text": "Sidera ve gölgesi tek bir figür oldu. Kule ikisini de bırakmadı; ikisini birden taşıdı.", "next": "end", "set": "ending=tutulma,ending_tutulma"},
+	}}
+
+
 static func _mira(floor_no: int) -> Dictionary:
 	var act := act_of(floor_no)
 	var beat_key := "mira_beat_%d" % floor_no
@@ -113,11 +185,19 @@ static func _mira(floor_no: int) -> Dictionary:
 		var topic: Array = MIRA_TOPICS[key]
 		choices.append({"text": str(topic[0]), "next": "t_" + key})
 		nodes["t_" + key] = {"text": str((topic[1] as Array)[act]), "next": "hub"}
-	if Story.has("shards"):
-		choices.append({"text": "Yıldız kırıntıları nedir?", "next": "t_shards"})
-		nodes["t_shards"] = {"text": "Bulmaca odalarındaki parıltılar, sönen fenerlerden dökülen ışık. Şu ana kadar %d tane buldun. On sekizini de toplarsan kule seni bırakır, birlikte çıkarsınız." % int(Story.get_flag("shards", 0)), "next": "hub"}
+	choices.append({"text": "Başka konular...", "next": "hub2"})
 	choices.append({"text": "Hoşça kal.", "next": "end"})
 	nodes["hub"] = {"text": hub_text, "choices": choices}
+	var choices2: Array = []
+	for key in MIRA_TOPICS2:
+		var topic2: Array = MIRA_TOPICS2[key]
+		choices2.append({"text": str(topic2[0]), "next": "t_" + key})
+		nodes["t_" + key] = {"text": str((topic2[1] as Array)[act]), "next": "hub2"}
+	if Story.has("shards"):
+		choices2.append({"text": "Yıldız kırıntıları nedir?", "next": "t_shards"})
+		nodes["t_shards"] = {"text": "Bulmaca odalarındaki parıltılar, sönen fenerlerden dökülen ışık. Şu ana kadar %d tane buldun. On yedisini de toplarsan kule seni bırakır, birlikte çıkarsınız." % int(Story.get_flag("shards", 0)), "next": "hub2"}
+	choices2.append({"text": "Geri dön.", "next": "hub"})
+	nodes["hub2"] = {"text": "Neyi merak ediyorsun?", "choices": choices2}
 	return {"speaker": "Mira", "start": start, "nodes": nodes}
 
 
