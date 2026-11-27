@@ -19,6 +19,7 @@ var _player: Player
 func _ready() -> void:
 	z_index = -3
 	add_to_group("side_doors")
+	add_to_group(Interact.GROUP)
 	_hook_player()
 
 
@@ -33,8 +34,12 @@ func _hook_player() -> void:
 		_player.interacted.connect(_on_interacted)
 
 
+func can_interact() -> bool:
+	return true
+
+
 func _on_interacted() -> void:
-	if in_range and ItemView.active_menu == null and _player != null and not _player.dead:
+	if in_range and ItemView.active_menu == null and _player != null and not _player.dead and Interact.is_best(self):
 		used.emit(self)
 
 
@@ -60,6 +65,6 @@ func _draw() -> void:
 		draw_rect(Rect2(-40.0, -144.0, 80.0, 144.0), Color(accent, 0.05 + 0.07 * glow))
 	if label != "":
 		GameFont.draw_centered(self, label, Vector2(0.0, -218.0), 20, Color(1, 1, 1, 0.8))
-	if in_range:
+	if in_range and Interact.is_best(self):
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
 		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  ÇIK" if label == "ÇIK" else "  GİR", GameFont.WHITE]], Vector2(0.0, -244.0), 22, pulse)

@@ -38,40 +38,62 @@ func _goto(id: String) -> void:
 	shown = 0.0
 	if _node.has("speaker"):
 		speaker = str(_node["speaker"])
-	_give_gift()
-	_give_dopamin()
+	var parts := PackedStringArray()
+	for part in [_give_gift(), _give_dopamin(), _give_heal()]:
+		if str(part) != "":
+			parts.append(str(part))
+	if not parts.is_empty():
+		_say("  ".join(parts), true)
 	var sfx := str(_node.get("sfx", ""))
 	if sfx != "":
 		Sfx.play(sfx, -2.0)
 
 
-## Düğümde `dopamin` varsa (ve `dopamin_flag` kurulu değilse) sayacı artırır. Dopamin hikaye bayrağında tutulur.
-func _give_dopamin() -> void:
+## Düğümde `dopamin` varsa (ve `dopamin_flag` + `dopamin_repeat: false` ile daha önce verilmediyse) sayacı artırır.
+## Dopamin hikâye bayrağında (`dopamin`) tutulur. Ekranda gösterilecek parçayı döndürür ("" = verilmedi).
+func _give_dopamin() -> String:
 	var n := int(_node.get("dopamin", 0))
 	if n <= 0:
-		return
+		return ""
 	var f := str(_node.get("dopamin_flag", ""))
 	if f != "" and Story.has(f) and not bool(_node.get("dopamin_repeat", true)):
-		return
+		return ""
 	if f != "":
 		Story.set_flag(f)
 	var total := Story.add("dopamin", n)
-	_say("+%d DOPAMİN  (%d)" % [n, total], true)
+	return "+%d DOPAMİN (%d)" % [n, total]
 
 
 ## Düğümde `gold` varsa (ve `gold_flag` daha kurulmadıysa) oyuncuya altın verir.
-func _give_gift() -> void:
+func _give_gift() -> String:
 	var g := int(_node.get("gold", 0))
 	if g <= 0 or player == null or not is_instance_valid(player):
-		return
+		return ""
 	var gf := str(_node.get("gold_flag", ""))
 	if gf != "" and Story.has(gf):
-		return
+		return ""
 	player.add_gold(g)
 	if gf != "":
 		Story.set_flag(gf)
 	Sfx.play("coin", -2.0)
-	_say("+%d ALTIN" % g, true)
+	return "+%d ALTIN" % g
+
+
+## Düğümde `heal` varsa (ve `heal_flag` daha kurulmadıysa) oyuncuyu iyileştirir.
+func _give_heal() -> String:
+	var h := int(_node.get("heal", 0))
+	if h <= 0 or player == null or not is_instance_valid(player):
+		return ""
+	var hf := str(_node.get("heal_flag", ""))
+	if hf != "" and Story.has(hf):
+		return ""
+	if hf != "":
+		Story.set_flag(hf)
+	var got := player.heal(h)
+	if got <= 0:
+		return ""
+	Sfx.play("heal", -2.0)
+	return "+%d CAN" % got
 
 
 func _text() -> String:
@@ -88,6 +110,13 @@ func _advance() -> void:
 		return
 	if not _choices.is_empty():
 		var c: Dictionary = _choices[clampi(cursor, 0, _choices.size() - 1)]
+		var pay := int(c.get("pay", 0))
+		if pay > 0:
+			if player == null or not is_instance_valid(player) or not player.spend_gold(pay):
+				Sfx.play("ui_deny", -6.0)
+				_goto(str(c.get("fail", "end")))
+				return
+			_say("-%d ALTIN" % pay, false)
 		Dialogue.apply_set(str(c.get("set", "")))
 		Sfx.play("ui_select", -6.0)
 		_goto(str(c.get("next", "end")))

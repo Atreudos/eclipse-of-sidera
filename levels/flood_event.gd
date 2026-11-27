@@ -15,7 +15,7 @@ var water_y := RoomLayouts.FLOOR_Y + 10.0
 var running := false
 
 var _t := 0.0
-var _hurt := 0.0
+var _hurt := 3.0  # suya ilk girişte can kaybından önce 3 sn tolerans
 var _player: Player
 
 
@@ -51,6 +51,7 @@ func start(r: Room) -> void:
 		add_child(vis)
 	if r.floor_exit != null:
 		r.floor_exit.position = Vector2(top_x, fy - STEP_RISE * float(STEPS))
+		r.floor_exit.pit = true
 	running = true
 	Sfx.play("door_open", -3.0, 0.6)
 
@@ -64,8 +65,8 @@ func _physics_process(delta: float) -> void:
 		_player = get_tree().get_first_node_in_group("player") as Player
 		return
 	_hurt = maxf(_hurt - delta, 0.0)
-	var feet := to_local(_player.global_position).y
-	if not _player.dead and feet > water_y + 10.0 and _hurt <= 0.0:
+	var feet := to_local(Vector2(_player.global_position.x, _player.feet_y())).y
+	if not _player.dead and feet > water_y + 4.0 and _hurt <= 0.0:
 		_hurt = HURT_EVERY
 		_player.take_damage(1, null)
 		Sfx.play("hit", -8.0, 0.6)

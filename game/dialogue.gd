@@ -57,6 +57,8 @@ static func problems(d: Dictionary) -> Array[String]:
 		var targets: Array = [n.get("next", "end")]
 		for c in n.get("choices", []):
 			targets.append((c as Dictionary).get("next", "end"))
+			if (c as Dictionary).has("fail"):
+				targets.append((c as Dictionary)["fail"])
 		for t in targets:
 			if str(t) != "end" and str(t) != "" and not nodes.has(str(t)):
 				out.append("%s: bilinmeyen hedef %s" % [id, t])

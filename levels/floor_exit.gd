@@ -25,6 +25,8 @@ var state: State = State.CLOSED
 var next_floor := 2
 var accent := Color(0.95, 0.78, 0.3)
 var in_range := false
+## Çukur görünümü (kat sonu olayı): geçit, zemindeki karanlık bir çukur olarak çizilir; içine atlayınca kat geçilir.
+var pit := false
 
 var _t := 0.0
 var _open_t := 0.0
@@ -100,6 +102,9 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if pit:
+		_draw_pit()
+		return
 	var rect := Rect2(-SIZE.x * 0.5, -SIZE.y, SIZE.x, SIZE.y)
 	var file := "exit_closed"
 	var art_t := _t
@@ -166,3 +171,34 @@ func _draw_chevrons(inner: Rect2) -> void:
 		var pts := PackedVector2Array([Vector2(cx - 14.0, cy - 8.0), Vector2(cx, cy + 8.0), Vector2(cx + 14.0, cy - 8.0)])
 		draw_polyline(pts, Color(0.05, 0.03, 0.09, a * 0.8), 9.0, true)
 		draw_polyline(pts, Color(GameFont.YELLOW, a), 5.0, true)
+
+
+## Çukur: zeminde karanlık bir oval; açılırken büyür, açıkken içinde halkalar döner.
+func _draw_pit() -> void:
+	var k := 0.0
+	if state == State.OPEN:
+		k = 1.0
+	elif state == State.OPENING:
+		k = clampf(_open_t / OPEN_TIME, 0.0, 1.0)
+	var grow := 0.3 + 0.7 * k
+	var rim := PackedVector2Array()
+	var hole := PackedVector2Array()
+	for i in 28:
+		var a := TAU * float(i) / 28.0
+		rim.append(Vector2(86.0 * grow * cos(a), 18.0 * grow * sin(a)))
+		hole.append(Vector2(72.0 * grow * cos(a), 13.0 * grow * sin(a)))
+	draw_colored_polygon(rim, Color(accent.r * 0.5, accent.g * 0.5, accent.b * 0.5, 0.9))
+	draw_colored_polygon(hole, Color(0.01, 0.0, 0.02))
+	for j in 3:
+		var phase := fposmod(_t * 0.9 + float(j) / 3.0, 1.0)
+		var s2 := (1.0 - phase) * grow
+		var ring := PackedVector2Array()
+		for i in 21:
+			var a2 := TAU * float(i) / 20.0
+			ring.append(Vector2(66.0 * s2 * cos(a2), 12.0 * s2 * sin(a2)))
+		draw_polyline(ring, Color(accent, 0.55 * sin(phase * PI) * k), 2.0)
+	var label_col := GameFont.YELLOW if state == State.OPEN else Color(0.72, 0.66, 0.8)
+	GameFont.draw_runs_centered(self, [["KAT ", label_col], [str(next_floor), label_col]], Vector2(0.0, -70.0), 24)
+	if state == State.OPEN and not _used:
+		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
+		GameFont.draw_runs_centered(self, [["ATLA", GameFont.WHITE]], Vector2(0.0, -102.0), 22, pulse)

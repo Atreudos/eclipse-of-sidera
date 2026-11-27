@@ -467,12 +467,19 @@ static func _lobby() -> void:
 		["idle", "idle", "Mira bekliyor, fener hafifçe sallanır", "6", true, 0.8, true, 6],
 		["talk", "talk", "Konuşuyor (konuşma kutusu açıkken)", "6", true, 0.7, false, 6],
 	])
-	for npc: Array in [["npc_tellal", "Tellal (haberci, ara oda)"], ["npc_ayna", "Kırık Ayna (ara oda; Umbra'nın sesi)"], ["npc_terazi", "Terazi Yaşlısı (ara oda)"], ["npc_su", "Su Taşıyıcı (ara oda)"], ["npc_umbra", "Umbra, sakin hâli (yalnız son iki katın ara odası)"]]:
+	for npc: Array in [["npc_tellal", "Tellal (haberci, ara oda)"], ["npc_ayna", "Kırık Ayna (ara oda; Umbra'nın sesi)"], ["npc_terazi", "Terazi Yaşlısı (ara oda)"], ["npc_su", "Su Taşıyıcı (ara oda)"], ["npc_umbra", "Umbra, sakin hâli (son iki katın ara odası ve kat 9 lobisinde yazı-tura)"], ["npc_asansor", "Bozuk Asansör (kat 13 lobisi, anket; komik bir makine / kapılı kutu)"], ["npc_kedi", "Nöbetçi Kedi (kat 3'ün gizli odası; sevilmek ister)"], ["npc_fare", "Kira Faresi (kat 8'in gizli odası; gözlüklü, elinde defter)"], ["npc_memur", "Kayıp Eşya Memuru (kat 11'in gizli odası; masada uyuyor)"]]:
 		_chars(S, String(npc[1]), String(npc[0]), MERCHANT_SIZE, [
 			["idle", "idle", "Bekliyor, hafifçe nefes alıyor", "6", true, 0.8, true, 6],
 		])
 	var g := "Lobi ve dükkân nesneleri"
-	_add(S, g, "side_door", "Ara oda kapısı (lobide ve ara odanın içinde; hafifçe ışıldar)", 128, 192, "4", true, 0.9, GROUND, 6)
+	var pg := "Esprili eşyalar (E ile bakılır; lobide ve savaş odalarında durur)"
+	for pr: Array in [["prop_vazo", "Vazo (tek çiçek ya da boş)"], ["prop_sandalye", "Üç bacaklı sandalye"], ["prop_tabela", "Tabela ('DİKKAT: DİKKAT' yazısı)"], ["prop_tas", "Taş (bir taş)"], ["prop_ayna", "Çatlak ayna (kendini gösterir)"], ["prop_kitap", "Kitap yığını (son sayfası yırtık)"], ["prop_kova", "Kova (boş, memnun)"]]:
+		_add(S, pg, String(pr[0]), String(pr[1]), 80, 80, "1", false, 0.0, GROUND, 6)
+	_add(S, pg, "prop_mum", "Mum (alevi titrer)", 80, 80, "4", true, 0.6, GROUND, 6)
+	_add(S, pg, "prop_slime", "Neden geldiği bilinmeyen büyük slime (kat 5; yumuşak, hafifçe nefes alır; üstüne düşersin)", 144, 100, "6", true, 1.0, GROUND, 6)
+	_add(S, pg, "launcher", "Fırlatıcı (parkurda üstüne basınca yukarı fırlatır; yay ya da mantar; orijin = zemin yüzeyi)", 80, 40, "4", true, 0.6, GROUND, 6)
+	_add(S, pg, "key_item", "Anahtar (parkurun sonunda süzülür, parlar; odanın kapısını açar)", 48, 48, "6", true, 0.9, CENTER, 6)
+	_add(S, g, "side_door", "Ara oda kapısı (lobide, ara odanın içinde ve savaş odalarındaki YAZISIZ gizli kapılarda; hafifçe ışıldar)", 128, 192, "4", true, 0.9, GROUND, 6)
 	_add(S, g, "puzzle_crystal", "Bulmaca kristali (söner; parry'lenmiş mermiyle yanar, parlar)", 96, 96, "4", true, 0.9, CENTER, 6)
 	_add(S, g, "puzzle_star", "Bulmaca yıldızı (söner; kılıçla vurunca yanar)", 96, 96, "4", true, 0.9, CENTER, 6)
 	_add(S, g, "puzzle_plate", "Bulmaca basınç plakası (platformun üstünde, yassı; basınca parlar). Parkur odasında 6 tane", 96, 24, "2", false, 0.4, GROUND, 6)

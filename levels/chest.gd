@@ -29,6 +29,7 @@ var _player: Player
 func _ready() -> void:
 	z_index = -1
 	add_to_group("chests")
+	add_to_group(Interact.GROUP)
 	if chest_id != "" and opened_ids.has(chest_id):
 		opened = true
 		_open_t = 1.0
@@ -46,8 +47,12 @@ func _hook_player() -> void:
 		_player.interacted.connect(_on_interacted)
 
 
+func can_interact() -> bool:
+	return not opened
+
+
 func _on_interacted() -> void:
-	if in_range and not opened and ItemView.active_menu == null and _player != null and not _player.dead:
+	if in_range and not opened and ItemView.active_menu == null and _player != null and not _player.dead and Interact.is_best(self):
 		if locked:
 			Sfx.play("ui_deny", -6.0)
 		else:
@@ -178,7 +183,7 @@ func _draw() -> void:
 			draw_rect(Rect2(-5.0, -38.0, 10.0, 12.0), trim)
 			var glow := 0.5 + 0.5 * sin(_t * 3.0)
 			draw_circle(Vector2(0.0, -30.0), 46.0, Color(1.0, 0.8, 0.35, 0.05 + 0.04 * glow))
-	if in_range and not opened:
+	if in_range and not opened and Interact.is_best(self):
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
 		if locked:
 			GameFont.draw_centered(self, "KİLİTLİ  BULMACAYI ÇÖZ", Vector2(0.0, -84.0), 20, Color(1.0, 0.5, 0.45, pulse))

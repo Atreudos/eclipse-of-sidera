@@ -20,6 +20,7 @@ var _player: Player
 func _ready() -> void:
 	z_index = -1
 	add_to_group("npcs")
+	add_to_group(Interact.GROUP)
 	_hook_player()
 
 
@@ -34,8 +35,12 @@ func _hook_player() -> void:
 		_player.interacted.connect(_on_interacted)
 
 
+func can_interact() -> bool:
+	return true
+
+
 func _on_interacted() -> void:
-	if in_range and ItemView.active_menu == null and _player != null and not _player.dead:
+	if in_range and ItemView.active_menu == null and _player != null and not _player.dead and Interact.is_best(self):
 		requested.emit(self)
 
 
@@ -60,6 +65,6 @@ func _draw() -> void:
 		draw_circle(Vector2(-5, -100 + breathe), 2.0, tint.lightened(0.4))
 		draw_circle(Vector2(5, -100 + breathe), 2.0, tint.lightened(0.4))
 	GameFont.draw_centered(self, display_name, Vector2(0.0, -146.0), 20, Color(1, 1, 1, 0.75))
-	if in_range:
+	if in_range and Interact.is_best(self):
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
 		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  KONUŞ", GameFont.WHITE]], Vector2(0.0, -172.0), 22, pulse)

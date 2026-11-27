@@ -172,6 +172,10 @@ func _run_all() -> void:
 		"bulmaca": _test_puzzles,
 		"hikaye_son": _test_story_endings,
 		"demo_menu": _test_demo_menu,
+		"etkilesim_hakemi": _test_interact_arbiter,
+		"olay_cizelgesi": _test_story_schedule,
+		"konusma_dugumleri": _test_dialogue_nodes,
+		"parkur_ogeleri": _test_parkour_parts,
 		"ara_oda_gecis": _test_side_room_travel,
 		"hikaye_metni": _test_story_text,
 		"burc_kadro": _test_zodiac_roster,
@@ -9637,3 +9641,310 @@ func _test_umbra_homing() -> void:
 	check(rain.homing_turn == 0.0, "yağmur / yer dalgası bıçağı takip etmez (elle fırlatılmaz)")
 	rain.queue_free()
 	GameState.reset()
+
+
+## Konuşma kutusunda bir seçeneği seçer (yazı bitmediyse önce bitirir).
+func _dlg_choose(menu: DialogueMenu, index: int) -> void:
+	if not menu._typing_done():
+		menu._advance()
+	menu.cursor = index
+	menu._advance()
+
+
+## Konuşma kutusunu verilen düğüme kadar ilerletir.
+func _dlg_until(menu: DialogueMenu, node: String) -> void:
+	var guard := 0
+	while menu.is_open and menu.node_id != node and guard < 20:
+		menu._advance()
+		menu._advance()
+		guard += 1
+
+
+func _test_interact_arbiter() -> void:
+	await _new_world("Etkileşim hakemi: üst üste binen alanlarda yalnız en yakın çalışır; açılmış sandık sırayı çalmaz")
+	Interact.reset()
+	var p := _spawn_player(500.0)
+	var hits := {"a": 0, "b": 0, "c": 0}
+	var a := Prop.attach(_world, 440.0, ["a"], 90.0)
+	var b := Prop.attach(_world, 520.0, ["b"], 90.0)
+	a.requested.connect(func(_p: Prop) -> void: hits["a"] += 1)
+	b.requested.connect(func(_p: Prop) -> void: hits["b"] += 1)
+	await _frames(3)
+	check(a.in_range and b.in_range, "iki eşyanın menzilinde de duruyorum")
+	Interact.reset()
+	p.interacted.emit()
+	check(hits["b"] == 1 and hits["a"] == 0, "E: yalnız en yakın eşya çalıştı (a=%d b=%d)" % [hits["a"], hits["b"]])
+	p.global_position.x = 430.0
+	await _frames(3)
+	Interact.reset()
+	p.interacted.emit()
+	check(hits["a"] == 1 and hits["b"] == 1, "yer değişince en yakın olan çalışır (a=%d b=%d)" % [hits["a"], hits["b"]])
+	# Açılmış sandık en yakın olsa da sırayı çalmaz
+	p.global_position.x = 600.0
+	var ch := Chest.new()
+	ch.kind = "gold"
+	_world.add_child(ch)
+	ch.global_position = Vector2(600.0, 640.0)
+	ch.opened = true
+	var c := Prop.attach(_world, 640.0, ["c"], 90.0)
+	c.requested.connect(func(_p: Prop) -> void: hits["c"] += 1)
+	await _frames(3)
+	check(ch.in_range and not ch.can_interact(), "açılmış sandık menzilde ama etkileşime kapalı")
+	Interact.reset()
+	p.interacted.emit()
+	check(hits["c"] == 1, "açılmış sandığın yanındaki eşya yine çalışır")
+	# Aynı fizik karesinde ikinci E basışı aynı kazananı verir (biri durumu değiştirse bile tek düğüm çalışır)
+	check(Interact.is_best(c) and not Interact.is_best(a), "hakem kararı aynı karede tutarlı")
+	# Eşya satırları: ilk satırlar sırayla, sonra son iki satır arasında döner
+	var q := Prop.new()
+	q.lines = ["l0", "l1", "l2"]
+	var seq: Array[String] = []
+	for i in 6:
+		seq.append(q.next_text())
+	check(seq == ["l0", "l1", "l2", "l1", "l2", "l1"], "eşya satırları sırayla gelir, sonra son ikisi arasında döner: %s" % [seq])
+	q.free()
+	for k in Prop.KINDS:
+		check(Prop.TEXTS.has(k) and (Prop.TEXTS[k] as Array).size() >= 4, "%s: en az 4 esprili satır" % k)
+	check(Prop.DOOR_LINES.size() >= 3, "kapı satırları var")
+	Interact.reset()
+	p.queue_free()
+
+
+func _test_story_schedule() -> void:
+	await _new_world("Olay çizelgesi: lobi düzeni, slime, olay karakterleri, gizli kapılar, kat adları")
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	check(RoomLayouts.problems("lobi").is_empty() and int(RoomLayouts.width_of("lobi")) == 2100, "lobi 2100 genişliğinde ve kurallara uyuyor")
+	var titles := {}
+	for f in range(1, 19):
+		titles[StoryFloors.floor_title(f)] = true
+	check(titles.size() == 18 and not titles.has(""), "18 katın 18 farklı adı var")
+	check(StoryFloors.FLOOD_FLOORS == [4] and StoryFloors.SLIME_FLOORS == [5], "su baskını kat 4, slime kat 5")
+	var run := _start_run(4242, true)
+	await _frames(10)
+	var checked_floors := {}
+	while run.current_floor() < 13:
+		check(run.dev_next_floor(), "kat %d lobisine geçildi" % (run.current_floor() + 1))
+		await _frames(4)
+		var f := run.current_floor()
+		var lobby := run.current_room()
+		if f in [3, 5, 9, 13] and lobby != null:
+			checked_floors[f] = true
+			var xs: Array[float] = []
+			for n in lobby.get_children():
+				if n.is_in_group(Interact.GROUP):
+					xs.append((n as Node2D).position.x)
+			xs.sort()
+			var min_gap := 99999.0
+			for i in range(1, xs.size()):
+				min_gap = minf(min_gap, xs[i] - xs[i - 1])
+			check(xs.size() < 2 or min_gap >= 120.0, "kat %d lobisi: etkileşimliler birbirinden en az 120 px uzakta (en yakın %.0f)" % [f, min_gap])
+			check((lobby.get_node_or_null("Slime") != null) == (f == 5), "kat %d: slime yalnız kat 5'te" % f)
+			check((lobby.get_node_or_null("Npc_umbra") != null) == (f == 9), "kat %d: Umbra (yazı-tura) yalnız kat 9 lobisinde" % f)
+			check((lobby.get_node_or_null("Npc_asansor") != null) == (f == 13), "kat %d: Bozuk Asansör yalnız kat 13 lobisinde" % f)
+			var ev_npc: Npc = null
+			if f == 9:
+				ev_npc = lobby.get_node_or_null("Npc_umbra") as Npc
+			elif f == 13:
+				ev_npc = lobby.get_node_or_null("Npc_asansor") as Npc
+			if ev_npc != null:
+				check(str(ev_npc.get_meta("event", "")) == StoryFloors.lobby_event(f), "kat %d: olay karakterine olay işlenmiş" % f)
+			check(lobby.get_node_or_null("LobbyExtras") != null, "kat %d: lobi ekstraları bir kez kuruldu" % f)
+	check(checked_floors.size() == 4, "dört örnek lobi denetlendi")
+	# Gizli kapılar ve eşyalar
+	var secret_ok := true
+	var key_rooms := 0
+	for f in StoryFloors.SECRETS:
+		for sl in (StoryFloors.SECRETS[f] as Dictionary):
+			var room := run._build_room(FloorPlan.index_of(f, sl))
+			var door := room.get_node_or_null("SecretDoor") as SideDoor
+			var want := StoryFloors.secret_kind(f, sl).split(":")
+			secret_ok = secret_ok and door != null and door.label == "" and str(door.get_meta("side_kind", "")) == want[0]
+			secret_ok = secret_ok and (want.size() < 2 or str(door.get_meta("side_npc", "")) == want[1])
+			secret_ok = secret_ok and room.key_needed == (want[0] == "key")
+			if want[0] == "key":
+				key_rooms += 1
+			if want[0] == "talk":
+				secret_ok = secret_ok and NpcTalk.NPCS.has(want[1])
+	check(secret_ok and key_rooms >= 4, "gizli kapılar: yazısız, doğru türde, anahtar odaları kilitli (%d anahtar odası)" % key_rooms)
+	var r1 := run._build_room(FloorPlan.index_of(1, 2))
+	var any_prop := false
+	for n in r1.get_children():
+		any_prop = any_prop or n is Prop
+	check(not any_prop, "kat 1 savaş odalarında eşya yok (öğretici bozulmaz)")
+	var r2 := run._build_room(FloorPlan.index_of(2, 2))
+	var ghost := false
+	for n in r2.get_children():
+		ghost = ghost or (n is Prop and (n as Prop).ghost)
+	check(ghost, "kat 2 savaş odasında kapıya bakılabilir")
+	run.queue_free()
+	await _frames(2)
+	GameState.slot = saved_slot
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+
+
+func _test_dialogue_nodes() -> void:
+	await _new_world("Konuşma düğümleri: slime, dopamin, Q ile iptal, ödeme, can, tek seferlik olaylar")
+	Story.reset_fallback()
+	var saved_slot: Variant = GameState.slot
+	GameState.slot = null
+	for id in NpcExtra.IDS:
+		check(Dialogue.problems(NpcExtra.dialogue(id)).is_empty(), "%s: konuşma geçerli" % id)
+	for ev in ["yazi_tura", "anket"]:
+		check(Dialogue.problems(StoryFloors.event_dialogue(ev)).is_empty(), "%s: olay konuşması geçerli" % ev)
+	check(Dialogue.problems(StoryFloors.slime_dialogue(5)).is_empty(), "slime konuşması geçerli")
+	var p := _spawn_player(300.0)
+	var menu := DialogueMenu.new()
+	get_tree().root.add_child(menu)
+	await _frames(2)
+	# Slime: Q ile "Hayır"
+	menu.talk(p, StoryFloors.slime_dialogue(5), "Slime")
+	_dlg_until(menu, "a1")
+	menu._advance()
+	menu._cancel()
+	check(menu.node_id == "no", "Q: iptal seçeneği ('Hayır') seçildi")
+	check(Story.get_flag("dopamin", 0) == 0, "reddedince dopamin yok")
+	menu.close()
+	# Slime: Evet -> +10 dopamin
+	menu.talk(p, StoryFloors.slime_dialogue(5), "Slime")
+	_dlg_until(menu, "a1")
+	_dlg_choose(menu, 0)
+	check(menu.node_id == "yes" and Story.get_flag("dopamin", 0) == 10, "slime'a dokunmak +10 dopamin verir (%s)" % str(Story.get_flag("dopamin", 0)))
+	menu.close()
+	check(StoryFloors.slime_dialogue(5)["start"] == "b0", "dokununca slime ikinci kez başka laf eder")
+	# Yazı-tura: bir kez, dopamin tekrarlanmaz
+	var d0 := int(Story.get_flag("dopamin", 0))
+	menu.talk(p, StoryFloors.event_dialogue("yazi_tura"), "Umbra")
+	_dlg_until(menu, "a")
+	_dlg_choose(menu, 0)
+	_dlg_until(menu, "yazi2")
+	menu.close()
+	check(int(Story.get_flag("dopamin", 0)) == d0 + 5 and Story.has("ev_yazi_tura"), "yazı-tura: +5 dopamin ve olay tamamlandı")
+	check(StoryFloors.event_dialogue("yazi_tura")["start"] == "done", "tamamlanan olay 'bitti' düğümünden başlar")
+	# Fare: parası yoksa ödeyemez, varsa öder ve kazanır
+	p.gold = 0
+	menu.talk(p, NpcExtra.dialogue("fare"), "Kira Faresi")
+	_dlg_until(menu, "b")
+	_dlg_choose(menu, 0)
+	check(menu.node_id == "poor" and p.gold == 0, "fare: altın yetmezse 'poor' düğümü, altın değişmez")
+	menu.close()
+	p.add_gold(10)
+	menu.talk(p, NpcExtra.dialogue("fare"), "Kira Faresi")
+	_dlg_until(menu, "b")
+	_dlg_choose(menu, 0)
+	check(menu.node_id == "paid" and p.gold == 10 - 5 + 12, "fare: 5 öder, 12 kazanır (%d)" % p.gold)
+	menu.close()
+	check(NpcExtra.dialogue("fare")["start"] == "done", "fare: ödeme sonrası konuşma bitti düğümünden başlar")
+	# Kedi: can verir (bir kez)
+	p.health = 1
+	menu.talk(p, NpcExtra.dialogue("kedi"), "Nöbetçi Kedi")
+	_dlg_until(menu, "b")
+	_dlg_choose(menu, 0)
+	check(menu.node_id == "yes" and p.health > 1, "kedi: sevince can verir (%d)" % p.health)
+	menu.close()
+	check(NpcExtra.dialogue("kedi")["start"] == "done", "kedi: sevildikten sonra uyur")
+	# Memur: Esc ile erken çıkmak ödülü tekrar kazandırmaz
+	var g0 := p.gold
+	menu.talk(p, NpcExtra.dialogue("memur"), "Kayıp Eşya Memuru")
+	_dlg_until(menu, "b")
+	_dlg_choose(menu, 0)
+	menu.close()
+	check(p.gold == g0 + 10 and Story.has("ev_memur"), "memur: kılıç cevabı 10 altın verir, olay hemen işaretlenir")
+	menu.talk(p, NpcExtra.dialogue("memur"), "Kayıp Eşya Memuru")
+	check(menu.node_id == "done" and p.gold == g0 + 10, "memur: tekrar konuşunca ödül yok")
+	menu.close()
+	# Mira'nın ilk anlatımı net: Kule, fenerler, Umbra
+	var beat1: Array = NpcTalk.MIRA_BEATS[1]
+	var joined := " ".join(PackedStringArray(beat1))
+	check(joined.contains("fener") and joined.contains("Umbra") and beat1.size() >= 4, "Mira'nın ilk anlatımı: fener ve Umbra net anlatılıyor")
+	menu.queue_free()
+	p.queue_free()
+	GameState.slot = saved_slot
+	Story.reset_fallback()
+
+
+func _test_parkour_parts() -> void:
+	await _new_world("Parkur parçaları: fırlatıcı, anahtar, anahtar odası, su baskını, çukur geçidi, ara oda türleri")
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+	# Fırlatıcı
+	var p := _spawn_player(600.0)
+	var pad := Launcher.new()
+	_world.add_child(pad)
+	pad.global_position = Vector2(600.0, 640.0)
+	var min_vy := 0.0
+	for i in 12:
+		await _frames(1)
+		min_vy = minf(min_vy, p.velocity.y)
+	check(min_vy <= -1000.0, "fırlatıcı oyuncuyu yukarı fırlatır (en hızlı %.0f)" % min_vy)
+	# Anahtar
+	var key := KeyPickup.new()
+	_world.add_child(key)
+	var got := [false]
+	key.taken.connect(func() -> void: got[0] = true)
+	key.global_position = p.global_position + Vector2(300.0, 26.0)
+	await _frames(3)
+	check(not got[0], "uzaktaki anahtar alınmaz")
+	p.global_position = key.global_position + Vector2(0.0, -26.0)
+	await _frames(4)
+	check(got[0], "yakındaki anahtar alınır")
+	# Anahtar odası: oda temizlense de kapı anahtarsız açılmaz
+	var room := _puzzle_room("parry", 2, 3)
+	await _frames(2)
+	room.key_needed = true
+	room.force_clear()
+	check(room.is_cleared() and room.door.look == Door.Look.LOCKED and room.door.is_blocking(), "anahtar odası temizlense de kapı kilitli")
+	room.give_key()
+	check(room.door.look == Door.Look.OPEN and room.key_taken, "anahtar alınınca kapı açılır")
+	# Su baskını
+	var room2 := _puzzle_room("parry", 3, 4)
+	await _frames(2)
+	var fl := FloodEvent.new()
+	room2.add_child(fl)
+	fl.start(room2)
+	var steps := fl.get_node_or_null("FloodSteps")
+	check(fl.running and steps != null and steps.get_child_count() == FloodEvent.STEPS, "su baskını: basamaklar kuruldu")
+	check(FloodEvent.STEP_RISE <= 105.0, "basamak yüksekliği zıplama yüksekliğini (105) aşmıyor")
+	var w0 := fl.water_y
+	await _frames(30)
+	check(fl.water_y < w0, "su yükseliyor (%.1f -> %.1f)" % [w0, fl.water_y])
+	fl.water_y = 300.0
+	await _frames(3)
+	check(fl.water_y >= FloodEvent.WATER_STOP_Y - 0.01, "su tepe platformun altında durur (%.1f)" % fl.water_y)
+	p.global_position = Vector2(300.0, 612.0)
+	p.velocity = Vector2.ZERO
+	fl.water_y = 600.0
+	fl._hurt = 0.0
+	var hp := p.health
+	var imm := p.immunity
+	await _frames(6)
+	check(p.health < hp or p.immunity < imm, "suda olan oyuncu can kaybeder (%d -> %d)" % [hp, p.health])
+	# Çukur geçidi
+	var ex := FloorExit.new()
+	ex.pit = true
+	_world.add_child(ex)
+	ex.open_up()
+	await _frames(5)
+	check(ex.pit, "geçit çukur görünümüne geçebilir")
+	# Ara oda türleri
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var sk := SideRoom.new()
+	_world.add_child(sk)
+	sk.build(-5200.0, 4, "", rng, "key")
+	check(sk.key_item != null and sk.width == SideRoom.KEY_WIDTH and sk.get_node_or_null("Launcher") != null, "anahtar parkuru: anahtar, uzun oda, fırlatıcı")
+	check(sk.camera_rect().size.x == SideRoom.KEY_WIDTH, "anahtar parkuru: kamera alanı oda kadar geniş")
+	var st := SideRoom.new()
+	_world.add_child(st)
+	st.build(-9000.0, 2, "", rng, "treasure")
+	check(st.chests.size() == 2 and st.npc == null, "hazine odası: iki sandık, karakter yok")
+	var sn := SideRoom.new()
+	_world.add_child(sn)
+	sn.build(-12000.0, 3, "kedi", rng, "talk")
+	check(sn.npc != null and sn.npc.npc_id == "kedi", "konuşma odası: kedi bekliyor")
+	p.queue_free()
+	Story.reset_fallback()
+	Chest.opened_ids = {}

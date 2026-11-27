@@ -26,6 +26,7 @@ var _player: Player
 func _ready() -> void:
 	z_index = -2
 	add_to_group("shop_stands")
+	add_to_group(Interact.GROUP)
 	_hook_player()
 
 
@@ -40,8 +41,12 @@ func _hook_player() -> void:
 		_player.interacted.connect(_on_interacted)
 
 
+func can_interact() -> bool:
+	return stock != null
+
+
 func _on_interacted() -> void:
-	if in_range and stock != null and ItemView.active_menu == null and _player != null and not _player.dead:
+	if in_range and stock != null and ItemView.active_menu == null and _player != null and not _player.dead and Interact.is_best(self):
 		requested.emit(self)
 
 
@@ -64,7 +69,7 @@ func _draw() -> void:
 	_draw_counter()
 	_draw_offers()
 	_draw_sign()
-	if in_range and stock != null:
+	if in_range and stock != null and Interact.is_best(self):
 		var pulse := 0.7 + 0.3 * sin(_t * 6.0)
 		GameFont.draw_runs_centered(self, [["E", GameFont.YELLOW], ["  ALIŞVERİŞ", GameFont.WHITE]], Vector2(0.0, -336.0), 24, pulse)
 

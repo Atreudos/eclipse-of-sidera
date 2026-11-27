@@ -10,6 +10,10 @@ const NPCS := {
 	"terazi": {"name": "Terazi Yaşlısı", "title": "Tartıcı", "tint": Color(0.75, 0.8, 0.5)},
 	"su": {"name": "Su Taşıyıcı", "title": "Geçmişin Bekçisi", "tint": Color(0.4, 0.7, 1.0)},
 	"umbra": {"name": "Umbra", "title": "Gölge", "tint": Color(0.75, 0.5, 1.0)},
+	"kedi": {"name": "Nöbetçi Kedi", "title": "Nöbetçi", "tint": Color(0.95, 0.78, 0.45)},
+	"fare": {"name": "Kira Faresi", "title": "Ev Sahibi", "tint": Color(0.72, 0.72, 0.78)},
+	"memur": {"name": "Kayıp Eşya Memuru", "title": "Memur", "tint": Color(0.55, 0.78, 0.72)},
+	"asansor": {"name": "Bozuk Asansör", "title": "Anketçi", "tint": Color(0.6, 0.72, 0.88)},
 }
 
 
@@ -39,6 +43,8 @@ static func pocket_npc(floor_no: int) -> String:
 static func dialogue(id: String, floor_no: int = 1) -> Dictionary:
 	if id == "mira":
 		return _mira(floor_no)
+	if NpcExtra.has(id):
+		return NpcExtra.dialogue(id)
 	if POCKET.has(id):
 		return _pocket(id, floor_no)
 	return Dialogue.linear(display_name(id), ["..."])
@@ -48,7 +54,7 @@ static func dialogue(id: String, floor_no: int = 1) -> Dictionary:
 
 ## Katın ana hikâye anlatımı (ilk konuşmada tam anlatılır; sonra sorulabilecek konulara geçilir).
 const MIRA_BEATS := {
-	1: ["Bir ışık daha. Aylardır kimse bu kadar yukarı çıkamadı.", "Ben Mira, bu kulenin fener bekçisiyim. On sekiz kat, on sekiz fener. Hepsi yanık kalırsa gökyüzü ayakta durur.", "Hiçbir şey hatırlamıyorsun, değil mi? Merak etme. Kule hatırlatır."],
+	1: ["Bir ışık daha. Aylardır kimse bu kadar yukarı çıkamadı.", "Ben Mira, bu kulenin fener bekçisiyim. Kulenin on sekiz katı, on sekiz feneri var. Hepsi yanıkken gökyüzü ayakta durur.", "Sorun şu: fenerler sönüyor. Sönen her fenerde bir burç yozlaşıp düşmana dönüşüyor. Sen en tepeye çıkıp hepsini yeniden yakacaksın.", "Bir şey daha: Umbra. Senin gölgen. Her katın sonunda karşına çıkar. Onu yenebilirsin ama yok edemezsin.", "Hiçbir şey hatırlamıyorsun, değil mi? Merak etme. Kule hatırlatır."],
 	2: ["Gölgeyi yendin ama yok etmedin. Gölgeler yok olmaz, sadece geri çekilir.", "Fark ettin mi? Seçmediğin eşya ona gidiyor. Kule bunu böyle istiyor, ben değil."],
 	3: ["Her fener bir burcu ayakta tutar. Boğa, Yay, Akrep. Fenerler sönünce burçlar yozlaşıp kuleyi dolaşır.", "Düşman sandığın şeyler aslında bekçiydi. Işık gidince akılları da gitti."],
 	4: ["Koç ve Yengeç bu katta uyandı. İkisi eskiden kapıları korurdu.", "Ben de bir zamanlar fenerleri yakanlardandım. İlk çıkışında sen de bizdendin, Sidera."],

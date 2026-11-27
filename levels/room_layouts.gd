@@ -57,10 +57,10 @@ const LAYOUTS := {
 	},
 	# Lobi: her katın ilk odası. Düz zemin, platform ve doğma noktası yok; dükkân `shop_x` konumunda durur.
 	"lobi": {
-		"width": 1500,
+		"width": 2100,
 		"platforms": [],
 		"spawns": [],
-		"shop_x": 900,
+		"shop_x": 1000,
 	},
 	# Düz zemin: sadece parry/dash hissi.
 	"duz": {

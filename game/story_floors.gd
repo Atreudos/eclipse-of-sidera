@@ -38,6 +38,9 @@ const SECRETS := {
 	14: {3: "key"},
 	16: {1: "key"},
 	17: {4: "treasure"},
+	3: {1: "talk:kedi"},
+	8: {3: "talk:fare"},
+	11: {3: "talk:memur"},
 }
 
 ## Bu katların lobisine "çukurdan düşüp" gelinir: yumuşak bir slime'ın üstüne inersin.
@@ -65,6 +68,24 @@ const FLOOD_FLOORS := [4]
 
 ## Lobide gerçekleşen tek seferlik olaylar: kat -> olay kimliği.
 const LOBBY_EVENTS := {9: "yazi_tura", 13: "anket"}
+## Olayı yürüten karakter (lobide durur).
+const EVENT_NPC := {"yazi_tura": "umbra", "anket": "asansor"}
+
+## Kat adları (kat kartında altyazı).
+const FLOOR_TITLES := [
+	"Kulenin Dibi", "İlk Fener", "Boğa'nın Avlusu", "Kapı Bekçileri", "Aynalar Katı", "Bırakılan Kılıç",
+	"İkizler ve Aslan", "Yarım Fener", "Terazi Katı", "Tartıcı'nın Odası", "Geri Alınanlar", "Üçüncü Perde",
+	"Su Katı", "Küçük El", "Durulan Gözler", "Son Soluk", "Tutulma", "Son Fener",
+]
+
+
+static func floor_title(floor_no: int) -> String:
+	return str(FLOOR_TITLES[clampi(floor_no, 1, FLOOR_TITLES.size()) - 1])
+
+
+static func event_npc(ev: String) -> String:
+	return str(EVENT_NPC.get(ev, ""))
+
 
 
 static func lobby_event(floor_no: int) -> String:
@@ -80,22 +101,15 @@ static func event_dialogue(id: String) -> Dictionary:
 			return {"speaker": "Umbra", "start": "done" if done else "a", "nodes": {
 				"a": {"text": "*Umbra bir bozuk para fırlatıp yakaladı.* Yazı mı, tura mı? Kazanan kulenin sırrını öğrenir.", "choices": [
 					{"text": "Yazı", "next": "yazi"}, {"text": "Tura", "next": "tura"}, {"text": "Bozuk paraya güvenmem", "next": "no", "cancel": true}]},
-				"yazi": {"text": "*Para havada döndü. Tura geldi.* Üzgünüm. Aslında iki yüzü de tura.", "next": "yazi2", "set": flag},
+				"yazi": {"text": "*Para havada döndü. Tura geldi.* Üzgünüm. Aslında iki yüzü de tura.", "next": "yazi2", "set_before": flag},
 				"yazi2": {"text": "*Kaybettin ama çok güzel kaybettin.*", "dopamin": 5, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
-				"tura": {"text": "*Para havada döndü. Tura geldi.* ...Hile yok, yemin ederim. Al şunu.", "next": "tura2", "set": flag},
+				"tura": {"text": "*Para havada döndü. Tura geldi.* ...Hile yok, yemin ederim. Al şunu.", "next": "tura2", "set_before": flag},
 				"tura2": {"text": "*Umbra sana bir avuç altın verdi, gözünü kaçırarak.*", "gold": 30, "gold_flag": "gd_" + id, "dopamin": 5, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
 				"no": {"text": "Akıllıca. Ben de güvenmem.", "next": "end"},
 				"done": {"text": "*Umbra bozuk parayı alnına dayamış, derin derin düşünüyor.*", "next": "end"},
 			}}
 		"anket":
-			return {"speaker": "Mira", "start": "done" if done else "a", "nodes": {
-				"a": {"text": "Asansör bozuk. Çıkmadan önce kısa bir anket: Kule'yi nasıl buldun?", "choices": [
-					{"text": "Çok yüksek", "next": "r"}, {"text": "Çok karanlık", "next": "r"}, {"text": "Ben bu anketi sevdim", "next": "r"}, {"text": "Cevap vermeyeceğim", "next": "no", "cancel": true}]},
-				"r": {"text": "Teşekkürler! Cevabın Umbra'ya iletildi. Merak etme, o da cevaplamadı.", "next": "r2", "set": flag},
-				"r2": {"text": "*Mira bir kupon uzattı: '1 ücretsiz iç çekiş'.*", "gold": 20, "gold_flag": "gd_" + id, "dopamin": 3, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "end"},
-				"no": {"text": "Anlaşıldı. 'Cevapsız' da bir cevaptır.", "next": "end"},
-				"done": {"text": "Anket sonuçları: herkes yorgun.", "next": "end"},
-			}}
+			return NpcExtra.dialogue("asansor")
 	return Dialogue.linear("", ["..."])
 
 

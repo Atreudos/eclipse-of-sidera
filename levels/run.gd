@@ -53,6 +53,7 @@ var side_room: SideRoom = null
 var in_side_room := false
 var _side_dir := ""
 var _side_kind := "npc"
+var _pending_arrival := ""
 var _side_door: SideDoor = null
 var _side_t := 0.0
 var _side_switched := false
@@ -354,9 +355,11 @@ func _build_room(index: int) -> Room:
 		room.reward_chest.looted.connect(_on_chest_looted)
 	else:
 		_place_room_chest(room, loc)
-		if floors_enabled and int(loc["kind"]) == FloorPlan.Kind.COMBAT:
+		if floors_enabled and int(loc["kind"]) == FloorPlan.Kind.COMBAT and int(loc["floor"]) > 1:
 			_place_secret_door(room, loc)
 			_place_props(room, 1)
+			Prop.attach(room, room.rect.size.x - 70.0, Prop.DOOR_LINES)
+			_hook_props(room)
 	room.cleared.connect(_on_room_cleared)
 	room.wave_started.connect(_on_wave_started)
 	if room.floor_exit != null:
@@ -388,6 +391,7 @@ func _enter_room(index: int, first: bool = false, announce: bool = true) -> void
 	if room.kind == FloorPlan.Kind.LOBBY:
 		_setup_shop(room)
 		_setup_side_door(room)
+		_place_lobby_extras(room)
 		floor_changed.emit(room.floor_no)
 		EventBus.floor_entered.emit(room.floor_no)
 	if announce:
@@ -458,49 +462,60 @@ func _setup_shop(room: Room) -> void:
 	Story.set_flag("floor_seen", room.floor_no)
 	_place_npc(room, "mira", stand.position.x - 420.0)
 	_place_lobby_chest(room)
-	_place_props(room, 2)
-	if StoryFloors.has_slime(room.floor_no):
-		_place_slime(room)
-	var ev := StoryFloors.lobby_event(room.floor_no)
-	if ev != "":
-		_place_event_prop(room, ev)
 
 
-## Odaya esprili eşyalar koyar (tohumdan; sandıklara ve NPC'ye yakın olmaz).
-func _place_props(room: Room, count: int) -> void:
+## Etkileşimli nesnelerin çevresinde bırakılan boşluk (px): başka bir etkileşimli buraya konmaz (E alanları üst üste binmesin).
+const PROP_GAP := 150.0
+const SHOP_GAP := 240.0
+## Lobide olay karakterinin / slime'ın yeri (başlangıç noktasının biraz sağı).
+const EVENT_X := START_OFFSET + 150.0
+
+
+## Odaya esprili eşyalar koyar. Konum tohumdan gelir (aynı koşu = aynı yerleşim); sandık, NPC, kapı ve dükkândan uzak durur.
+func _place_props(room: Room, count: int, lo: float = 300.0, hi: float = -1.0) -> void:
 	var r := rng_for(room.index, "props")
-	var w := RoomLayouts.width_of(room.layout_id) if room.rect.size.x <= 0.0 else room.rect.size.x
-	var taken: Array[float] = []
+	var top := hi if hi > 0.0 else room.rect.size.x - 300.0
+	var taken: Array[Vector2] = []
 	for c in room.get_children():
-		if c is Chest or c is Npc or c is ShopStand:
-			taken.append((c as Node2D).position.x)
+		if c is ShopStand:
+			taken.append(Vector2((c as Node2D).position.x, SHOP_GAP))
+		elif c is Chest or c is Npc or c is SideDoor or c is Prop:
+			taken.append(Vector2((c as Node2D).position.x, PROP_GAP))
 	for i in count:
-		var x := r.randf_range(300.0, maxf(w - 300.0, 400.0))
-		var ok := false
-		for tries in 8:
-			ok = true
+		for tries in 14:
+			var x := r.randf_range(lo, maxf(top, lo + 50.0))
+			var ok := true
 			for t in taken:
-				if absf(t - x) < 220.0:
+				if absf(t.x - x) < t.y:
 					ok = false
-			if ok:
-				break
-			x = r.randf_range(300.0, maxf(w - 300.0, 400.0))
-		if not ok:
-			continue
-		taken.append(x)
-		var p := Prop.new()
-		p.name = "Prop_%d" % i
-		p.kind = Prop.KINDS[r.randi() % Prop.KINDS.size()]
-		p.position = Vector2(x, RoomLayouts.FLOOR_Y)
-		room.add_child(p)
-		p.requested.connect(_on_prop_requested)
+					break
+			if not ok:
+				continue
+			taken.append(Vector2(x, PROP_GAP))
+			var p := Prop.new()
+			p.name = "Prop_%d" % i
+			p.kind = str(Prop.KINDS[r.randi() % Prop.KINDS.size()])
+			p.tint = room.palette["accent"]
+			p.position = Vector2(x, RoomLayouts.FLOOR_Y)
+			room.add_child(p)
+			break
+
+
+## Odadaki (henüz bağlanmamış) bütün eşyaların `requested` sinyalini konuşma kutusuna bağlar.
+func _hook_props(room: Node) -> void:
+	for n in get_tree().get_nodes_in_group("props"):
+		var p := n as Prop
+		if p != null and room.is_ancestor_of(p) and not p.requested.is_connected(_on_prop_requested):
+			p.requested.connect(_on_prop_requested)
 
 
 ## Savaş odasına ETİKETSİZ kapı koyar (StoryFloors.SECRETS). Oda temizlenince kullanılabilir.
+## Tür "anahtar:parametre" biçimindedir ("talk:kedi" = konuşma odası, NPC kedi).
 func _place_secret_door(room: Room, loc: Dictionary) -> void:
 	var sk := StoryFloors.secret_kind(int(loc["floor"]), int(loc["slot"]))
 	if sk == "":
 		return
+	var parts := sk.split(":")
 	var w := room.rect.size.x
 	var x := w * 0.62
 	for frac in [0.62, 0.4, 0.8]:
@@ -516,55 +531,65 @@ func _place_secret_door(room: Room, loc: Dictionary) -> void:
 	d.label = ""
 	d.accent = room.palette["accent"]
 	d.position = Vector2(x, RoomLayouts.FLOOR_Y)
-	d.set_meta("side_kind", sk)
+	d.set_meta("side_kind", parts[0])
+	if parts.size() > 1:
+		d.set_meta("side_npc", parts[1])
 	room.add_child(d)
 	d.used.connect(_on_side_door_used)
-	if sk == "key":
+	if parts[0] == "key":
 		room.key_needed = true
 
 
+## Bir eşyaya E basıldı: sıradaki esprili satır (türün ilk bakışında +1 DOPAMİN). `talk` meta'sı özel konuşma ister.
 func _on_prop_requested(p: Prop) -> void:
 	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
 		return
-	hud.dialogue_menu.talk(player, Dialogue.linear("", [p.next_text()]), "")
+	if str(p.get_meta("talk", "")) == "slime":
+		hud.dialogue_menu.talk(player, StoryFloors.slime_dialogue(current_floor()), "Slime")
+		return
+	var node := {"text": p.next_text(), "next": "end"}
+	if not p.ghost:
+		node["dopamin"] = 1
+		node["dopamin_flag"] = "dp_prop_" + p.kind
+		node["dopamin_repeat"] = false
+	hud.dialogue_menu.talk(player, {"speaker": "", "start": "n0", "nodes": {"n0": node}}, "")
+
+
+## Lobinin ekstraları (bir kez): olay karakteri ya da slime ve esprili eşyalar. Dükkân, Mira, sandık ve kapı konduktan SONRA çağrılır.
+func _place_lobby_extras(room: Room) -> void:
+	if room.get_node_or_null("LobbyExtras") != null:
+		return
+	var marker := Node.new()
+	marker.name = "LobbyExtras"
+	room.add_child(marker)
+	if StoryFloors.has_slime(room.floor_no):
+		_place_slime(room)
+	var ev := StoryFloors.lobby_event(room.floor_no)
+	if ev != "":
+		var n := _place_npc(room, StoryFloors.event_npc(ev), EVENT_X)
+		n.set_meta("event", ev)
+	_place_props(room, 2, 300.0, room.rect.size.x - 300.0)
+	_hook_props(room)
 
 
 ## Düşüp indiğin yumuşak slime (StoryFloors.SLIME_FLOORS lobileri).
 func _place_slime(room: Room) -> void:
-	var w := RoomLayouts.width_of(room.layout_id)
 	var p := Prop.new()
 	p.name = "Slime"
 	p.kind = "slime"
-	p.position = Vector2(clampf(RoomLayouts.shop_x(room.layout_id) + 520.0, 300.0, w - 300.0), RoomLayouts.FLOOR_Y)
+	p.range_x = 120.0
+	p.set_meta("talk", "slime")
+	p.position = Vector2(EVENT_X, RoomLayouts.FLOOR_Y)
 	room.add_child(p)
-	p.requested.connect(_on_slime_requested)
-	hud.announcer.push("Yumuşak bir şeyin üstüne düştün.", GameFont.WHITE, 30, 2.4)
+	_announce_arrival("Yumuşak bir şeyin üstüne düştün.")
 
 
-## Lobide tek seferlik bir olay karakteri/eşyası (StoryFloors.LOBBY_EVENTS).
-func _place_event_prop(room: Room, ev: String) -> void:
-	var w := RoomLayouts.width_of(room.layout_id)
-	var p := Prop.new()
-	p.name = "Event_" + ev
-	p.kind = "mum"
-	p.set_meta("event", ev)
-	p.position = Vector2(clampf(RoomLayouts.shop_x(room.layout_id) + 520.0, 300.0, w - 300.0), RoomLayouts.FLOOR_Y)
-	room.add_child(p)
-	p.requested.connect(_on_event_prop_requested)
-
-
-func _on_event_prop_requested(p: Prop) -> void:
-	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
-		return
-	var ev := str(p.get_meta("event", ""))
-	var d := StoryFloors.event_dialogue(ev)
-	hud.dialogue_menu.talk(player, d, str(d.get("speaker", "")))
-
-
-func _on_slime_requested(_p: Prop) -> void:
-	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
-		return
-	hud.dialogue_menu.talk(player, StoryFloors.slime_dialogue(current_floor()), "Slime")
+## Geliş cümlesi: geçiş sürüyorsa kararma bitince, değilse hemen gösterilir.
+func _announce_arrival(text: String) -> void:
+	if _trans != Trans.NONE:
+		_pending_arrival = text
+	else:
+		hud.announcer.push(text, GameFont.WHITE, 30, 2.4)
 
 
 ## Lobiye konuşulabilir bir karakter koyar.
@@ -582,6 +607,11 @@ func _place_npc(room: Room, id: String, x: float) -> Npc:
 
 func _on_npc_requested(npc: Npc) -> void:
 	if player == null or not is_instance_valid(player) or player.dead or _trans != Trans.NONE:
+		return
+	var ev := str(npc.get_meta("event", ""))
+	if ev != "":
+		var d := StoryFloors.event_dialogue(ev)
+		hud.dialogue_menu.talk(player, d, str(d.get("speaker", "")))
 		return
 	hud.dialogue_menu.talk(player, NpcTalk.dialogue(npc.npc_id, current_floor()), NpcTalk.display_name(npc.npc_id))
 
@@ -717,7 +747,12 @@ func _side_switch() -> void:
 		var r := rng_for(current, "side_room")
 		side_room = SideRoom.new()
 		rooms_root.add_child(side_room)
-		side_room.build(SIDE_ROOM_X, f, NpcTalk.pocket_npc(f) if _side_kind == "npc" else "", r, _side_kind)
+		var side_npc := ""
+		if _side_kind == "npc":
+			side_npc = NpcTalk.pocket_npc(f)
+		elif _side_kind == "talk" and is_instance_valid(_side_door):
+			side_npc = str(_side_door.get_meta("side_npc", ""))
+		side_room.build(SIDE_ROOM_X, f, side_npc, r, _side_kind)
 		for ch in side_room.chests:
 			ch.looted.connect(_on_chest_looted)
 		if side_room.npc != null:
@@ -911,6 +946,8 @@ func _on_room_cleared(room: Room) -> void:
 			hud.announcer.push("KİLİT AÇILDI", GameFont.YELLOW, 52, 1.8)
 	else:
 		hud.announcer.push("ODA TEMİZ", GameFont.YELLOW, 58, 1.8)
+		if room.key_needed and not room.key_taken:
+			hud.announcer.push("Kapı kilitli. Odada yazısız garip bir kapı var...", GameFont.WHITE, 28, 3.0)
 	EventBus.room_cleared.emit(room.index)
 
 
@@ -965,17 +1002,20 @@ func _tick_transition(delta: float) -> void:
 				_trans = Trans.HOLD
 				_trans_t = 0.0
 		Trans.HOLD:
-			hud.set_card("KAT %d" % current_floor(), "", clampf(_trans_t / 0.3, 0.0, 1.0))
+			hud.set_card("KAT %d" % current_floor(), StoryFloors.floor_title(current_floor()) if floors_enabled else "", clampf(_trans_t / 0.3, 0.0, 1.0))
 			if _trans_t >= CARD_TIME:
 				_trans = Trans.IN
 				_trans_t = 0.0
 		Trans.IN:
 			hud.set_fade(1.0 - clampf(_trans_t / FADE_IN_TIME, 0.0, 1.0))
-			hud.set_card("KAT %d" % current_floor(), "", 1.0 - clampf(_trans_t / (FADE_IN_TIME * 0.5), 0.0, 1.0))
+			hud.set_card("KAT %d" % current_floor(), StoryFloors.floor_title(current_floor()) if floors_enabled else "", 1.0 - clampf(_trans_t / (FADE_IN_TIME * 0.5), 0.0, 1.0))
 			if _trans_t >= FADE_IN_TIME:
 				hud.set_fade(0.0)
 				hud.set_card("", "", 0.0)
 				_trans = Trans.NONE
+				if _pending_arrival != "":
+					hud.announcer.push(_pending_arrival, GameFont.WHITE, 30, 2.4)
+					_pending_arrival = ""
 				if player != null and is_instance_valid(player) and not won:
 					player.input_locked = false
 

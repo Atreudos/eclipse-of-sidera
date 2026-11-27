@@ -27,8 +27,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _player.dead or _cool > 0.0:
 		return
-	var d := _player.global_position - global_position
-	if absf(d.x) <= RANGE_X and d.y > -40.0 and d.y < 16.0 and _player.velocity.y >= -50.0:
+	var dx := _player.global_position.x - global_position.x
+	var dy := _player.feet_y() - global_position.y  # ayak noktası, fırlatıcının yüzeyine göre
+	if absf(dx) <= RANGE_X and dy > -30.0 and dy < 16.0 and _player.velocity.y >= -50.0:
 		_player.velocity.y = -POWER
 		_cool = COOLDOWN
 		_pulse = 1.0
