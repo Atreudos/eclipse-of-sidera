@@ -14,6 +14,8 @@ const NPCS := {
 	"fare": {"name": "Kira Faresi", "title": "Ev Sahibi", "tint": Color(0.72, 0.72, 0.78)},
 	"memur": {"name": "Kayıp Eşya Memuru", "title": "Memur", "tint": Color(0.55, 0.78, 0.72)},
 	"asansor": {"name": "Bozuk Asansör", "title": "Anketçi", "tint": Color(0.6, 0.72, 0.88)},
+	"muzisyen": {"name": "Kule Kemancısı", "title": "Çalgıcı", "tint": Color(0.85, 0.62, 0.7)},
+	"balikci": {"name": "Kuru Balıkçı", "title": "Oltacı", "tint": Color(0.5, 0.75, 0.85)},
 }
 
 

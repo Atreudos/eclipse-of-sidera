@@ -394,6 +394,7 @@ func die() -> void:
 		tw.tween_property(self, "scale", Vector2(1.25, 0.1), 0.3)
 		tw.chain().tween_callback(queue_free)
 	RingFx.spawn(get_parent(), global_position, Color(1, 1, 1, 0.8), 10.0, 60.0, 0.3)
+	BurstFx.spawn(get_parent(), global_position, Color(1.0, 0.88, 0.65), 14, 340.0)
 
 
 ## Ölünce altın saçar (oyuncu toplar; kat başlarındaki mağazada harcanacak).

@@ -71,9 +71,9 @@ const END_EVENTS := {7: "gold_rain", 10: "rockfall", 11: "blackout"}
 
 
 ## Lobide gerçekleşen tek seferlik olaylar: kat -> olay kimliği.
-const LOBBY_EVENTS := {9: "yazi_tura", 13: "anket", 15: "dogum"}
+const LOBBY_EVENTS := {3: "keman", 9: "yazi_tura", 12: "balik", 13: "anket", 15: "dogum"}
 ## Olayı yürüten karakter (lobide durur).
-const EVENT_NPC := {"yazi_tura": "umbra", "anket": "asansor", "dogum": "umbra"}
+const EVENT_NPC := {"yazi_tura": "umbra", "anket": "asansor", "dogum": "umbra", "keman": "muzisyen", "balik": "balikci"}
 
 ## Kat adları (kat kartında altyazı).
 const FLOOR_TITLES := [
@@ -114,6 +114,10 @@ static func event_dialogue(id: String) -> Dictionary:
 			}}
 		"anket":
 			return NpcExtra.dialogue("asansor")
+		"keman":
+			return NpcExtra.dialogue("muzisyen")
+		"balik":
+			return NpcExtra.dialogue("balikci")
 		"dogum":
 			return {"speaker": "Umbra", "start": "done" if done else "a", "nodes": {
 				"a": {"text": "*Umbra başında kâğıttan bir külahla köşede oturuyor.* Bugün doğum günüm. Bilmiyordum, az önce hesapladım.", "next": "b"},

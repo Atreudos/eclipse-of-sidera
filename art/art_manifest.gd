@@ -467,7 +467,7 @@ static func _lobby() -> void:
 		["idle", "idle", "Mira bekliyor, fener hafifçe sallanır", "6", true, 0.8, true, 6],
 		["talk", "talk", "Konuşuyor (konuşma kutusu açıkken)", "6", true, 0.7, false, 6],
 	])
-	for npc: Array in [["npc_tellal", "Tellal (haberci, ara oda)"], ["npc_ayna", "Kırık Ayna (ara oda; Umbra'nın sesi)"], ["npc_terazi", "Terazi Yaşlısı (ara oda)"], ["npc_su", "Su Taşıyıcı (ara oda)"], ["npc_umbra", "Umbra, sakin hâli (son iki katın ara odası ve kat 9 lobisinde yazı-tura)"], ["npc_asansor", "Bozuk Asansör (kat 13 lobisi, anket; komik bir makine / kapılı kutu)"], ["npc_kedi", "Nöbetçi Kedi (kat 3'ün gizli odası; sevilmek ister)"], ["npc_fare", "Kira Faresi (kat 8'in gizli odası; gözlüklü, elinde defter)"], ["npc_memur", "Kayıp Eşya Memuru (kat 11'in gizli odası; masada uyuyor)"]]:
+	for npc: Array in [["npc_tellal", "Tellal (haberci, ara oda)"], ["npc_ayna", "Kırık Ayna (ara oda; Umbra'nın sesi)"], ["npc_terazi", "Terazi Yaşlısı (ara oda)"], ["npc_su", "Su Taşıyıcı (ara oda)"], ["npc_umbra", "Umbra, sakin hâli (son iki katın ara odası ve kat 9 lobisinde yazı-tura)"], ["npc_asansor", "Bozuk Asansör (kat 13 lobisi, anket; komik bir makine / kapılı kutu)"], ["npc_kedi", "Nöbetçi Kedi (kat 3'ün gizli odası; sevilmek ister)"], ["npc_fare", "Kira Faresi (kat 8'in gizli odası; gözlüklü, elinde defter)"], ["npc_memur", "Kayıp Eşya Memuru (kat 11'in gizli odası; masada uyuyor)"], ["npc_muzisyen", "Kule Kemancısı (kat 3 lobisi; teli kopuk bir kemanla sessiz çalıyor)"], ["npc_balikci", "Kuru Balıkçı (kat 12 lobisi; kuruda olta sallıyor, ayağında çizme)"]]:
 		_chars(S, String(npc[1]), String(npc[0]), MERCHANT_SIZE, [
 			["idle", "idle", "Bekliyor, hafifçe nefes alıyor", "6", true, 0.8, true, 6],
 		])
