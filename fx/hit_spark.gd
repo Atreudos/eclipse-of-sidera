@@ -15,6 +15,10 @@ var _rays: Array[Dictionary] = []
 static func spawn(parent: Node, pos: Vector2, direction: Vector2, spark_color: Color = Color.WHITE, spark_size: float = 1.0) -> void:
 	if parent == null:
 		return
+	# fx_hit_spark çizimi varsa o oynar (sağa bakar, vuruş yönüne döndürülür); yoksa kod kıvılcımı.
+	var dir_n := direction.normalized() if direction.length() > 0.01 else Vector2.RIGHT
+	if ArtFx.play(parent, "fx_hit_spark", pos, {"rot": dir_n.angle(), "scale": maxf(spark_size, 0.6), "z": 25}) != null:
+		return
 	var fx := HitSpark.new()
 	fx.color = spark_color
 	fx.dir = direction.normalized() if direction.length() > 0.01 else Vector2.RIGHT

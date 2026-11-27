@@ -51,6 +51,8 @@ func _physics_process(delta: float) -> void:
 	_steer(delta)
 	position += velocity * delta
 	_age += delta
+	if Art.has("fx_projectile_gold"):
+		queue_redraw()  # çizim şeridi oynasın
 	if _age >= lifetime:
 		queue_free()
 
@@ -69,11 +71,18 @@ func _steer(delta: float) -> void:
 
 
 func _on_landed(_target: Hurtbox) -> void:
+	_burst()
 	queue_free()
 
 
 func _on_hit_world(_body: Node) -> void:
+	_burst()
 	queue_free()
+
+
+## İsabet / sönme patlaması (fx_projectile_hit çizimi varsa).
+func _burst() -> void:
+	ArtFx.play(get_parent(), "fx_projectile_hit", global_position)
 
 
 func _on_parried(by: Node) -> void:
@@ -97,6 +106,15 @@ func _on_parried(by: Node) -> void:
 
 
 func _draw() -> void:
+	# Çizim varsa (fx_projectile_gold / red / parried) o; yoksa kod çizimi.
+	var art := "fx_projectile_gold"
+	if faction == "player":
+		art = "fx_projectile_parried"
+	elif not parryable:
+		art = "fx_projectile_red"
+	var sz := radius * 3.2
+	if Art.draw(self, art, Rect2(-sz * 0.5, -sz * 0.5, sz, sz), _age):
+		return
 	var color := GOLD
 	if faction == "player":
 		color = PARRIED

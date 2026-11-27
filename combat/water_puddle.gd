@@ -71,6 +71,15 @@ func _slow_player() -> void:
 
 
 func _draw() -> void:
+	# Çizimler varsa (fx_water_warning uyarı, fx_water_puddle birikinti; 192x48, tabanı zeminde) onlar.
+	var box := Rect2(-RADIUS * 1.07, -RADIUS * 0.27, RADIUS * 2.13, RADIUS * 0.53)
+	if _t < WARN_TIME:
+		if Art.draw(self, "fx_water_warning", box, _t):
+			return
+	else:
+		var left := clampf((WARN_TIME + LIFE - _t) / 1.0, 0.0, 1.0)
+		if Art.draw(self, "fx_water_puddle", box, _t, Color(1.0, 1.0, 1.0, left)):
+			return
 	if _t < WARN_TIME:
 		var k := _t / WARN_TIME
 		var a := 0.35 + 0.35 * sin(_t * 18.0)

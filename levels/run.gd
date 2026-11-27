@@ -292,6 +292,9 @@ func _ready() -> void:
 	if player == null:
 		player = $Player as Player
 	player.died.connect(_on_player_died)
+	var art_fx := ArtFxDirector.new()
+	art_fx.name = "ArtFxDirector"
+	add_child(art_fx)
 	EventBus.enemy_died.connect(_on_enemy_died)
 	EventBus.combo_ended.connect(_on_combo_ended)
 	var has_prev := start > 0 and (not floors_enabled or int(loc_of(start)["slot"]) > 0)

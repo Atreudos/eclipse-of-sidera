@@ -35,9 +35,18 @@ func _on_parried(by: Node) -> void:
 
 
 func _draw() -> void:
+	# fx_balance_orb çizimi varsa o (parry'lenince mavi-camgöbeği tonla); yoksa mermi + iki kefe.
+	var sz := radius * 4.8
+	var tone := Color(0.6, 1.0, 1.0) if faction == "player" else Color.WHITE
+	if Art.draw(self, "fx_balance_orb", Rect2(-sz * 0.5, -sz * 0.5, sz, sz), _age_for_art(), tone):
+		return
 	super._draw()
 	# İki kefe: küçük yan toplar (terazi)
 	var c := PARRIED if faction == "player" else GOLD
 	draw_circle(Vector2(0.0, -radius * 1.5), radius * 0.4, Color(c, 0.9))
 	draw_circle(Vector2(0.0, radius * 1.5), radius * 0.4, Color(c, 0.9))
 	draw_line(Vector2(0.0, -radius * 1.5), Vector2(0.0, radius * 1.5), Color(c, 0.5), 2.0)
+
+
+func _age_for_art() -> float:
+	return float(Time.get_ticks_msec()) / 1000.0

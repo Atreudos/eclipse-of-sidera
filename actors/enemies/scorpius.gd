@@ -374,6 +374,7 @@ func _begin_vanish() -> void:
 	_alpha_tween = create_tween()
 	_alpha_tween.tween_property(self, "visual_alpha", 0.0, VANISH_TIME * 0.8)
 	RingFx.spawn(get_parent(), global_position, Color(0.75, 0.55, 1.0, 0.8), 6.0, 38.0, 0.25)
+	ArtFx.play(get_parent(), "fx_vanish_puff", global_position)
 	Sfx.play("vanish", -3.0)
 	anim.trigger("vanish", VANISH_TIME)
 
@@ -391,6 +392,7 @@ func _ai_vanish(delta: float) -> void:
 	visual_alpha = 1.0
 	flash(Color(0.8, 0.6, 1.0), 0.2)
 	RingFx.spawn(get_parent(), global_position, Color(0.75, 0.55, 1.0, 0.9), 6.0, 42.0, 0.25)
+	ArtFx.play(get_parent(), "fx_vanish_puff", global_position)
 	set_tell(Tell.RED)  # arkadan vuruş parry'lenemez: kırmızı (sembolsüz) uyarı
 	anim.trigger("stab_telegraph", STAB_TELL_TIME)
 
@@ -411,6 +413,7 @@ func _begin_stab() -> void:
 	attack_hitbox.damage = tuning.scale_damage(1)
 	attack_hitbox.active = true
 	anim.trigger("stab", STAB_TIME)
+	ArtFx.play(get_parent(), "fx_thrust_trail", global_position + Vector2(float(facing) * 20.0, -4.0), {"flip": facing < 0})
 	Sfx.play("thrust", -3.0, 0.9, 0.04)
 
 

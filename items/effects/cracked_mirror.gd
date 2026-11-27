@@ -24,6 +24,7 @@ func _save() -> bool:
 	RingFx.spawn(owner.get_parent(), owner.global_position, Color(1.0, 1.0, 1.0, 0.8), 8.0, 70.0, 0.3)
 	EventBus.screen_flash.emit(Color(0.85, 0.95, 1.0), 0.5, 0.4)
 	EventBus.screen_shake.emit(8.0, 0.3)
+	ArtFx.play(owner.get_parent(), "fx_mirror_crack", owner.global_position)
 	Sfx.play("mirror_crack")
 	EventBus.item_consumed.emit(owner, data)
 	if owner.inventory != null:

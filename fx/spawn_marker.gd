@@ -60,6 +60,14 @@ func _emerge() -> void:
 
 func _draw() -> void:
 	var k := clampf(_t / duration, 0.0, 1.0)
+	# Çizimler varsa (fx_spawn_ring yerde halka, fx_spawn_pillar ışık sütunu) onlar; süre manifestteki 0.55 sn'ye göre uzatılır/kısılır.
+	if Art.has("fx_spawn_pillar") or Art.has("fx_spawn_ring"):
+		var at := k * 0.55
+		Art.draw(self, "fx_spawn_ring", Rect2(-64.0, -24.0, 128.0, 48.0), at)
+		if Art.draw(self, "fx_spawn_pillar", Rect2(-32.0, -192.0, 64.0, 192.0), at):
+			return
+		if Art.has("fx_spawn_ring"):
+			return
 	# Sütun: önce ince ve soluk, sonra parlayıp genişler; çıkış anında söner.
 	var h := 150.0 * (1.0 - pow(1.0 - minf(k * 1.6, 1.0), 3.0))
 	var w := lerpf(4.0, 38.0, k * k)
