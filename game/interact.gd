@@ -9,6 +9,18 @@ const GROUP := "interactables"
 
 static var _frame := -1
 static var _winner := 0
+static var _blocked_until := -1
+
+
+## Menü/konuşma kapanırken çağrılır: kapatan E basışı aynı karede oyuncuya da ulaşır ve konuşmayı yeniden açardı.
+## Bu fizik karesinden sonraki `frames` kare boyunca etkileşim yok sayılır.
+static func block(frames: int = 8) -> void:
+	_blocked_until = Engine.get_physics_frames() + frames
+
+
+## Etkileşim şu an engelli mi (menü yeni kapandı)?
+static func blocked() -> bool:
+	return Engine.get_physics_frames() <= _blocked_until
 
 
 ## `who`, oyuncuya yatayda en yakın (menzildeki ve kullanılabilir) etkileşimli mi?
@@ -26,6 +38,7 @@ static func is_best(who: Node2D) -> bool:
 static func reset() -> void:
 	_frame = -1
 	_winner = 0
+	_blocked_until = -1
 
 
 static func _pick(tree: SceneTree) -> int:

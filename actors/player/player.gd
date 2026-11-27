@@ -293,7 +293,7 @@ func _physics_process(delta: float) -> void:
 	if not was_on_floor and is_on_floor() and fall_speed > HARD_LANDING_SPEED:
 		_on_landed(fall_speed)
 	_post_move(delta)
-	if intent.interact_pressed and not dead:
+	if intent.interact_pressed and not dead and not Interact.blocked():
 		interacted.emit()
 	intent.clear_edges()
 	queue_redraw()

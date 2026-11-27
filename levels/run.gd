@@ -52,6 +52,8 @@ const SIDE_FADE := 0.45
 var side_room: SideRoom = null
 var in_side_room := false
 var _side_dir := ""
+## Lobide etiketli "ARA ODA" kapısı (eski, amaçsız ara oda). Kapalı; gizli etiketsiz kapılar (StoryFloors.SECRETS) bundan bağımsızdır.
+var lobby_side_door := false
 var _side_kind := "npc"
 var _pending_arrival := ""
 var _side_door: SideDoor = null
@@ -390,7 +392,8 @@ func _enter_room(index: int, first: bool = false, announce: bool = true) -> void
 	_set_hud_room(room, 1, maxi(room.waves.size(), 1), false)
 	if room.kind == FloorPlan.Kind.LOBBY:
 		_setup_shop(room)
-		_setup_side_door(room)
+		if lobby_side_door:
+			_setup_side_door(room)
 		_place_lobby_extras(room)
 		floor_changed.emit(room.floor_no)
 		EventBus.floor_entered.emit(room.floor_no)

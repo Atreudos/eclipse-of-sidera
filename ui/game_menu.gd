@@ -62,6 +62,7 @@ func close() -> void:
 	if ItemView.active_menu == self:
 		ItemView.active_menu = null
 	get_tree().paused = false
+	Interact.block()
 	Sfx.play("ui_move", -6.0)
 	closed.emit()
 

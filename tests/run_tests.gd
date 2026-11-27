@@ -8752,8 +8752,11 @@ func _test_side_room_travel() -> void:
 	var run := _start_run(777, true)
 	await _frames(10)
 	var lobby := run.current_room()
+	check(lobby.get_node_or_null("SideDoor") == null, "lobide etiketli ara oda kapısı varsayılan olarak yok")
+	run.lobby_side_door = true
+	run._setup_side_door(lobby)
 	var door := lobby.get_node_or_null("SideDoor") as SideDoor
-	check(lobby != null and lobby.kind == FloorPlan.Kind.LOBBY and door != null, "lobide ara oda kapısı var")
+	check(lobby != null and lobby.kind == FloorPlan.Kind.LOBBY and door != null, "lobide ara oda kapısı (açılınca) var")
 	var home := run.player.global_position
 	run.player.global_position = door.global_position + Vector2(0.0, -40.0)
 	await _frames(3)
@@ -9706,6 +9709,22 @@ func _test_interact_arbiter() -> void:
 	for k in Prop.KINDS:
 		check(Prop.TEXTS.has(k) and (Prop.TEXTS[k] as Array).size() >= 4, "%s: en az 4 esprili satır" % k)
 	check(Prop.DOOR_LINES.size() >= 3, "kapı satırları var")
+	Interact.reset()
+	# Konuşmayı kapatan E basışı konuşmayı yeniden açmasın: menü kapanınca etkileşim birkaç kare kilitli
+	check(not Interact.blocked(), "başta etkileşim kilitli değil")
+	var dm := DialogueMenu.new()
+	_world.add_child(dm)
+	check(dm.talk(p, Dialogue.linear("T", ["tek satır"]), "T"), "konuşma açıldı")
+	dm._advance()
+	dm._advance()
+	check(not dm.is_open and Interact.blocked(), "konuşma kapanınca etkileşim kilitlendi")
+	var hits_before: int = hits["c"]
+	p.intent.interact_pressed = true
+	await _frames(2)
+	check(hits["c"] == hits_before, "kilit sürerken E basışı konuşmayı/eşyayı yeniden tetiklemedi")
+	await _frames(12)
+	check(not Interact.blocked(), "birkaç kare sonra kilit kalktı")
+	dm.queue_free()
 	Interact.reset()
 	p.queue_free()
 
