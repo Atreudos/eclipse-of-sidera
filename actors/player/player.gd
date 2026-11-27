@@ -160,6 +160,7 @@ var _jump_cut_done := true
 var _wall_dir := 0
 var _wall_t := 0.0
 var _wall_sliding := false
+var _wall_fx_t := 0.0
 var _wall_lock := 0.0
 
 var _dash_recharge_t := 0.0
@@ -304,7 +305,7 @@ func _on_landed(speed: float) -> void:
 	var k := clampf((speed - HARD_LANDING_SPEED) / 700.0, 0.0, 1.0)
 	Sfx.play("land", -11.0 + 7.0 * k, 1.0, 0.05)
 	RingFx.spawn(get_parent(), Vector2(global_position.x, feet_y() - 2.0), Color(1.0, 1.0, 1.0, 0.22 + 0.2 * k), 5.0, 18.0 + 24.0 * k, 0.2)
-	DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.3 + 0.7 * k)
+	DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.3 + 0.7 * k, Color(0.85, 0.82, 0.78, 0.55), "fx_dust_land")
 	landed.emit(speed)
 
 
@@ -497,8 +498,13 @@ func _handle_wall() -> void:
 				velocity.y = minf(velocity.y, WALL_SLIDE_SPEED)
 				_wall_sliding = true
 				facing = _wall_dir
+				_wall_fx_t -= get_physics_process_delta_time()
+				if _wall_fx_t <= 0.0:
+					_wall_fx_t = 0.28
+					ArtFx.play(get_parent(), "fx_wall_dust", global_position + Vector2(float(_wall_dir) * 14.0, -20.0), {"life": 0.3, "flip": _wall_dir < 0})
 	if _jump_buffer > 0.0 and _wall_t > 0.0 and _wall_dir != 0:
 		velocity = Vector2(-float(_wall_dir) * WALL_JUMP_SPEED_X, -stats.value("jump_velocity") * 0.95)
+		ArtFx.play(get_parent(), "fx_wall_kick", global_position + Vector2(float(_wall_dir) * 14.0, 0.0), {"flip": _wall_dir < 0})
 		facing = -_wall_dir
 		_wall_lock = WALL_LOCK_TIME
 		_wall_t = 0.0
@@ -516,7 +522,7 @@ func _do_jump() -> void:
 	_coyote = 0.0
 	_jump_cut_done = false
 	if is_on_floor():
-		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.2)
+		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.2, Color(0.85, 0.82, 0.78, 0.55), "fx_dust_jump")
 
 
 func _state_move(delta: float) -> void:
@@ -556,7 +562,7 @@ func _start_dash() -> void:
 	EventBus.dash_used.emit(self)
 	RingFx.spawn(get_parent(), global_position, Color(1, 1, 1, 0.55), 8.0, 38.0, 0.2)
 	if is_on_floor():
-		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), -float(_dash_dir), 0.6)
+		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), -float(_dash_dir), 0.6, Color(0.85, 0.82, 0.78, 0.55), "fx_dust_dash")
 
 
 func _state_dash(delta: float) -> void:

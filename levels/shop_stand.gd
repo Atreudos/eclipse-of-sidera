@@ -137,16 +137,31 @@ func _draw_offers() -> void:
 			shown.append(o)
 	var n := shown.size()
 	var gap := CELL + 10.0
+	# Çizimler gelince: tezgâh çizimi 128 yüksek olduğundan eşyalar onun üstüne çıkar; her eşyanın altında stand durur.
+	var counter_top := -128.0 if Art.has("shop_counter") else COUNTER.position.y
+	var stand_h := gap * 128.0 / 96.0
+	var with_stand := Art.has("shop_stand")
 	for i in n:
 		var o: ShopStock.Offer = shown[i]
 		var x := (float(i) - float(n - 1) * 0.5) * gap
 		var bob := 3.0 * sin(_t * 2.2 + float(i) * 0.9)
-		var r := Rect2(x - CELL * 0.5, COUNTER.position.y - CELL - 14.0 + bob, CELL, CELL)
-		if o.sold:
+		var top_y := counter_top - stand_h + 12.0
+		var r := Rect2(x - CELL * 0.5, counter_top - CELL - 14.0 + bob, CELL, CELL)
+		if with_stand:
+			r = Rect2(x - CELL * 0.5, top_y - CELL - 8.0 + bob, CELL, CELL)
+			var srect := Rect2(x - gap * 0.5, top_y, gap, stand_h)
+			if o.sold:
+				if not Art.draw(self, "shop_stand_empty", srect, _t):
+					Art.draw(self, "shop_stand", srect, _t, Color(1.0, 1.0, 1.0, 0.45))
+				continue
+			Art.draw(self, "shop_stand", srect, _t)
+		elif o.sold:
 			draw_rect(r, Color(0.05, 0.03, 0.08, 0.55))
 			draw_rect(r, Color(0.3, 0.26, 0.38, 0.7), false, 2.0)
 			continue
 		ItemView.draw_cell(self, r, o.item, 1, false, _t)
 		var affordable := _player != null and is_instance_valid(_player) and _player.gold >= o.price
 		var price_col := GameFont.YELLOW if affordable else Color(1.0, 0.45, 0.45)
-		GameFont.draw_centered(self, str(o.price), Vector2(x, COUNTER.position.y + 30.0), 15, price_col)
+		var price_y := counter_top + 30.0
+		Art.draw(self, "price_tag", Rect2(x - 28.0, price_y - 11.0, 56.0, 22.4), _t)
+		GameFont.draw_centered(self, str(o.price), Vector2(x, price_y), 15, price_col)

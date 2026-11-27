@@ -3,7 +3,7 @@ extends CharacterBody2D
 ## Altın para: düşmandan saçılır, zıplar, oyuncuya yaklaşınca çekilir ve toplanır.
 ## Oda temizlenince yerde kalan paralar oyuncuya uçar (kaçırılmasın). Mağaza (kat başlarında) bu altınla alışveriş yapılacak.
 ##
-## Koddan çizilir (spritesız): dönen sarı para. "Antika" para daha büyük, bronz renkli ve daha değerlidir.
+## Koddan çizilir (`coin_small` / `coin_antique` çizimi gelince o kullanılır): dönen sarı para. "Antika" para daha büyük, bronz renkli ve daha değerlidir.
 
 const SMALL_VALUE := 1
 const ANTIQUE_VALUE := 3
@@ -121,10 +121,15 @@ func _collect() -> void:
 	_target.add_gold(value)
 	Sfx.play("coin", -6.0, 1.0 + 0.05 * float(mini(_chain, 10)), 0.02)
 	RingFx.spawn(get_parent(), global_position, Color(1.0, 0.85, 0.3, 0.8), 4.0, 22.0, 0.16)
+	ArtFx.play(get_parent(), "fx_coin_sparkle", global_position)
 	queue_free()
 
 
 func _draw() -> void:
+	# Çizim varsa (coin_small / coin_antique şeridi, dönüşü kendi içinde) o çizilir.
+	var sz := 20.0 if antique else 16.0
+	if Art.draw(self, "coin_antique" if antique else "coin_small", Rect2(-sz * 0.5, -sz * 0.5, sz, sz), _age + _spin):
+		return
 	var t := float(_age) * 7.0 + _spin
 	var w := maxf(absf(cos(t)), 0.18)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(w, 1.0))

@@ -4,8 +4,11 @@ extends CPUParticles2D
 
 
 ## `pos`'ta küçük toz fışkırtır. `dir`: yatay yön (-1/0/+1; 0 = iki yana), `power`: 0..1.
-static func puff(parent: Node, pos: Vector2, dir: float = 0.0, power: float = 0.5, tint: Color = Color(0.85, 0.82, 0.78, 0.55)) -> void:
+## `art_file`: çizim listesindeki toz şeridi (fx_dust_land...). Çizim varsa o oynar, parçacıklar çıkmaz.
+static func puff(parent: Node, pos: Vector2, dir: float = 0.0, power: float = 0.5, tint: Color = Color(0.85, 0.82, 0.78, 0.55), art_file: String = "") -> void:
 	if parent == null:
+		return
+	if art_file != "" and ArtFx.play(parent, art_file, pos, {"flip": dir < 0.0, "z": 4}) != null:
 		return
 	var d := DustFx.new()
 	d.z_index = 4

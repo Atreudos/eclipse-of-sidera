@@ -29,7 +29,7 @@ Tasarım ve yol haritası: [`docs/PLAN.md`](docs/PLAN.md)
 | F4 | **Deneme modu (god)**: can düşmez, dash ve parry bekleme yok. Tekrar basınca kapanır, ölüp yeniden başlasan da açık kalır |
 | Tab | **Envanter ekranı**: karakter, slotlar, silahlar, çanta. Oyunu durdurur. Yön tuşları/WASD/fare ile gez; Enter/E/J ya da tıkla: tak, çıkar, ye; **silah kutusunda** Enter = elindeki sıradaki silaha geç. Esc kapatır |
 | F5 | **Eşya menüsü (deneme)**: listeden eşya seçip envantere ekler. Enter/E/J ekle, T yalnız çantaya, G +50 altın, H canı doldur, B +1 bağışıklık kalbi, C hepsini sil, **Y yumruğu ver, U silahları bir seviye yükselt** |
-| F6 | Geliştirici kısayolu: bulunduğun odayı hemen temizle (oda akışını denemek için) |
+| F (ya da F6) | Geliştirici kısayolu: odadaki tüm düşmanlar ölür, kalan dalgalar iptal olur, oda hemen temizlenir (editörde F6 sahneyi çalıştırdığı için oyunda `F` daha rahat) |
 | F7 | Geliştirici kısayolu: bir sonraki katın lobisine geç (kararma olmadan) |
 | Esc | **Duraklatma menüsü**: devam, yeniden başla, ana menü, oyundan çık (koşuyu kaybettirenler ikinci basışta onaylanır) |
 | M | Ölüm ekranında: ana menüye dön |
@@ -144,7 +144,7 @@ Kamera ayarları `fx/shake_camera.gd` dosyasının en üstündeki `@export` değ
 - Testler: `hikaye_metni`, `ara_oda`, `ara_oda_gecis`.
 
 ## Demo / deneme tuşları
-- **F8**: yaratık çağırma menüsü (11 yaratık, Enter ile önüne çağırır, menü açık kalır). **K** ya da **F6**: odadaki herkesi öldür ve odayı temizle. F5: eşya menüsü, F7: sonraki kat.
+- **F8**: yaratık çağırma menüsü (11 yaratık, Enter ile önüne çağırır, menü açık kalır). **F** (ya da K / F6): odadaki herkesi öldür, kalan dalgaları iptal et ve odayı temizle. F5: eşya menüsü, F7: sonraki kat.
 - Yengeç/Koç önden-arkadan ayrımı artık saldıranın konumuna bakar (dibine girince hitbox arkaya taşsa da önden sayılır).
 
 ## Bulmaca odaları (testler Godot'ta henüz koşulmadı)

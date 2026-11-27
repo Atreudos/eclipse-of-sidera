@@ -10043,6 +10043,12 @@ func _test_new_events() -> void:
 	DustFx.puff(_world, Vector2(100.0, 600.0), 1.0, 0.5)
 	ConfettiFx.burst(_world, Vector2(200.0, 500.0))
 	check(_world.get_child_count() == before + 2, "toz ve konfeti düğümü eklendi")
+	# Geliştirici kısayolu: kalan dalgalar iptal edilir
+	var ar := Room.new()
+	ar.waves = [[null], [null], [null]]
+	ar.abort_waves()
+	check(ar.wave_number == 3 and ar.pending_count() == 0, "abort_waves: kalan dalgalar iptal")
+	ar.free()
 	# Koşu: kat sonu olayı tetiği
 	var run := _start_run(901, true)
 	await _frames(6)

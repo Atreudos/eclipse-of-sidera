@@ -1254,13 +1254,13 @@ func _save_slot_time() -> void:
 		SaveStore.save_slot(slot)
 
 
-## Geliştirici kısayolları: F6 = odadaki herkesi öldür ve odayı temizle, F7 = bir sonraki kata geç (akışı hızlı denemek için).
+## Geliştirici kısayolları: F (ya da F6) = odadaki tüm düşmanları öldür, kalan dalgaları iptal et ve odayı temizle, F7 = bir sonraki kata geç (akışı hızlı denemek için).
 ## (F4 = deneme/god modu, F5 = eşya menüsü.) Ölüm ve zafer ekranında M = ana menü.
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
-	if key.physical_keycode == KEY_F6:
+	if key.physical_keycode == KEY_F6 or (key.physical_keycode == KEY_F and ItemView.active_menu == null):
 		skip_room()
 	elif key.physical_keycode == KEY_F7:
 		dev_next_floor()
@@ -1311,6 +1311,7 @@ func skip_room() -> void:
 	var room := current_room()
 	if room == null or room.is_cleared():
 		return
+	room.abort_waves()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var a := e as ActorBase
 		if a != null and not a.dead:

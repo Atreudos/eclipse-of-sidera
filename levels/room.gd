@@ -413,6 +413,15 @@ func _pick_spawn_points(count: int) -> Array[Vector2]:
 
 
 ## Odayı hemen temizlenmiş sayar: kapı açılır. (Normalde son dalga bitince kendiliğinden olur.)
+## Kalan dalgaları iptal eder: bekleyen doğuş işaretlerini siler, sonraki dalga gelmez (geliştirici kısayolu F / F6).
+func abort_waves() -> void:
+	for c in get_children():
+		if c is SpawnMarker:
+			c.queue_free()
+	_pending = 0
+	wave_number = waves.size()
+
+
 func force_clear() -> void:
 	if state == State.CLEARED:
 		return

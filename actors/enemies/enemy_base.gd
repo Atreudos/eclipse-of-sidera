@@ -158,6 +158,8 @@ func _process(delta: float) -> void:
 		if tell_glow != null:
 			tell_glow.modulate.a = 0.7 + 0.25 * sin(Time.get_ticks_msec() / 45.0)
 		queue_redraw()
+	elif stun_t > 0.0 or poison_t > 0.0:
+		queue_redraw()  # sersem yıldızları / zehir damlası çizimi (çizim gelince)
 	tint = Color(0.6, 0.8, 1.0) if stun_t > 0.0 else Color.WHITE
 	if burn_t > 0.0 and stun_t <= 0.0:
 		tint = Color(1.0, 0.72, 0.5).lerp(Color.WHITE, 0.5 + 0.5 * sin(Time.get_ticks_msec() / 70.0))
@@ -289,7 +291,7 @@ func set_tell(mode: Tell) -> void:
 		_tell_age = 0.0
 	_tell = mode
 	if tell_glow != null:
-		tell_glow.visible = mode != Tell.NONE
+		tell_glow.visible = mode != Tell.NONE and not (mode == Tell.RED and Art.has("fx_tell_red"))
 		tell_glow.color = GOLD if mode == Tell.GOLD else RED
 	if changed and mode != Tell.NONE:
 		Sfx.play("tell_gold" if mode == Tell.GOLD else "tell_red")
@@ -310,11 +312,22 @@ func has_tell_symbol() -> bool:
 ## Saldırı uyarısı: SADECE parry'lenebilir (altın) saldırıda başın üstünde sarı elmas çıkar.
 ## Kırmızı saldırıda sembol yok; yalnızca gövde kırmızı parlar (kaç!).
 func _draw() -> void:
+	# Çizim varsa (fx_stun_stars, fx_poison_drip, fx_tell_red, fx_tell_gold) onlar; yoksa eski kod çizimi.
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	if not dead:
+		if stun_t > 0.0:
+			Art.draw(self, "fx_stun_stars", Rect2(-32.0, -90.0, 64.0, 32.0), now)
+		if poison_t > 0.0:
+			Art.draw(self, "fx_poison_drip", Rect2(-32.0, -32.0, 64.0, 64.0), now)
+		if _tell == Tell.RED:
+			Art.draw(self, "fx_tell_red", Rect2(-48.0, -48.0, 96.0, 96.0), now)
 	if not has_tell_symbol():
 		return
 	var pop := DamageNumber.pop_scale(_tell_age / TELL_POP_TIME)
 	var pulse := 1.0 + 0.12 * sin(Time.get_ticks_msec() / 55.0)
 	var y := -64.0
+	if Art.draw(self, "fx_tell_gold", Rect2(-24.0 * pop, y - 24.0 * pop, 48.0 * pop, 48.0 * pop), now):
+		return
 	var r := 15.0 * pulse * pop
 	# Yumuşak hale
 	draw_circle(Vector2(0, y), r * 2.0, Color(1.0, 0.82, 0.25, 0.10))
