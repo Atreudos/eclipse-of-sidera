@@ -90,32 +90,53 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Görünüm adı: kilitli / açık / mühürlü (kalıcı kapı hep mühürlü).
+func _look_name() -> String:
+	var l := Look.SEALED if permanent else look
+	return "sealed" if l == Look.SEALED else ("open" if l == Look.OPEN else "locked")
+
+
+## Çizim listesindeki dikey döşenen parçayı (`door_frame_*`, `door_slab_*`) `y0`-`y1` arasına döşer. Çizim yoksa false.
+func _tile_art(file: String, x: float, w: float, y0: float, y1: float, tile: float) -> bool:
+	if not Art.has(file):
+		return false
+	var y := y0
+	while y < y1 - 0.5:
+		Art.draw(self, file, Rect2(x, y, w, tile), _t)
+		y += tile
+	return true
+
+
 func _draw() -> void:
 	var half := WIDTH * 0.5
 	var frame := Color(accent.r * 0.28, accent.g * 0.28, accent.b * 0.28, 1.0)
-	# Çerçeve sütunları: levha kalksa da kapının yeri belli olur.
-	draw_rect(Rect2(-half - 12.0, 0.0, 12.0, HEIGHT), frame)
-	draw_rect(Rect2(half, 0.0, 12.0, HEIGHT), frame)
 	var glow := Color(0.9, 0.2, 0.28, 0.85)
 	match Look.SEALED if permanent else look:
 		Look.OPEN:
 			glow = Color(accent, 0.55 + 0.4 * (0.5 + 0.5 * sin(_t * 5.0)))
 		Look.SEALED:
 			glow = Color(0.45, 0.4, 0.5, 0.35)
-	# Işık çizgisi çerçevelerde
-	draw_rect(Rect2(-half - 4.0, 0.0, 4.0, HEIGHT), Color(glow, glow.a * 0.7))
-	draw_rect(Rect2(half, 0.0, 4.0, HEIGHT), Color(glow, glow.a * 0.7))
+	# Çerçeve sütunları: levha kalksa da kapının yeri belli olur.
+	if not _tile_art("door_frame_" + _look_name(), -half - 12.0, WIDTH + 24.0, 0.0, HEIGHT, 128.0):
+		draw_rect(Rect2(-half - 12.0, 0.0, 12.0, HEIGHT), frame)
+		draw_rect(Rect2(half, 0.0, 12.0, HEIGHT), frame)
+		# Işık çizgisi çerçevelerde
+		draw_rect(Rect2(-half - 4.0, 0.0, 4.0, HEIGHT), Color(glow, glow.a * 0.7))
+		draw_rect(Rect2(half, 0.0, 4.0, HEIGHT), Color(glow, glow.a * 0.7))
 	if _slide < 1.0:
 		var y := -_slide * (HEIGHT + 24.0)
-		draw_rect(Rect2(-half, y, WIDTH, HEIGHT), Color(0.12, 0.1, 0.15, 1.0))
-		# Levha üstündeki yatay oluklar ve orta ışık çizgisi
-		var gy := 36.0
-		while gy < HEIGHT:
-			draw_rect(Rect2(-half, y + gy, WIDTH, 3.0), Color(0.07, 0.06, 0.09, 1.0))
-			gy += 64.0
-		draw_rect(Rect2(-2.5, y, 5.0, HEIGHT), glow)
+		var slab := "door_slab_sealed" if _look_name() == "sealed" else "door_slab_locked"
+		if not _tile_art(slab, -half, WIDTH, y, y + HEIGHT, 128.0):
+			draw_rect(Rect2(-half, y, WIDTH, HEIGHT), Color(0.12, 0.1, 0.15, 1.0))
+			# Levha üstündeki yatay oluklar ve orta ışık çizgisi
+			var gy := 36.0
+			while gy < HEIGHT:
+				draw_rect(Rect2(-half, y + gy, WIDTH, 3.0), Color(0.07, 0.06, 0.09, 1.0))
+				gy += 64.0
+			draw_rect(Rect2(-2.5, y, 5.0, HEIGHT), glow)
 	if look == Look.OPEN and _slide >= 0.6:
-		_draw_arrows()
+		if not Art.draw(self, "door_arrows", Rect2(half + 20.0, HEIGHT - 100.0, 96.0, 40.0), _t):
+			_draw_arrows()
 
 
 ## Sağa akan oklar: "bu yönde ilerle".
