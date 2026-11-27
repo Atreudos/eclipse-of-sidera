@@ -65,11 +65,15 @@ static func secret_kind(floor_no: int, slot: int) -> String:
 ## Bu katların Gölge odasında ödül seçilince su yükselmeye başlar; geçit tepeye taşınır. (Sonraki kat = slime katı.)
 const FLOOD_FLOORS := [4]
 
+## Başka kat sonu olayları (Gölge ödülü alınınca başlar): kat -> tür. "gold_rain" altın yağmuru, "rockfall" taş yağışı,
+## "blackout" ışıkların sönmesi. Su baskını ayrıca FLOOD_FLOORS'tadır; `end_event()` ikisini birleştirir.
+const END_EVENTS := {7: "gold_rain", 10: "rockfall", 11: "blackout"}
+
 
 ## Lobide gerçekleşen tek seferlik olaylar: kat -> olay kimliği.
-const LOBBY_EVENTS := {9: "yazi_tura", 13: "anket"}
+const LOBBY_EVENTS := {9: "yazi_tura", 13: "anket", 15: "dogum"}
 ## Olayı yürüten karakter (lobide durur).
-const EVENT_NPC := {"yazi_tura": "umbra", "anket": "asansor"}
+const EVENT_NPC := {"yazi_tura": "umbra", "anket": "asansor", "dogum": "umbra"}
 
 ## Kat adları (kat kartında altyazı).
 const FLOOR_TITLES := [
@@ -110,11 +114,29 @@ static func event_dialogue(id: String) -> Dictionary:
 			}}
 		"anket":
 			return NpcExtra.dialogue("asansor")
+		"dogum":
+			return {"speaker": "Umbra", "start": "done" if done else "a", "nodes": {
+				"a": {"text": "*Umbra başında kâğıttan bir külahla köşede oturuyor.* Bugün doğum günüm. Bilmiyordum, az önce hesapladım.", "next": "b"},
+				"b": {"text": "Gölgelerin doğum günü olmaz derler. Ama ben bir kat önce seni yenemediğim günü sayıyorum. Pasta ister misin?", "choices": [
+					{"text": "Evet, pasta!", "next": "yes"}, {"text": "Mumları sen üfle", "next": "blow"}, {"text": "Şimdi değil", "next": "no", "cancel": true}]},
+				"yes": {"text": "*Umbra bir dilim pasta uzattı. Pasta biraz karanlık tadında ama güzel.* Dilek tutmayı unutma.", "fx": "confetti", "sfx": "heal", "heal": 99, "heal_flag": "hl_" + id, "dopamin": 8, "dopamin_flag": "dp_" + id, "dopamin_repeat": false, "next": "wish", "set_before": flag},
+				"blow": {"text": "*Umbra mumları üfledi. Mumlar yandı, Umbra söndü, sonra yine yandı.* Tamam, tamam. Pasta senin.", "next": "yes"},
+				"wish": {"text": "*Umbra kısık sesle: 'Keşke bu kuleden ikimiz de çıksak.' ...Bunu duymadın.*", "next": "end"},
+				"no": {"text": "Peki. Pasta bekler. Pastalar sabırlıdır, ben değilim.", "next": "end"},
+				"done": {"text": "*Umbra külahını çıkarmış. Pastadan geriye bir tabak ve utangaç bir çatal kalmış.*", "next": "end"},
+			}}
 	return Dialogue.linear("", ["..."])
 
 
 static func has_flood(floor_no: int) -> bool:
 	return floor_no in FLOOD_FLOORS
+
+
+## Katın sonunda gerçekleşen olay: "flood", "gold_rain", "rockfall", "blackout" ya da "" (yok).
+static func end_event(floor_no: int) -> String:
+	if floor_no in FLOOD_FLOORS:
+		return "flood"
+	return str(END_EVENTS.get(floor_no, ""))
 
 
 static func has_slime(floor_no: int) -> bool:

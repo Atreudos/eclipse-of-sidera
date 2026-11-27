@@ -2,6 +2,7 @@ class_name DialogueMenu
 extends GameMenu
 ## Konuşma kutusu: ekranın altında panel, harf harf yazılan metin, seçenekler. Oyunu durdurur.
 ## E / Enter / Boşluk / J / tık: yazıyı hızlandırır, bitince sonrakine geçer. Yukarı/Aşağı + aynı tuşlar: seçenek. Esc: kapat. Q: iptal ("cancel" seçeneği).
+## Düğüm anahtarı `fx: "confetti"` konfeti patlatır.
 
 const CPS := 55.0
 const PANEL_H := 270.0
@@ -47,6 +48,8 @@ func _goto(id: String) -> void:
 	var sfx := str(_node.get("sfx", ""))
 	if sfx != "":
 		Sfx.play(sfx, -2.0)
+	if str(_node.get("fx", "")) == "confetti" and player != null and is_instance_valid(player):
+		ConfettiFx.burst(player.get_parent(), player.global_position + Vector2(0.0, -50.0))
 
 
 ## Düğümde `dopamin` varsa (ve `dopamin_flag` + `dopamin_repeat: false` ile daha önce verilmediyse) sayacı artırır.

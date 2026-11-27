@@ -304,6 +304,7 @@ func _on_landed(speed: float) -> void:
 	var k := clampf((speed - HARD_LANDING_SPEED) / 700.0, 0.0, 1.0)
 	Sfx.play("land", -11.0 + 7.0 * k, 1.0, 0.05)
 	RingFx.spawn(get_parent(), Vector2(global_position.x, feet_y() - 2.0), Color(1.0, 1.0, 1.0, 0.22 + 0.2 * k), 5.0, 18.0 + 24.0 * k, 0.2)
+	DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.3 + 0.7 * k)
 	landed.emit(speed)
 
 
@@ -514,6 +515,8 @@ func _do_jump() -> void:
 	_jump_buffer = 0.0
 	_coyote = 0.0
 	_jump_cut_done = false
+	if is_on_floor():
+		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), 0.0, 0.2)
 
 
 func _state_move(delta: float) -> void:
@@ -552,6 +555,8 @@ func _start_dash() -> void:
 	anim.trigger("dash", stats.value("dash_time"))
 	EventBus.dash_used.emit(self)
 	RingFx.spawn(get_parent(), global_position, Color(1, 1, 1, 0.55), 8.0, 38.0, 0.2)
+	if is_on_floor():
+		DustFx.puff(get_parent(), Vector2(global_position.x, feet_y() - 2.0), -float(_dash_dir), 0.6)
 
 
 func _state_dash(delta: float) -> void:

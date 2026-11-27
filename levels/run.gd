@@ -366,6 +366,8 @@ func _build_room(index: int) -> Room:
 	room.wave_started.connect(_on_wave_started)
 	if room.floor_exit != null:
 		room.floor_exit.used.connect(_on_floor_exit_used)
+	if floors_enabled:
+		AmbientFx.attach(room)
 	rooms[index] = room
 	return room
 
@@ -834,12 +836,8 @@ func take_reward(index: int) -> String:
 func _on_reward_taken(item: ItemData, left: Array, room: Room) -> void:
 	if is_instance_valid(room):
 		room.release_exit()
-		if floors_enabled and StoryFloors.has_flood(room.floor_no) and room.get_node_or_null("Flood") == null:
-			var fl := FloodEvent.new()
-			fl.name = "Flood"
-			room.add_child(fl)
-			fl.start(room)
-			hud.announcer.push("SU YÜKSELİYOR!  Yukarı tırman.", GameFont.YELLOW, 40, 3.0)
+		if floors_enabled:
+			start_end_event(room)
 	hud.announcer.push_runs([["ALINDI  ", GameFont.WHITE], [item.upper_name(), item.color()]], 40, 2.0)
 	for it in left:
 		var other := it as ItemData
@@ -847,6 +845,61 @@ func _on_reward_taken(item: ItemData, left: Array, room: Room) -> void:
 			hud.announcer.push_runs([["GÖLGE ALDI  ", Color(0.78, 0.55, 1.0)], [other.upper_name(), other.color()]], 36, 2.4)
 	if is_instance_valid(room):
 		_save_floor_checkpoint(room.floor_no + 1)
+
+
+## Katın sonu olayı (StoryFloors.end_event): su baskını, altın yağmuru, taş yağışı ya da ışıkların sönmesi. Bir kez; başlarsa true.
+func start_end_event(room: Room) -> bool:
+	if room == null or not is_instance_valid(room):
+		return false
+	var kind := StoryFloors.end_event(room.floor_no)
+	match kind:
+		"flood":
+			if room.get_node_or_null("Flood") != null:
+				return false
+			var fl := FloodEvent.new()
+			fl.name = "Flood"
+			room.add_child(fl)
+			fl.start(room)
+			hud.announcer.push("SU YÜKSELİYOR!  Yukarı tırman.", GameFont.YELLOW, 40, 3.0)
+		"gold_rain":
+			if room.get_node_or_null("GoldRain") != null:
+				return false
+			var gr := GoldRainEvent.new()
+			gr.name = "GoldRain"
+			room.add_child(gr)
+			gr.start(room)
+			hud.announcer.push("ALTIN YAĞIYOR!  Topla.", GameFont.YELLOW, 40, 2.4)
+			_later(6.5, "*Muhasebe bu yağmurdan haberdar değil.*")
+		"rockfall":
+			if room.get_node_or_null("Rockfall") != null:
+				return false
+			var rf := RockfallEvent.new()
+			rf.name = "Rockfall"
+			room.add_child(rf)
+			rf.start(room)
+			hud.announcer.push("TAVAN ÇATLIYOR!  Kırmızı işaretten kaç.", GameFont.YELLOW, 38, 3.0)
+			_later(17.0, "*Sarsıntı bitti. Tavan 'özür' dedi.*")
+		"blackout":
+			if get_node_or_null("Blackout") != null:
+				return false
+			var bo := BlackoutEvent.new()
+			bo.name = "Blackout"
+			add_child(bo)
+			bo.start(room)
+			hud.announcer.push("IŞIKLAR GİTTİ.  Karanlıkta bir şey parlıyor olabilir.", GameFont.YELLOW, 34, 3.0)
+			bo.finished.connect(func() -> void:
+				if is_instance_valid(hud):
+					hud.announcer.push("*Işıklar geri geldi. Fener 'ben değildim' dedi.*", GameFont.WHITE, 28, 2.4))
+		_:
+			return false
+	return true
+
+
+## `sec` saniye sonra duyuru satırı (olay bitiş esprileri).
+func _later(sec: float, text: String) -> void:
+	get_tree().create_timer(sec).timeout.connect(func() -> void:
+		if is_instance_valid(hud) and not won:
+			hud.announcer.push(text, GameFont.WHITE, 28, 2.4))
 
 
 ## Gölge ödülü alınınca koşu bir sonraki katın başlangıcına kaydedilir: oyundan çıkıp dönersen Gölge'yi yeniden yenmen gerekmez.

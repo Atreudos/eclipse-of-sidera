@@ -174,6 +174,7 @@ func _run_all() -> void:
 		"demo_menu": _test_demo_menu,
 		"etkilesim_hakemi": _test_interact_arbiter,
 		"olay_cizelgesi": _test_story_schedule,
+		"yeni_olaylar": _test_new_events,
 		"konusma_dugumleri": _test_dialogue_nodes,
 		"parkur_ogeleri": _test_parkour_parts,
 		"ara_oda_gecis": _test_side_room_travel,
@@ -9964,6 +9965,86 @@ func _test_parkour_parts() -> void:
 	_world.add_child(sn)
 	sn.build(-12000.0, 3, "kedi", rng, "talk")
 	check(sn.npc != null and sn.npc.npc_id == "kedi", "konuşma odası: kedi bekliyor")
+	p.queue_free()
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+
+
+func _test_new_events() -> void:
+	await _new_world("Yeni olaylar: altın yağmuru, taş yağışı, ışıkların sönmesi, doğum günü, ortam efektleri, toz/konfeti")
+	Story.reset_fallback()
+	Chest.opened_ids = {}
+	Interact.reset()
+	check(StoryFloors.end_event(4) == "flood" and StoryFloors.end_event(7) == "gold_rain" and StoryFloors.end_event(10) == "rockfall" and StoryFloors.end_event(11) == "blackout", "kat sonu olay çizelgesi")
+	check(StoryFloors.end_event(1) == "" and StoryFloors.end_event(18) == "", "olaysız katlar boş")
+	check(StoryFloors.lobby_event(15) == "dogum" and StoryFloors.event_npc("dogum") == "umbra", "doğum günü lobi olayı: Umbra")
+	check(Dialogue.problems(StoryFloors.event_dialogue("dogum")).is_empty(), "doğum günü konuşması geçerli")
+	# Altın yağmuru
+	var p := _spawn_player(300.0)
+	var room := _puzzle_room("parry", 7, 5)
+	await _frames(2)
+	var gr := GoldRainEvent.new()
+	room.add_child(gr)
+	gr.start(room)
+	await _frames(40)
+	check(gr.running and gr.dropped >= 2, "altın yağmuru: paralar düşüyor (%d)" % gr.dropped)
+	check(get_tree().get_nodes_in_group("coins").size() >= 2, "yağmurdaki paralar gerçek Coin düğümleri")
+	gr.queue_free()
+	for c in get_tree().get_nodes_in_group("coins"):
+		c.queue_free()
+	# Taş yağışı
+	var rf := RockfallEvent.new()
+	room.add_child(rf)
+	rf.start(room)
+	p.global_position = room.to_global(Vector2(600.0, 612.0))
+	p.velocity = Vector2.ZERO
+	var hp := p.health
+	var imm := p.immunity
+	rf._rocks.append({"x": 600.0, "age": RockfallEvent.WARN + RockfallEvent.FALL - 0.01, "hit": false, "seed": 0.3})
+	await _frames(6)
+	check(rf.impacts >= 1, "taş yağışı: taş indi (%d)" % rf.impacts)
+	check(p.health < hp or p.immunity < imm, "taşın altındaki oyuncu can kaybeder (%d -> %d)" % [hp, p.health])
+	p.global_position = room.to_global(Vector2(1200.0, 612.0))
+	var hp2 := p.health
+	rf._rocks.append({"x": 300.0, "age": RockfallEvent.WARN + RockfallEvent.FALL - 0.01, "hit": false, "seed": 0.6})
+	await _frames(6)
+	check(p.health == hp2, "uzaktaki oyuncuya taş zarar vermez")
+	rf.queue_free()
+	# Işıkların sönmesi
+	var bo := BlackoutEvent.new()
+	_world.add_child(bo)
+	bo.start(room)
+	await _frames(20)
+	check(bo.running and bo.layer == 9, "ışıklar sönme olayı çalışıyor")
+	var coins := 0
+	for c in get_tree().get_nodes_in_group("coins"):
+		if (c as Coin).antique:
+			coins += 1
+	check(coins == BlackoutEvent.HIDDEN_COINS, "karanlıkta saklı antika paralar (%d)" % coins)
+	bo._t = BlackoutEvent.DURATION - 0.01
+	await _frames(4)
+	check(not is_instance_valid(bo) or not bo.running, "ışıklar süre bitince geri gelir")
+	# Ortam efektleri
+	check(AmbientFx.theme_of(13) == "rain" and AmbientFx.theme_of(6) == "ember" and AmbientFx.theme_of(17) == "ash" and AmbientFx.theme_of(1) == "dust", "ortam efekti temaları")
+	var amb := AmbientFx.attach(room)
+	check(amb != null and amb.particles != null and amb.particles.emitting, "oda ortam parçacığı taşır")
+	check(AmbientFx.attach(room) == null, "ortam efekti odaya bir kez eklenir")
+	for th in ["rain", "ember", "ash", "dust"]:
+		var a := AmbientFx.new()
+		a.theme = th
+		_world.add_child(a)
+		a.build(Vector2(1600.0, 720.0))
+		check(a.particles != null and a.particles.amount > 0, "tema kurulur: " + th)
+	# Toz ve konfeti
+	var before := _world.get_child_count()
+	DustFx.puff(_world, Vector2(100.0, 600.0), 1.0, 0.5)
+	ConfettiFx.burst(_world, Vector2(200.0, 500.0))
+	check(_world.get_child_count() == before + 2, "toz ve konfeti düğümü eklendi")
+	# Koşu: kat sonu olayı tetiği
+	var run := _start_run(901, true)
+	await _frames(6)
+	var fr := run.current_room()
+	check(fr != null and fr.floor_no == 1 and not run.start_end_event(fr), "kat 1'de kat sonu olayı yok")
 	p.queue_free()
 	Story.reset_fallback()
 	Chest.opened_ids = {}
